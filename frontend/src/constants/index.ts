@@ -6,8 +6,12 @@ export const STORAGE_KEYS = {
   refreshToken: "farmRefreshToken",
 } as const;
 
+// 간단한 형식 체크용(엄밀한 RFC 5322 검증 아님) — 최종 검증은 백엔드 Bean Validation.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Bean Validation과 동일한 클라이언트 검증 제약 (docs/api-contract.md §4)
 export const VALIDATION = {
+  email: { pattern: EMAIL_PATTERN },
   password: { minLength: 8 },
   nickname: { minLength: 2, maxLength: 20 },
   farmName: { minLength: 2, maxLength: 50 },

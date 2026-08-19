@@ -18,6 +18,8 @@ function validate(email: string, password: string, nickname: string): FieldError
   const errors: FieldErrors = {};
   if (!email) {
     errors.email = "이메일을 입력해주세요.";
+  } else if (!VALIDATION.email.pattern.test(email)) {
+    errors.email = "이메일 형식이 올바르지 않습니다.";
   }
   if (password.length < VALIDATION.password.minLength) {
     errors.password = `비밀번호는 ${VALIDATION.password.minLength}자 이상이어야 합니다.`;

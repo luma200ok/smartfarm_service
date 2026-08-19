@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import FormField from "@/components/ui/FormField";
-import { DEFAULT_ERROR_MESSAGE, ERROR_MESSAGES } from "@/constants";
+import { DEFAULT_ERROR_MESSAGE, ERROR_MESSAGES, VALIDATION } from "@/constants";
 import { login } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 
@@ -12,12 +12,20 @@ export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [emailError, setEmailError] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+
+    if (!VALIDATION.email.pattern.test(email)) {
+      setEmailError("이메일 형식이 올바르지 않습니다.");
+      return;
+    }
+    setEmailError(undefined);
+
     setSubmitting(true);
     try {
       await login({ email, password });
@@ -50,6 +58,7 @@ export default function LoginForm() {
         required
         value={email}
         onChange={(e) => setEmail(e.target.value)}
+        error={emailError}
       />
       <FormField
         id="password"
