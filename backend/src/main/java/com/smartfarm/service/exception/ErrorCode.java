@@ -11,6 +11,8 @@ public enum ErrorCode {
     // Common
     C001(HttpStatus.BAD_REQUEST, "C001", "요청 값이 올바르지 않습니다."),
     C002(HttpStatus.INTERNAL_SERVER_ERROR, "C002", "내부 서버 오류가 발생했습니다."),
+    C003(HttpStatus.NOT_FOUND, "C003", "존재하지 않는 경로입니다."),
+    C004(HttpStatus.METHOD_NOT_ALLOWED, "C004", "허용되지 않는 메서드입니다."),
 
     // Auth
     A001(HttpStatus.CONFLICT, "A001", "이미 사용 중인 이메일입니다."),
