@@ -1,0 +1,240 @@
+package com.smartfarm.service.controller;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.smartfarm.service.IntegrationTestSupport;
+import com.smartfarm.service.dto.LoginRequest;
+import com.smartfarm.service.dto.RefreshRequest;
+import com.smartfarm.service.dto.SignupRequest;
+import com.smartfarm.service.entity.RefreshToken;
+import com.smartfarm.service.repository.RefreshTokenRepository;
+import com.smartfarm.service.repository.UserRepository;
+import com.smartfarm.service.service.TokenHasher;
+import java.time.LocalDateTime;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
+
+class AuthApiIntegrationTest extends IntegrationTestSupport {
+
+    @Autowired
+    UserRepository userRepository;
+
+    @Autowired
+    RefreshTokenRepository refreshTokenRepository;
+
+    // --- 헬퍼 ---
+
+    MvcResult signup(String email, String password, String nickname) throws Exception {
+        return mockMvc.perform(post("/api/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new SignupRequest(email, password, nickname))))
+                .andReturn();
+    }
+
+    JsonNode login(String email, String password) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new LoginRequest(email, password))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {
+        return mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RefreshRequest(refreshToken))));
+    }
+
+    @Nested
+    @DisplayName("회원가입")
+    class Signup {
+
+        @Test
+        @DisplayName("성공 시 201과 UserResponse를 반환한다")
+        void signupSuccess() throws Exception {
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest("signup-ok@example.com", "password123", "가입유저"))))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.id").isNumber())
+                    .andExpect(jsonPath("$.email").value("signup-ok@example.com"))
+                    .andExpect(jsonPath("$.nickname").value("가입유저"))
+                    .andExpect(jsonPath("$.createdAt").exists())
+                    .andExpect(jsonPath("$.password").doesNotExist());
+        }
+
+        @Test
+        @DisplayName("이메일 중복 시 409 A001을 반환한다")
+        void signupDuplicateEmail() throws Exception {
+            signup("dup@example.com", "password123", "원조유저");
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest("dup@example.com", "password123", "중복유저"))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("A001"))
+                    .andExpect(jsonPath("$.timestamp").exists())
+                    .andExpect(jsonPath("$.message").exists());
+        }
+
+        @Test
+        @DisplayName("비밀번호 8자 미만이면 400 C001과 {timestamp, code, message} 형식으로 응답한다")
+        void signupValidationFail() throws Exception {
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest("short@example.com", "short", "짧은비번"))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("C001"))
+                    .andExpect(jsonPath("$.timestamp").exists())
+                    .andExpect(jsonPath("$.message").exists());
+        }
+    }
+
+    @Nested
+    @DisplayName("로그인")
+    class Login {
+
+        @Test
+        @DisplayName("성공 시 200과 access/refresh 토큰을 반환한다")
+        void loginSuccess() throws Exception {
+            signup("login-ok@example.com", "password123", "로그인유저");
+            JsonNode tokens = login("login-ok@example.com", "password123");
+            org.assertj.core.api.Assertions.assertThat(tokens.get("accessToken").asText()).isNotBlank();
+            org.assertj.core.api.Assertions.assertThat(tokens.get("refreshToken").asText()).isNotBlank();
+        }
+
+        @Test
+        @DisplayName("비밀번호 불일치 시 401 A002를 반환한다")
+        void loginWrongPassword() throws Exception {
+            signup("login-wrong@example.com", "password123", "로그인유저");
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new LoginRequest("login-wrong@example.com", "wrong-password"))))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A002"));
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 이메일이면 401 A002를 반환한다")
+        void loginUnknownEmail() throws Exception {
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new LoginRequest("no-such-user@example.com", "password123"))))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A002"));
+        }
+    }
+
+    @Nested
+    @DisplayName("refresh 로테이션")
+    class Refresh {
+
+        @Test
+        @DisplayName("정상 refresh 시 새 토큰 쌍을 발급한다")
+        void refreshRotation() throws Exception {
+            signup("rotate@example.com", "password123", "로테유저");
+            JsonNode tokens = login("rotate@example.com", "password123");
+
+            refresh(tokens.get("refreshToken").asText())
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                    .andExpect(jsonPath("$.refreshToken").isNotEmpty());
+        }
+
+        @Test
+        @DisplayName("사용된 refresh 토큰 재사용 시 A004 + 해당 유저 전체 토큰 무효화")
+        void refreshReuseDetection() throws Exception {
+            signup("reuse@example.com", "password123", "재사용유저");
+            JsonNode tokens1 = login("reuse@example.com", "password123");
+            String oldRefresh = tokens1.get("refreshToken").asText();
+
+            // 1차 로테이션 성공
+            MvcResult rotated = refresh(oldRefresh)
+                    .andExpect(status().isOk())
+                    .andReturn();
+            String newRefresh = objectMapper.readTree(rotated.getResponse().getContentAsString())
+                    .get("refreshToken").asText();
+
+            // 구 토큰 재사용 → A004
+            refresh(oldRefresh)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A004"));
+
+            // 재사용 감지로 신 토큰까지 전체 무효화 → A004
+            refresh(newRefresh)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A004"));
+        }
+
+        @Test
+        @DisplayName("만료된 refresh 토큰이면 401 A003을 반환한다")
+        void refreshExpired() throws Exception {
+            signup("expired-rt@example.com", "password123", "만료유저");
+            Long userId = userRepository.findByEmail("expired-rt@example.com").orElseThrow().getId();
+
+            String rawToken = "test-expired-refresh-token-raw-value";
+            refreshTokenRepository.save(RefreshToken.builder()
+                    .userId(userId)
+                    .tokenHash(TokenHasher.sha256(rawToken))
+                    .expiresAt(LocalDateTime.now().minusDays(1))
+                    .build());
+
+            refresh(rawToken)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A003"));
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 refresh 토큰이면 401 A004를 반환한다")
+        void refreshUnknownToken() throws Exception {
+            refresh("test-unknown-refresh-token")
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A004"));
+        }
+    }
+
+    @Nested
+    @DisplayName("로그아웃")
+    class Logout {
+
+        @Test
+        @DisplayName("로그아웃 시 204, 이후 해당 refresh 토큰은 무효(A004)")
+        void logoutRevokesRefreshToken() throws Exception {
+            signup("logout@example.com", "password123", "로그아웃유저");
+            JsonNode tokens = login("logout@example.com", "password123");
+            String accessToken = tokens.get("accessToken").asText();
+            String refreshToken = tokens.get("refreshToken").asText();
+
+            mockMvc.perform(post("/api/auth/logout")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(refreshToken))))
+                    .andExpect(status().isNoContent());
+
+            refresh(refreshToken)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A004"));
+        }
+
+        @Test
+        @DisplayName("무인증 로그아웃 요청은 401")
+        void logoutWithoutToken() throws Exception {
+            mockMvc.perform(post("/api/auth/logout")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest("any-token"))))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+}
