@@ -1,0 +1,26 @@
+# env / secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+
+# Java / Gradle
+backend/build/
+backend/.gradle/
+backend/out/
+*.class
+
+# Node / Next
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# local-only docs (handoff 등)
+docs/_local/
