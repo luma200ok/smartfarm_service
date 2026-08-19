@@ -1,0 +1,13 @@
+# 테스트 전용 설정 — 시크릿은 명시적 테스트 더미값
+jwt:
+  secret: "test-only-jwt-secret-for-integration-tests-0123456789"
+  access-token-validity: 30m
+  refresh-token-validity: 14d
+
+cors:
+  allowed-origins: http://localhost:3000
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate

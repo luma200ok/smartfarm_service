@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: smartfarm-service
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/smartfarm_service}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
+
+  flyway:
+    enabled: true
+    out-of-order: true
+
+server:
+  port: 8085
+  # 외부 직접 바인딩 차단 — nginx(127.0.0.1) 경유만 허용 (contract §0)
+  address: 127.0.0.1
+  # nginx TLS 종단 뒤 X-Forwarded-* 반영 (HSTS·리다이렉트 스킴 정합)
+  forward-headers-strategy: framework
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-validity: 30m
+  refresh-token-validity: 14d
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+---
+# 운영 프로필 — Swagger/OpenAPI 비활성.
+# ⚠️ 운영 기동 시 SPRING_PROFILES_ACTIVE=prod 필수 (미지정 시 Swagger가 노출됨)
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
