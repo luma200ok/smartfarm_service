@@ -31,7 +31,7 @@
 
 - 테넌트 식별 = **path param `{farmId}`**. 입력값 취급 — **매 요청 멤버십 재검증**(cross-tenant IDOR 차단), repository 조회는 항상 farm 스코프.
 - 역할 2단계로 시작: `OWNER`(농장 관리·초대·삭제) / `MEMBER`(조회·진단·처방). MANAGER는 후속.
-- 합류 = 초대코드(OWNER 발급, 만료 72h, 1회용 아님·만료까지 재사용 가능).
+- 합류 = 초대코드(OWNER 발급, 만료 72h, 만료까지 다인 재사용 가능). **폐기 정책(2026-08-19 확정)**: 농장당 활성 코드 1건 — 재발급 시 기존 코드 무효화, **멤버 제거 시 해당 농장 활성 코드 자동 무효화**(제거된 멤버의 보유 코드 재합류 차단). 무효화된 코드는 F004. 코드는 DB에 SHA-256 해시로만 저장.
 
 ## 3. 핵심 엔드포인트
 
@@ -45,7 +45,7 @@
 | POST | `/api/farms` | 인증 | FarmRequest | 201 FarmResponse (생성자=OWNER) |
 | GET | `/api/farms` | 인증 | — | 200 List\<FarmSummaryResponse\> (내 농장) |
 | GET | `/api/farms/{farmId}` | 멤버 | — | 200 FarmResponse |
-| PATCH | `/api/farms/{farmId}` | OWNER | FarmRequest(부분) | 200 FarmResponse |
+| PATCH | `/api/farms/{farmId}` | OWNER | FarmUpdateRequest(null=미변경. location 비우기는 1차 미지원 — 후속) | 200 FarmResponse |
 | DELETE | `/api/farms/{farmId}` | OWNER | — | 204 (soft delete) |
 | POST | `/api/farms/{farmId}/invitations` | OWNER | — | 201 InvitationResponse |
 | POST | `/api/invitations/accept` | 인증 | AcceptInvitationRequest | 200 FarmResponse |
@@ -75,7 +75,7 @@
 - **TokenResponse** `{accessToken, refreshToken}` / **UserResponse** `{id, email, nickname, createdAt}`
 - **FarmRequest** `{name(2~50), cropType, location?}` — cropType enum: `TOMATO`(1차, ai-server 모델이 토마토 전용) 확장 대비 enum
 - **FarmResponse** `{id, name, cropType, location, myRole, memberCount, createdAt}` / **FarmSummaryResponse** `{id, name, cropType, myRole}`
-- **InvitationResponse** `{code, expiresAt}` / **AcceptInvitationRequest** `{code}`
+- **InvitationResponse** `{code, expiresAt}` / **AcceptInvitationRequest** `{code}` — 시각 필드는 전부 서버 로컬(Asia/Seoul) naive datetime(레포 공통)
 - **MemberResponse** `{memberId, userId, nickname, role, joinedAt}`
 - **DiagnosisResponse** `{id, status(ok|ood_blocked), label, labelKr, prob, part, reason?, imageUrl?, camPngBase64?, createdBy, createdAt}` — ai-server DiagnosisResponse를 이력 엔티티로 저장 후 매핑
 - **PrescriptionRequest** `{question(1~500), diagnosisId?}` 
