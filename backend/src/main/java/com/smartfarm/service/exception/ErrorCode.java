@@ -32,7 +32,12 @@ public enum ErrorCode {
     // Diagnosis
     D001(HttpStatus.NOT_FOUND, "D001", "진단 이력을 찾을 수 없습니다."),
     D002(HttpStatus.BAD_REQUEST, "D002", "이미지 형식 또는 크기가 올바르지 않습니다."),
-    D003(HttpStatus.BAD_GATEWAY, "D003", "AI 서버 오류가 발생했습니다.");
+    D003(HttpStatus.BAD_GATEWAY, "D003", "AI 서버 오류가 발생했습니다."),
+
+    // Prescription
+    P001(HttpStatus.NOT_FOUND, "P001", "처방 이력을 찾을 수 없습니다."),
+    P002(HttpStatus.INTERNAL_SERVER_ERROR, "P002", "처방 생성에 실패했습니다."),
+    P003(HttpStatus.TOO_MANY_REQUESTS, "P003", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String code;
