@@ -1,14 +1,17 @@
 package com.smartfarm.service.controller;
 
 import com.smartfarm.service.dto.UserResponse;
+import com.smartfarm.service.dto.WithdrawRequest;
 import com.smartfarm.service.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,10 +29,13 @@ public class UserController {
         return ResponseEntity.ok(userService.findMe(userId));
     }
 
-    @Operation(summary = "회원 탈퇴", description = "soft delete. OWNER 농장 보유 시 409 A006 — 농장 삭제 후 재시도.")
+    @Operation(summary = "회원 탈퇴",
+            description = "비밀번호 재확인 필수(불일치 A002). soft delete + PII 즉시 익명화. "
+                    + "OWNER 농장 보유 시 409 A006 — 농장 삭제 후 재시도.")
     @DeleteMapping("/me")
-    public ResponseEntity<Void> withdraw(@AuthenticationPrincipal Long userId) {
-        userService.withdraw(userId);
+    public ResponseEntity<Void> withdraw(@AuthenticationPrincipal Long userId,
+                                         @Valid @RequestBody WithdrawRequest request) {
+        userService.withdraw(userId, request.password());
         return ResponseEntity.noContent().build();
     }
 }
