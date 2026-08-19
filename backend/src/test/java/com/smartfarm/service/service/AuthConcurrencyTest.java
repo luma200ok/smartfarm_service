@@ -58,12 +58,18 @@ class AuthConcurrencyTest extends IntegrationTestSupport {
     record ConcurrentResult<T>(List<T> successes, List<Throwable> failures) {
     }
 
+    /** 재실행 시 잔존 데이터로 깨지지 않도록 실행별 유니크 이메일 사용 */
+    private static String uniqueEmail(String prefix) {
+        return prefix + "-" + java.util.UUID.randomUUID() + "@example.com";
+    }
+
     @Test
     @DisplayName("동일 refresh 토큰 동시 요청 — 정확히 1건 성공, 1건 A004, 이후 전체 무효화")
     void concurrentRefreshWithSameToken() throws Exception {
-        authService.signup(new SignupRequest("concurrent-refresh@example.com", "password123", "동시유저"));
+        String email = uniqueEmail("concurrent-refresh");
+        authService.signup(new SignupRequest(email, "password123", "동시유저"));
         TokenResponse tokens = authService.login(
-                new LoginRequest("concurrent-refresh@example.com", "password123"));
+                new LoginRequest(email, "password123"));
         String sharedRefreshToken = tokens.refreshToken();
 
         ConcurrentResult<TokenResponse> result = runConcurrently(
@@ -89,9 +95,10 @@ class AuthConcurrencyTest extends IntegrationTestSupport {
     @Test
     @DisplayName("동일 이메일 동시 가입 — 1건 성공, 1건 A001 (unique index race의 catch 경로)")
     void concurrentSignupWithSameEmail() throws Exception {
+        String email = uniqueEmail("concurrent-signup");
         ConcurrentResult<UserResponse> result = runConcurrently(
-                () -> authService.signup(new SignupRequest("concurrent-signup@example.com", "password123", "동시가입1")),
-                () -> authService.signup(new SignupRequest("concurrent-signup@example.com", "password123", "동시가입2")));
+                () -> authService.signup(new SignupRequest(email, "password123", "동시가입1")),
+                () -> authService.signup(new SignupRequest(email, "password123", "동시가입2")));
 
         assertThat(result.successes()).hasSize(1);
         assertThat(result.failures()).hasSize(1);

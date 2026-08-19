@@ -68,18 +68,22 @@ public class AuthService {
     /**
      * refresh 로테이션 — refresh 토큰의 만료/무효/재사용은 전부 A004 (A003은 access 만료 전용, contract §5).
      * - 미존재/변조 → A004
+     * - 만료 → A004 (부작용 없이 조용히 종료 — 만료 토큰 반복 제시가 전 기기 세션을
+     *   무효화하는 DoS 프리미티브가 되지 않도록 재사용 검사보다 먼저 수행)
      * - 이미 revoke된 토큰 재사용(동시 요청 race 포함) → 해당 유저 전체 무효화 후 A004
-     *   (재사용 검사를 만료 검사보다 먼저 — 만료된 탈취 토큰도 전체 무효화 신호 유지)
-     * - 만료 → A004
-     * - 유저 미존재(soft delete 포함) → A004
+     * - 유저 미존재(soft delete 포함) → 잔여 토큰 일괄 무효화 후 A004
      *
-     * noRollbackFor: 재사용 감지 시 A004를 던져도 전체 무효화 UPDATE는 커밋돼야 한다.
+     * noRollbackFor: A004를 던져도 무효화 UPDATE는 커밋돼야 한다.
      */
     @Transactional(noRollbackFor = CustomException.class)
     public TokenResponse refresh(String rawRefreshToken) {
         String tokenHash = TokenHasher.sha256(rawRefreshToken);
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
+
+        if (refreshToken.isExpired()) {
+            throw new CustomException(ErrorCode.A004);
+        }
 
         int revokedCount = refreshTokenRepository.revokeIfActive(refreshToken.getId());
         if (revokedCount == 0) {
@@ -89,13 +93,12 @@ public class AuthService {
             throw new CustomException(ErrorCode.A004);
         }
 
-        if (refreshToken.isExpired()) {
+        // soft delete된 유저의 세션 연장 차단 (@SQLRestriction으로 삭제 유저는 조회되지 않음)
+        // + 잔여 refresh token 일괄 무효화
+        if (userRepository.findById(refreshToken.getUserId()).isEmpty()) {
+            refreshTokenRepository.revokeAllByUserId(refreshToken.getUserId());
             throw new CustomException(ErrorCode.A004);
         }
-
-        // soft delete된 유저의 세션 연장 차단 (@SQLRestriction으로 삭제 유저는 조회되지 않음)
-        userRepository.findById(refreshToken.getUserId())
-                .orElseThrow(() -> new CustomException(ErrorCode.A004));
 
         return issueTokens(refreshToken.getUserId());
     }

@@ -21,6 +21,8 @@ spring:
 
 server:
   port: 8085
+  # 외부 직접 바인딩 차단 — nginx(127.0.0.1) 경유만 허용 (contract §0)
+  address: 127.0.0.1
   # nginx TLS 종단 뒤 X-Forwarded-* 반영 (HSTS·리다이렉트 스킴 정합)
   forward-headers-strategy: framework
 
@@ -37,7 +39,8 @@ springdoc:
     path: /swagger-ui.html
 
 ---
-# 운영 프로필 — Swagger/OpenAPI 비활성
+# 운영 프로필 — Swagger/OpenAPI 비활성.
+# ⚠️ 운영 기동 시 SPRING_PROFILES_ACTIVE=prod 필수 (미지정 시 Swagger가 노출됨)
 spring:
   config:
     activate:

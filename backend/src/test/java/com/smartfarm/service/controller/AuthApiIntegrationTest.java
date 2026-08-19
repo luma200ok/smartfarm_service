@@ -109,6 +109,19 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
         }
 
         @Test
+        @DisplayName("raw JSON 본문(Jackson 역직렬화 경로)에서도 이메일이 정규화된다")
+        void signupNormalizesEmailViaRawJson() throws Exception {
+            // objectMapper 직렬화는 compact constructor가 먼저 실행되므로,
+            // 서버 역직렬화 경로 검증은 raw 문자열 본문으로 수행한다.
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"email\": \"  Raw.Json@Example.COM \", "
+                                    + "\"password\": \"password123\", \"nickname\": \"로우제이슨\"}"))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.email").value("raw.json@example.com"));
+        }
+
+        @Test
         @DisplayName("비밀번호가 72바이트 초과(한글 25자)면 500이 아닌 400 C001로 응답한다")
         void signupPasswordOver72Bytes() throws Exception {
             String koreanPassword = "가".repeat(25); // 75바이트 (BCrypt 상한 72바이트 초과)
