@@ -11,14 +11,14 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | 항목 | 값 | 상태 |
 |---|---|---|
 | 서버 | oci-arm1 (3코어/16GB, 158.179.169.146) | 가동 중 |
-| 도메인 | `farm.luma200ok.com` (Cloudflare) | ⬜ DNS·certbot 미설정 |
-| backend | Spring Boot 3.x·Java 21, 127.0.0.1:8085, `-Xmx512m`, systemd | ⬜ 미구현 |
-| frontend | Next.js standalone, 127.0.0.1:3000, systemd (**서버 빌드 금지** — GH Actions 빌드→산출물 배포) | ⬜ 미구현 (arm1에 Node 설치 필요) |
-| DB | **네이티브 PostgreSQL 16**에 `smartfarm_service` DB 신설 (hajacheck 도커 PG와 별개) | ⬜ DB 미생성 |
+| 도메인 | `farm.luma200ok.com` (Cloudflare) | ⬜ **DNS A 레코드(사용자 액션 대기)** → certbot |
+| backend | Spring Boot 3.x·Java 21, 127.0.0.1:8085, `-Xmx512m`, systemd | ✅ 가동 (V1~V4 적용, /api/health ok) |
+| frontend | Next.js standalone, 127.0.0.1:3000, systemd (**서버 빌드 금지** — GH Actions 빌드→산출물 배포) | ✅ 가동 (Node 22, WorkingDirectory 미사용 — SELinux, PR #16) |
+| DB | **네이티브 PostgreSQL 16**에 `smartfarm_service` DB 신설 (hajacheck 도커 PG와 별개) | ✅ 생성·마이그레이션 적용 |
 | ai-server | 기존 `smartfarm-api.service` (FastAPI :8000, 외부 비노출) | ✅ 가동 중 |
 | LLM | 로컬 Ollama (qwen2.5:7b + exaone3.5:2.4b + bge-m3) | ✅ 가동 중 |
-| 시크릿 | `/etc/app-secrets/smartfarm-service.env` (root:600) | ⬜ 미생성 |
-| CI/CD | GitHub Actions — PR CI(빌드/테스트) + main 머지 시 배포 | ⬜ 미구성 |
+| 시크릿 | `/etc/app-secrets/smartfarm-service.env` (root:600, prod 프로필 포함 7키) | ✅ 생성 |
+| CI/CD | GitHub Actions — PR CI + main 배포(jar 백업·심링크 스왑·헬스체크) | ✅ **green 실측**(run 32269609655) |
 
 ⚠️ 용량 전제: LLM 로드 피크 12~14GB/16GB. 처방은 backend 단일 워커로 직렬화(contract §3). Next 빌드는 절대 서버에서 하지 않음.
 ⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
