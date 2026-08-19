@@ -16,4 +16,9 @@ public record FarmRequest(
         @Size(max = 255, message = "위치는 255자 이하여야 합니다.")
         String location
 ) {
+
+    public FarmRequest {
+        // trim 후 검증(@NotBlank/@Size) — 공백 패딩으로 길이 제한 우회 차단 (EmailNormalizer 선례)
+        name = name == null ? null : name.trim();
+    }
 }

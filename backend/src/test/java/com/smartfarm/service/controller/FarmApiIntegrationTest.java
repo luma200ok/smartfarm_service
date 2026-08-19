@@ -191,6 +191,21 @@ class FarmApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("PATCH에 공백만인 이름이 오면 400 C001을 반환한다 (trim 후 검증)")
+    void updateFarmBlankName() throws Exception {
+        String ownerToken = signupAndLogin("주인장");
+        long farmId = createFarm(ownerToken, "공백 검증 농장");
+
+        mockMvc.perform(patch("/api/farms/" + farmId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new FarmUpdateRequest("   ", null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("PATCH에 1자 이름이 오면 400 C001을 반환한다")
     void updateFarmNameTooShort() throws Exception {
         String ownerToken = signupAndLogin("주인장");
