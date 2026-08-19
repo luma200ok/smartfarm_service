@@ -77,6 +77,15 @@ public abstract class FarmTestSupport extends IntegrationTestSupport {
         throw new IllegalStateException("멤버를 찾을 수 없음: " + nickname);
     }
 
+    /** 내 userId 조회(/api/users/me) — 엔티티를 repository로 직접 구성하는 테스트의 FK용. */
+    protected long myUserId(String accessToken) throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get("/api/users/me")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
     protected JsonNode readJson(MvcResult result) throws Exception {
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }

@@ -1,8 +1,6 @@
 package com.smartfarm.service.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartfarm.service.PrescriptionApiTestSupport;
 import com.smartfarm.service.entity.Prescription;
@@ -12,12 +10,12 @@ import com.smartfarm.service.repository.PrescriptionRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * 재기동 복구 검증 — Spring 컨텍스트 재기동 대신 이전 프로세스가 남긴 상태(PROCESSING/PENDING 행)를
  * repository로 재현하고 {@link PrescriptionRecoveryInitializer#recover()}를 직접 호출해 검증한다
- * (@PostConstruct는 컨텍스트 기동 시 이미 1회 실행됐고, recover()는 멱등이라 재호출이 안전).
+ * (SmartLifecycle.start()가 컨텍스트 기동 시 이미 1회 실행했고, "기동 직후" 재현 목적의 직접 호출은
+ * recover() javadoc이 허용하는 유일한 예외 — 멱등이라 재호출이 안전).
  */
 class PrescriptionRecoveryTest extends PrescriptionApiTestSupport {
 
@@ -89,11 +87,4 @@ class PrescriptionRecoveryTest extends PrescriptionApiTestSupport {
         assertThat(untouched.getResult()).contains("잎곰팡이병");
     }
 
-    private long myUserId(String token) throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/users/me")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andReturn();
-        return readJson(result).get("id").asLong();
-    }
 }

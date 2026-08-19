@@ -1,8 +1,6 @@
 package com.smartfarm.service.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartfarm.service.PrescriptionApiTestSupport;
 import com.smartfarm.service.entity.Prescription;
@@ -14,7 +12,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * 스위퍼 검증 — 시간 경과는 created_at을 SQL로 backdate해 재현하고 sweep()을 직접 호출한다
@@ -118,11 +115,4 @@ class PrescriptionSweeperTest extends PrescriptionApiTestSupport {
                 createdAt, prescriptionId);
     }
 
-    private long myUserId(String token) throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/users/me")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andReturn();
-        return readJson(result).get("id").asLong();
-    }
 }
