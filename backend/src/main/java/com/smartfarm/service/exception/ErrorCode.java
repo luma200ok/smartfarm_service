@@ -19,7 +19,15 @@ public enum ErrorCode {
     A002(HttpStatus.UNAUTHORIZED, "A002", "이메일 또는 비밀번호가 일치하지 않습니다."),
     A003(HttpStatus.UNAUTHORIZED, "A003", "토큰이 만료되었습니다."),
     A004(HttpStatus.UNAUTHORIZED, "A004", "유효하지 않은 토큰입니다."),
-    A005(HttpStatus.FORBIDDEN, "A005", "접근 권한이 없습니다.");
+    A005(HttpStatus.FORBIDDEN, "A005", "접근 권한이 없습니다."),
+
+    // Farm
+    F001(HttpStatus.NOT_FOUND, "F001", "농장을 찾을 수 없습니다."),
+    F002(HttpStatus.FORBIDDEN, "F002", "농장 멤버가 아닙니다."),
+    F003(HttpStatus.FORBIDDEN, "F003", "농장 소유자 권한이 필요합니다."),
+    F004(HttpStatus.BAD_REQUEST, "F004", "유효하지 않거나 만료된 초대코드입니다."),
+    F005(HttpStatus.CONFLICT, "F005", "이미 농장 멤버입니다."),
+    F006(HttpStatus.BAD_REQUEST, "F006", "농장 소유자는 탈퇴할 수 없습니다. 농장 삭제만 가능합니다.");
 
     private final HttpStatus status;
     private final String code;
