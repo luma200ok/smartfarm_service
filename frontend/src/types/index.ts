@@ -13,6 +13,8 @@ export type PrescriptionStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILE
 export type ErrorCode =
   | "C001"
   | "C002"
+  | "C003"
+  | "C004"
   | "A001"
   | "A002"
   | "A003"
@@ -124,8 +126,17 @@ export interface DiagnosisResponse {
   createdAt: string;
 }
 
-// 목록 Summary: 상세에서 무거운 필드(camPngBase64 등) 제외 (contract §4 비고)
-export type DiagnosisSummaryResponse = Omit<DiagnosisResponse, "camPngBase64" | "reason">;
+// 목록 Summary 확정 필드 (contract §4) — 상세 전용 필드(reason·imageUrl·camPngBase64) 제외.
+export interface DiagnosisSummaryResponse {
+  id: number;
+  status: DiagnosisStatus;
+  label: string;
+  labelKr: string;
+  prob: number;
+  part: string;
+  createdBy: number;
+  createdAt: string;
+}
 
 // ── 처방 ──────────────────────────────────────────
 export interface PrescriptionResult {
@@ -152,12 +163,18 @@ export interface PrescriptionResponse {
   completedAt?: string;
 }
 
-// 목록 Summary: result 본문 제외 (contract §4 비고)
-export type PrescriptionSummaryResponse = Omit<PrescriptionResponse, "result">;
+// 목록 Summary 확정 필드 (contract §4) — result 본문·diagnosisId·errorCode 제외.
+export interface PrescriptionSummaryResponse {
+  id: number;
+  status: PrescriptionStatus;
+  question: string;
+  createdBy: number;
+  createdAt: string;
+  completedAt?: string;
+}
 
 // ── 페이지네이션 ──────────────────────────────────
-// 백엔드 미구현 상태에서의 가정 — Spring Data Page 표준 필드 기준.
-// 실제 backend 응답과 다르면 이슈 #6에서 조정 필요.
+// contract §4 확정 스키마.
 export interface PageResponse<T> {
   content: T[];
   page: number;
