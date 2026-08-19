@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
@@ -41,6 +43,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception e) {
         return ResponseEntity.status(ErrorCode.C001.getStatus())
                 .body(ErrorResponse.of(ErrorCode.C001));
+    }
+
+    /** 진단 업로드 — multipart file 파트 누락/용량 초과는 이미지 검증 실패와 동일하게 D002로 통일(handoff). */
+    @ExceptionHandler({
+            MissingServletRequestPartException.class,
+            MaxUploadSizeExceededException.class
+    })
+    public ResponseEntity<ErrorResponse> handleMultipartError(Exception e) {
+        return ResponseEntity.status(ErrorCode.D002.getStatus())
+                .body(ErrorResponse.of(ErrorCode.D002));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
