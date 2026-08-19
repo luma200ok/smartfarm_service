@@ -21,6 +21,8 @@ spring:
 
 server:
   port: 8085
+  # nginx TLS 종단 뒤 X-Forwarded-* 반영 (HSTS·리다이렉트 스킴 정합)
+  forward-headers-strategy: framework
 
 jwt:
   secret: ${JWT_SECRET}
@@ -33,3 +35,16 @@ cors:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+---
+# 운영 프로필 — Swagger/OpenAPI 비활성
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

@@ -4,6 +4,7 @@ import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -29,7 +30,7 @@ public class JwtTokenProvider {
                 .subject(String.valueOf(userId))
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + accessTokenValidityMillis))
-                .signWith(key)
+                .signWith(key, Jwts.SIG.HS256) // 시크릿 길이에 따른 alg 변동 제거 — HS256 고정
                 .compact();
     }
 
@@ -39,12 +40,14 @@ public class JwtTokenProvider {
      */
     public Long parseUserId(String token) {
         try {
-            Claims claims = Jwts.parser()
+            Jws<Claims> jws = Jwts.parser()
                     .verifyWith(key)
                     .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-            return Long.parseLong(claims.getSubject());
+                    .parseSignedClaims(token);
+            if (!Jwts.SIG.HS256.getId().equals(jws.getHeader().getAlgorithm())) {
+                throw new CustomException(ErrorCode.A004); // 검증도 HS256만 허용
+            }
+            return Long.parseLong(jws.getPayload().getSubject());
         } catch (ExpiredJwtException e) {
             throw new CustomException(ErrorCode.A003);
         } catch (JwtException | IllegalArgumentException e) {
