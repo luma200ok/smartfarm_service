@@ -20,3 +20,8 @@ spring:
 ai-server:
   connect-timeout: 1s
   read-timeout: 2s
+
+# 처방 비동기 job — 백오프를 짧게 줄여 429 재시도 테스트를 빠르게 수행
+prescription:
+  read-timeout: 2s
+  retry-backoffs: 50ms, 100ms
