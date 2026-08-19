@@ -36,6 +36,28 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
     @Query("SELECT p.id FROM Prescription p WHERE p.status = :status ORDER BY p.id ASC")
     List<Long> findIdsByStatus(@Param("status") PrescriptionStatus status);
 
+    /** 스위퍼 재큐잉 후보 — 연령 컷오프 + Pageable LIMIT(무제한 스캔 방지, contract §3). */
+    @Query("SELECT p.id FROM Prescription p WHERE p.status = :status AND p.createdAt < :cutoff ORDER BY p.id ASC")
+    List<Long> findIdsByStatusAndCreatedAtBefore(@Param("status") PrescriptionStatus status,
+                                                 @Param("cutoff") LocalDateTime cutoff,
+                                                 Pageable pageable);
+
+    /**
+     * 스위퍼 연령 컷오프 일괄 실패 처리 — 상태 조건이 WHERE에 있어 원자적(선별-후-갱신 레이스 없음):
+     * 컷오프 스캔과 워커 픽업(claimForProcessing 성격의 상태 전이)이 겹쳐도 이미 전이된 행은
+     * status 불일치로 제외된다. excludeId = 워커가 지금 처리 중인 in-flight id(없으면 -1) —
+     * 큐 대기가 길었던 job이 createdAt 기준 연령으로 오판되는 것을 차단(단일 워커라 in-flight는 최대 1건).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Prescription p SET p.status = :failed, p.errorCode = :errorCode, p.completedAt = :now "
+            + "WHERE p.status = :status AND p.createdAt < :cutoff AND p.id <> :excludeId")
+    int failStaleByStatusBefore(@Param("status") PrescriptionStatus status,
+                                @Param("cutoff") LocalDateTime cutoff,
+                                @Param("excludeId") Long excludeId,
+                                @Param("failed") PrescriptionStatus failed,
+                                @Param("errorCode") String errorCode,
+                                @Param("now") LocalDateTime now);
+
     /**
      * 재기동 복구 — 이전 프로세스에서 PROCESSING으로 남은 건 일괄 FAILED(P002) 처리.
      * ai-server 호출이 어디까지 진행됐는지 알 수 없으므로 보수적으로 실패 처리하고 사용자가

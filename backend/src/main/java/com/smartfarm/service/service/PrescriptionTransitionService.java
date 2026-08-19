@@ -42,8 +42,12 @@ public class PrescriptionTransitionService {
 
     /**
      * PENDING → PROCESSING 전이 + job 스냅샷 반환. PENDING이 아니면(이미 처리됨/중복 제출/삭제됨)
-     * empty를 반환해 워커가 조용히 스킵하게 한다 — 재기동 복구의 재큐잉과 정상 접수 제출이 같은 id로
-     * 겹쳐도 이 가드 덕에 정확히 한 번만 처리된다(멱등 픽업).
+     * empty를 반환해 워커가 조용히 스킵하게 한다 — 재기동 복구·스위퍼의 재큐잉과 정상 접수 제출이
+     * 같은 id로 겹쳐도 이 가드 덕에 정확히 한 번만 처리된다(멱등 픽업).
+     *
+     * <p><b>단일 인스턴스 전제</b>: 이 멱등 가드는 backend 프로세스가 1개(단일 워커 스레드)라는 전제
+     * 위에서만 충분하다. 스케일아웃(다중 인스턴스) 시에는 인스턴스 간 동시 픽업을 막을 owner 컬럼
+     * (SELECT ... FOR UPDATE SKIP LOCKED 또는 owner+heartbeat)으로 승격해야 한다 — 그 전 배포 금지.
      */
     @Transactional
     public Optional<PrescriptionJob> markProcessing(Long prescriptionId) {
@@ -80,12 +84,38 @@ public class PrescriptionTransitionService {
         prescription.fail(errorCode.getCode());
     }
 
-    /** 재기동 복구 — 이전 프로세스의 PROCESSING 잔존 건 일괄 FAILED(P002). 근거는 repository 주석 참고. */
+    /**
+     * 재기동 복구 — 이전 프로세스의 PROCESSING 잔존 건 일괄 FAILED(P002). 근거는 repository 주석 참고.
+     *
+     * <p><b>단일 인스턴스 전제</b>: "PROCESSING 잔존 = 죽은 프로세스의 것"이라는 판단은 backend
+     * 프로세스가 1개일 때만 성립한다. 다중 인스턴스에서는 다른 살아있는 인스턴스의 in-flight job을
+     * 실패 처리하게 되므로, 스케일아웃 시 owner 컬럼+heartbeat 기반 복구로 교체해야 한다.
+     */
     @Transactional
     public int failAllProcessing() {
         return prescriptionRepository.failAllProcessing(
                 PrescriptionStatus.PROCESSING, PrescriptionStatus.FAILED,
                 ErrorCode.P002.getCode(), LocalDateTime.now());
+    }
+
+    /** 스위퍼 — 연령 컷오프를 넘긴 PENDING 잔존 건 일괄 FAILED(P002). 원자성 근거는 repository 주석. */
+    @Transactional
+    public int failExpiredPending(LocalDateTime cutoff) {
+        return prescriptionRepository.failStaleByStatusBefore(
+                PrescriptionStatus.PENDING, cutoff, -1L,
+                PrescriptionStatus.FAILED, ErrorCode.P002.getCode(), LocalDateTime.now());
+    }
+
+    /**
+     * 스위퍼 — 워커가 손을 뗀(safelyFail까지 실패한) 고아 PROCESSING 건 일괄 FAILED(P002).
+     * excludeId = 워커 in-flight id(없으면 null) — createdAt 기준 연령은 큐 대기 시간을 포함해
+     * 부풀 수 있으므로, 지금 실제 처리 중인 1건은 반드시 제외한다(단일 워커 전제).
+     */
+    @Transactional
+    public int failOrphanedProcessing(LocalDateTime cutoff, Long excludeId) {
+        return prescriptionRepository.failStaleByStatusBefore(
+                PrescriptionStatus.PROCESSING, cutoff, excludeId == null ? -1L : excludeId,
+                PrescriptionStatus.FAILED, ErrorCode.P002.getCode(), LocalDateTime.now());
     }
 
     /**

@@ -9,6 +9,7 @@ import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -20,6 +21,7 @@ import org.springframework.web.client.RestClient;
  * (contract §3 "backend 내 단일 스레드 executor가 순차 처리").
  */
 @Configuration
+@EnableScheduling // 처방 스위퍼(PrescriptionSweeper) 구동 — 현재 스케줄러는 이것 하나
 @RequiredArgsConstructor
 public class PrescriptionWorkerConfig {
 

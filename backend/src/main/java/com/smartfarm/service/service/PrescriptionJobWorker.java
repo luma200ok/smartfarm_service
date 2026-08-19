@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,17 @@ public class PrescriptionJobWorker {
     private final PrescriptionProperties prescriptionProperties;
 
     /**
+     * 지금 처리 중인 job id(없으면 null) — 스위퍼가 고아 PROCESSING을 정리할 때 in-flight 1건을
+     * 제외하기 위한 표식(단일 워커라 최대 1건). markProcessing <b>이전</b>에 set해 "표식 없는
+     * PROCESSING" 창을 없앤다.
+     */
+    private final AtomicReference<Long> inFlightId = new AtomicReference<>();
+
+    public Long currentInFlightId() {
+        return inFlightId.get();
+    }
+
+    /**
      * 큐 여유 확인 — 접수 시 포화면 저장 없이 P004로 거절한다(contract §3 "포화 시 저장 없이 P004").
      * 확인-제출 사이 레이스로 드물게 제출이 거절될 수 있으나, 그 경우 행은 PENDING으로 남고
      * 스위퍼(5분 주기)가 회수하므로 유실은 없다(재량 결정 — 하드 실패 대신 지연 수용).
@@ -62,8 +74,17 @@ public class PrescriptionJobWorker {
         }
     }
 
-    /** 워커 스레드에서 실행 — 어떤 경우에도 예외를 밖으로 던지지 않는다(단일 스레드 보호). */
     private void process(Long prescriptionId) {
+        inFlightId.set(prescriptionId);
+        try {
+            doProcess(prescriptionId);
+        } finally {
+            inFlightId.set(null);
+        }
+    }
+
+    /** 워커 스레드에서 실행 — Exception 계열은 전부 여기서 소화한다(전파 시에도 ThreadPoolExecutor가 스레드를 재생성). */
+    private void doProcess(Long prescriptionId) {
         Optional<PrescriptionJob> jobOpt;
         try {
             jobOpt = transitionService.markProcessing(prescriptionId);
