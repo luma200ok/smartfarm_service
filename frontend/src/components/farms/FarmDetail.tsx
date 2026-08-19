@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import FormField from "@/components/ui/FormField";
 import { VALIDATION } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
@@ -31,25 +31,30 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
 
   const [invitation, setInvitation] = useState<InvitationResponse | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [farmData, memberData] = await Promise.all([getFarm(farmId), listMembers(farmId)]);
-      setFarm(farmData);
-      setMembers(memberData);
-      setEditName(farmData.name);
-      setEditLocation(farmData.location ?? "");
-    } catch (err) {
-      if (isNotFound(err)) {
-        setNotFound(true);
-      } else {
-        setLoadError(resolveErrorMessage(err));
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [farmData, memberData] = await Promise.all([getFarm(farmId), listMembers(farmId)]);
+        if (cancelled) return;
+        setFarm(farmData);
+        setMembers(memberData);
+        setEditName(farmData.name);
+        setEditLocation(farmData.location ?? "");
+      } catch (err) {
+        if (cancelled) return;
+        if (isNotFound(err)) {
+          setNotFound(true);
+        } else {
+          setLoadError(resolveErrorMessage(err));
+        }
       }
     }
-  }, [farmId]);
-
-  useEffect(() => {
     load();
-  }, [load]);
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
 
   if (notFound) {
     return (

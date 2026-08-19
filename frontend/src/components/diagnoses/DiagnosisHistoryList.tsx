@@ -18,24 +18,30 @@ export default function DiagnosisHistoryList({ farmId, refreshKey }: DiagnosisHi
   const [data, setData] = useState<PageResponse<DiagnosisSummaryResponse> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // refreshKey가 바뀌면 페이지를 0으로 되돌린다 (렌더 중 상태 조정 — effect 대신).
+  const [trackedRefreshKey, setTrackedRefreshKey] = useState(refreshKey);
+  if (refreshKey !== trackedRefreshKey) {
+    setTrackedRefreshKey(refreshKey);
     setPage(0);
-  }, [refreshKey]);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setError(null);
-    listDiagnoses(farmId, page, PAGE_SIZE)
-      .then((res) => {
-        if (!cancelled) setData(res);
-      })
-      .catch((err) => {
+    async function load() {
+      try {
+        const res = await listDiagnoses(farmId, page, PAGE_SIZE);
+        if (!cancelled) {
+          setData(res);
+          setError(null);
+        }
+      } catch (err) {
         if (!cancelled) setError(resolveErrorMessage(err));
-      });
+      }
+    }
+    load();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [farmId, page, refreshKey]);
 
   if (error) {

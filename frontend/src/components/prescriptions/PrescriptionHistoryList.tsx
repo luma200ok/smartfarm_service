@@ -25,14 +25,18 @@ export default function PrescriptionHistoryList({ farmId }: PrescriptionHistoryL
 
   useEffect(() => {
     let cancelled = false;
-    setError(null);
-    listPrescriptions(farmId, page, PAGE_SIZE)
-      .then((res) => {
-        if (!cancelled) setData(res);
-      })
-      .catch((err) => {
+    async function load() {
+      try {
+        const res = await listPrescriptions(farmId, page, PAGE_SIZE);
+        if (!cancelled) {
+          setData(res);
+          setError(null);
+        }
+      } catch (err) {
         if (!cancelled) setError(resolveErrorMessage(err));
-      });
+      }
+    }
+    load();
     return () => {
       cancelled = true;
     };
