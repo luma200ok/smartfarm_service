@@ -11,7 +11,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | 항목 | 값 | 상태 |
 |---|---|---|
 | 서버 | oci-arm1 (3코어/16GB, 158.179.169.146) | 가동 중 |
-| 도메인 | `farm.luma200ok.com` (Cloudflare) | ⬜ **DNS A 레코드(사용자 액션 대기)** → certbot |
+| 도메인 | `farm.luma200ok.com` (Cloudflare Proxied) | ✅ HTTPS 라이브(certbot, 외부 스모크 통과) |
 | backend | Spring Boot 3.x·Java 21, 127.0.0.1:8085, `-Xmx512m`, systemd | ✅ 가동 (V1~V4 적용, /api/health ok) |
 | frontend | Next.js standalone, 127.0.0.1:3000, systemd (**서버 빌드 금지** — GH Actions 빌드→산출물 배포) | ✅ 가동 (Node 22, WorkingDirectory 미사용 — SELinux, PR #16) |
 | DB | **네이티브 PostgreSQL 16**에 `smartfarm_service` DB 신설 (hajacheck 도커 PG와 별개) | ✅ 생성·마이그레이션 적용 |
@@ -41,7 +41,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 - [x] #5 [FE] 스캐폴드 + 인증 화면 (PR #8)
 - [x] #6 [FE] 농장·진단·처방 화면 (PR #11)
 ### P2 (Phase 2 — 배포)
-- [ ] #7 [INFRA] arm1 배포 (PG DB·systemd·nginx·DNS·certbot·CI/CD) — **nginx `limit_req`(login/refresh 브루트포스 방어) 포함**(BE 리뷰 P2-5)
+- [x] #7 [INFRA] arm1 배포 완주 (PR #15·#16, 파이프라인 green·HTTPS·스모크 통과)
 - [ ] refresh_tokens 만료분 퍼지 스케줄러(BE 리뷰 P2-6, 컴포넌트 상이로 후속 분리)
 - [ ] 환경 대시보드(오늘 운영 데이터) 연동 — 범위 미정, contract 갱신 필요
 
