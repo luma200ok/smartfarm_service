@@ -38,6 +38,7 @@ public class AuthService {
 
     @Transactional
     public UserResponse signup(SignupRequest request) {
+        // 이메일 정규화는 DTO compact constructor 단일 지점(EmailNormalizer)에서 수행됨
         if (userRepository.existsByEmail(request.email())) {
             throw new CustomException(ErrorCode.A001);
         }
@@ -65,10 +66,12 @@ public class AuthService {
     }
 
     /**
-     * refresh 로테이션.
+     * refresh 로테이션 — refresh 토큰의 만료/무효/재사용은 전부 A004 (A003은 access 만료 전용, contract §5).
      * - 미존재/변조 → A004
-     * - 만료 → A003
      * - 이미 revoke된 토큰 재사용(동시 요청 race 포함) → 해당 유저 전체 무효화 후 A004
+     *   (재사용 검사를 만료 검사보다 먼저 — 만료된 탈취 토큰도 전체 무효화 신호 유지)
+     * - 만료 → A004
+     * - 유저 미존재(soft delete 포함) → A004
      *
      * noRollbackFor: 재사용 감지 시 A004를 던져도 전체 무효화 UPDATE는 커밋돼야 한다.
      */
@@ -78,10 +81,6 @@ public class AuthService {
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
 
-        if (refreshToken.isExpired()) {
-            throw new CustomException(ErrorCode.A003);
-        }
-
         int revokedCount = refreshTokenRepository.revokeIfActive(refreshToken.getId());
         if (revokedCount == 0) {
             // 재사용 감지 → 해당 유저의 모든 refresh token 무효화
@@ -89,6 +88,14 @@ public class AuthService {
             refreshTokenRepository.revokeAllByUserId(refreshToken.getUserId());
             throw new CustomException(ErrorCode.A004);
         }
+
+        if (refreshToken.isExpired()) {
+            throw new CustomException(ErrorCode.A004);
+        }
+
+        // soft delete된 유저의 세션 연장 차단 (@SQLRestriction으로 삭제 유저는 조회되지 않음)
+        userRepository.findById(refreshToken.getUserId())
+                .orElseThrow(() -> new CustomException(ErrorCode.A004));
 
         return issueTokens(refreshToken.getUserId());
     }
