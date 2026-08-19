@@ -65,6 +65,8 @@ prescription:
 refresh-token:
   purge-initial-delay: P1D
   purge-fixed-delay: P1D
+  # 배치 삭제 크기(리뷰 P2-1) — 대량 적체 시 단일 DELETE 장기 락 경합 방지, 반복 호출로 분할
+  purge-batch-size: 1000
 
 springdoc:
   swagger-ui:
