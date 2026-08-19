@@ -19,6 +19,12 @@ spring:
     enabled: true
     out-of-order: true
 
+  data:
+    web:
+      pageable:
+        # ?size 상한 — 과대 페이지 요청으로 인한 과다 조회 방지(전역, reviewer P3)
+        max-page-size: 100
+
   servlet:
     multipart:
       # 서비스 검증 캡(10MB, DiagnosisService)보다 여유를 둬 캡 응답을 D002로 일관되게 매핑한다
@@ -44,6 +50,16 @@ ai-server:
   url: ${AI_SERVER_URL:http://127.0.0.1:8000}
   connect-timeout: 3s
   read-timeout: 30s
+
+# 처방 비동기 job — 단일 워커가 순차 처리(contract §3)
+prescription:
+  # ai-server 처방 응답 대기(웜 ~16s, 콜드 LLM 웜업 고려 넉넉히 — handoff)
+  read-timeout: 120s
+  # 429(혼잡) 백오프 재시도 간격 — 재시도 횟수 = 목록 크기(handoff: 2회)
+  retry-backoffs: 5s, 15s
+  # 스위퍼 주기(ISO-8601 Duration) — 테스트는 크게 잡아 자동 발화 차단
+  sweep-initial-delay: PT5M
+  sweep-fixed-delay: PT5M
 
 springdoc:
   swagger-ui:

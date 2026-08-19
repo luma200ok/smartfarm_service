@@ -4,8 +4,8 @@ import com.smartfarm.service.dto.AiDiagnosisResponse;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import java.io.IOException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -21,10 +21,14 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class AiServerClient {
 
     private final RestClient aiServerRestClient;
+
+    /** RestClient 빈 2개(진단/처방, BE #4부터) — 파라미터명 매칭에 기대지 않고 @Qualifier로 명시. */
+    public AiServerClient(@Qualifier("aiServerRestClient") RestClient aiServerRestClient) {
+        this.aiServerRestClient = aiServerRestClient;
+    }
 
     public AiDiagnosisResponse diagnose(MultipartFile file) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
