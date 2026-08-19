@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-19 (PR #11 머지 — FE #6 농장·진단·처방 화면. P0 잔여: BE #2 진행 중)**
+> 마지막 갱신: **2026-08-19 (PR #12 머지 — BE #2 Farm 멀티테넌시. P0 완료, BE #3 진행 중)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 개요
@@ -23,6 +23,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ⚠️ 용량 전제: LLM 로드 피크 12~14GB/16GB. 처방은 backend 단일 워커로 직렬화(contract §3). Next 빌드는 절대 서버에서 하지 않음.
 
 ## 마지막 머지 PR
+- **PR #12** (이슈 #2) — BE Farm 멀티테넌시. opus 2종 P1 1→0, IDOR 전수 통과, 테스트 70건
 - **PR #11** (이슈 #6) — FE 농장·진단·처방 화면. P2 2 픽스 후 머지
 - **PR #10** (이슈 #1) — BE 스캐폴드+JWT 인증. code-reviewer(opus) P1 2 → 2라운드 픽스 → 잔존 0 / security-reviewer(opus) P1 0. 테스트 27건(Testcontainers PG16)
 - PR #8 (이슈 #5) — FE 스캐폴드+인증 화면
@@ -30,9 +31,9 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ## 다음 작업
 ### P0 (Phase 1 — 백엔드 코어)
 - [x] #1 [BE] 스캐폴드 + Auth(JWT) + 예외/ErrorCode 뼈대 (PR #10)
-- [ ] #2 [BE] Farm 멀티테넌시 (멤버십·초대·테넌트 가드) — 진행 중
+- [x] #2 [BE] Farm 멀티테넌시 (PR #12)
 ### P1 (Phase 1 — 도메인 + 프론트)
-- [ ] #3 [BE] 진단 프록시 + 이력
+- [ ] #3 [BE] 진단 프록시 + 이력 — 진행 중
 - [ ] #4 [BE] 처방 비동기 job (단일 워커 직렬화)
 - [x] #5 [FE] 스캐폴드 + 인증 화면 (PR #8)
 - [x] #6 [FE] 농장·진단·처방 화면 (PR #11)
