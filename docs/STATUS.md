@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-19 (PR #14 머지 — BE #4 처방 job. 백엔드 API 완성, 다음: #7 arm1 배포)**
+> 마지막 갱신: **2026-08-20 (서비스 라이브 · PRD v1.0 확정 → 사이클1(FE 마감+BE 하드닝) 병렬 진행 중. 백업 cron·certbot 확인 완료)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 개요
