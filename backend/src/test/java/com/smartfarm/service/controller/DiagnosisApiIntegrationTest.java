@@ -149,6 +149,22 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
                 .andExpect(jsonPath("$.code").value("D002"));
     }
 
+    @Test
+    @DisplayName("10MB 초과 15MB 이하 이미지는 ai-server 호출 전 서비스 캡에서 400 D002를 반환한다"
+            + "(Spring 멀티파트 캡 15MB는 통과하고 서비스 자체 10MB 캡에서 걸리는 경계 케이스)")
+    void createDiagnosisOverServiceCapUnderMultipartCap() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "대용량 농장");
+        MockMultipartFile oversized = new MockMultipartFile(
+                "file", "big.jpg", "image/jpeg", new byte[11 * 1024 * 1024]);
+
+        mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
+                        .file(oversized)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("D002"));
+    }
+
     // ── cross-tenant ─────────────────────────────────────────
 
     @Test
