@@ -6,6 +6,8 @@ import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.FarmMemberRepository;
+import com.smartfarm.service.repository.InvitationRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class FarmMemberService {
 
     private final FarmMemberRepository farmMemberRepository;
+    private final InvitationRepository invitationRepository;
     private final FarmAccessGuard farmAccessGuard;
 
     public List<MemberResponse> findMembers(Long farmId, Long userId) {
@@ -48,6 +51,7 @@ public class FarmMemberService {
                 throw new CustomException(ErrorCode.F006);
             }
             farmMemberRepository.delete(target.get());
+            revokeActiveInvitations(farmId);
             return;
         }
 
@@ -55,5 +59,14 @@ public class FarmMemberService {
             throw new CustomException(ErrorCode.F003);
         }
         farmMemberRepository.delete(target.get());
+        revokeActiveInvitations(farmId);
+    }
+
+    /**
+     * 멤버 제거(탈퇴 포함) 시 해당 농장 활성 초대코드 전부 무효화 (contract §2)
+     * — 제거된 멤버가 보유한 코드로 재합류하는 것을 차단.
+     */
+    private void revokeActiveInvitations(Long farmId) {
+        invitationRepository.revokeAllActiveByFarmId(farmId, LocalDateTime.now());
     }
 }

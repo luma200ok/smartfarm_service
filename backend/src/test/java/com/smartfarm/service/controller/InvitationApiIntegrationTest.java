@@ -10,6 +10,7 @@ import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.AcceptInvitationRequest;
 import com.smartfarm.service.entity.Invitation;
 import com.smartfarm.service.repository.InvitationRepository;
+import com.smartfarm.service.service.TokenHasher;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -108,7 +109,7 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
         String expiredCode = "expired-" + UUID.randomUUID();
         invitationRepository.save(Invitation.builder()
                 .farmId(farmId)
-                .code(expiredCode)
+                .codeHash(TokenHasher.sha256(expiredCode))
                 .expiresAt(LocalDateTime.now().minusHours(1))
                 .build());
 
@@ -168,6 +169,44 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.memberCount").value(3));
+    }
+
+    @Test
+    @DisplayName("재발급 시 기존 활성 코드는 무효화된다 — 구 코드 F004, 신 코드 정상 (농장당 활성 1건)")
+    void reissueRevokesOldCode() throws Exception {
+        String ownerToken = signupAndLogin("주인장");
+        String joinerToken = signupAndLogin("신입이");
+        long farmId = createFarm(ownerToken, "재발급 농장");
+        String oldCode = createInvitationCode(ownerToken, farmId);
+        String newCode = createInvitationCode(ownerToken, farmId);
+
+        mockMvc.perform(post("/api/invitations/accept")
+                        .header("Authorization", "Bearer " + joinerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AcceptInvitationRequest(oldCode))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("F004"));
+
+        acceptInvitation(joinerToken, newCode);
+        mockMvc.perform(get("/api/farms/" + farmId)
+                        .header("Authorization", "Bearer " + joinerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.myRole").value("MEMBER"));
+    }
+
+    @Test
+    @DisplayName("soft delete된 농장에 초대코드 발급 시 404 F001을 반환한다")
+    void createInvitationOnDeletedFarm() throws Exception {
+        String ownerToken = signupAndLogin("주인장");
+        long farmId = createFarm(ownerToken, "폐업 발급 농장");
+        mockMvc.perform(delete("/api/farms/" + farmId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/invitations")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("F001"));
     }
 
     @Test

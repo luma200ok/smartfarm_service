@@ -25,10 +25,13 @@ CREATE INDEX ix_farm_members_user_id ON farm_members (user_id);
 CREATE TABLE invitations (
     id         BIGSERIAL PRIMARY KEY,
     farm_id    BIGINT      NOT NULL REFERENCES farms (id),
-    code       VARCHAR(64) NOT NULL,
+    -- 코드 원문은 저장하지 않는다 — SHA-256 hex(64자)만 저장 (contract §2)
+    code_hash  VARCHAR(64) NOT NULL,
     expires_at TIMESTAMP   NOT NULL,
+    -- 폐기 시각 — 재발급·멤버 제거 시 무효화 (NULL=활성)
+    revoked_at TIMESTAMP,
     created_at TIMESTAMP   NOT NULL
 );
 
-CREATE UNIQUE INDEX ux_invitations_code ON invitations (code);
+CREATE UNIQUE INDEX ux_invitations_code_hash ON invitations (code_hash);
 CREATE INDEX ix_invitations_farm_id ON invitations (farm_id);
