@@ -43,22 +43,20 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ### P2 (Phase 2 — 배포)
 - [x] #7 [INFRA] arm1 배포 완주 (PR #15·#16, 파이프라인 green·HTTPS·스모크 통과)
 
-## 🗺️ 다음 플랜 후보 (⏸️ 결정 대기 — 별도 세션 PRD 확인 후 확정, 2026-08-20)
-> 우선순위·범위는 PRD와 대조 후 A가 확정한다. 아래는 오픈 직후 시점의 제안 스냅샷.
+## 🗺️ 다음 플랜 (✅ PRD v1.0 확정 — docs/prd/PRD_smartfarm_service.md §2.3·§11 기준, 2026-08-20)
 
-### 후보 P0 — 오픈 직후 마감재 (#9 umbrella 발췌, 1~2사이클)
-- [ ] FE 마감 한 브랜치(Normal 1회): P004 ErrorCode·메시지 반영 + 처방 caution 렌더 정합(본문이 자체 라벨 포함 — "주의사항" 헤딩 금지, actions=즉시조치+예방 통합 리스트) + FarmDetail getMe 분리
-- [ ] refresh_tokens 퍼지 @Scheduled (BE 리뷰 P2-6)
-- [ ] ArchUnit 가드 규칙(farm-scoped 서비스 FarmAccessGuard 의존 강제) — 다음 farm-scoped 기능 전 안전망
+### P0 — 사이클 1 (🔄 병렬 진행 중)
+- [ ] FE 마감(frontend/9-polish): P004·caution 렌더 정합·FarmDetail getMe 분리
+- [ ] BE 하드닝(backend/9-hardening): refresh_tokens 퍼지 @Scheduled(V5 인덱스) + ArchUnit 가드 규칙
 
-### 후보 P1 — 기능 확장 (contract 개정 필요·사용자 결정 사항)
+### P1 — 기능 확장 (PRD §11 결정 후 착수)
 - [ ] **환경 대시보드 연동**: smartfarm_ai '오늘 운영'(KMA 외기·제어 후 내부값·장치 상태)을 서비스 대시보드에 노출 — ai-server 조회 엔드포인트 추가 필요 = **"1차 ai-server 무변경" 원칙 첫 해제 지점**, 범위 협의 필수
 - [ ] 회원 탈퇴: soft delete + `revokeAllByUserId` 동반(보안 리뷰 P2-3이 완료 조건 지정) + farm_members 유령 멤버십 정리
 - [ ] 알림: 경보·처방 완료 디스코드 웹훅(기존 smartfarm_ai notify 재활용)
 
-### 후보 P2 — 운영 안정화
-- [ ] PG 백업 cron(pg_dump smartfarm_service)
-- [ ] certbot 자동갱신 cron에 farm 도메인 포함 확인(arm1 pip certbot — /etc/cron.d 전체경로)
+### P2 — 운영 안정화
+- [x] PG 백업 cron — 매일 04:10·14일 보관, 1회 실행+pg_restore 목록 검증 완료(8테이블) (2026-08-20)
+- [x] certbot 자동갱신 — /etc/cron.d/certbot-renew(3·15시, 전체 인증서 대상) farm 자동 포함 확인
 - [ ] processing_started_at(V5)·@Lob 제거 등 #9 구조 개선 잔여
 - [ ] README 아키텍처 다이어그램·라이브 링크(포트폴리오 정리)
 
@@ -68,6 +66,6 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | DB 엔진 | PG16 확정(2026-08-19). arm1 mysqld는 6월 이전 잔재(구 community·mes·planner·smartfarm 스키마) — 신규 서비스와 무관, 추후 정리 후보 |
 | 멀티테넌시 | Farm=테넌트, path `{farmId}` 입력값 취급·매 요청 멤버십 재검증 (contract §2) |
 | 이미지 저장 | 1차 미저장(진단 결과만 이력화) |
-| ai-server 질문 이력 | ai-server가 처방 질문 원문을 farm/user 구분 없이 자체 DB(history)에 혼합 저장(smartfarm_ai src/llm/history.py) — **#7 오픈 전 보존정책 검토 필요**(비활성화 or 익명화) |
+| ai-server 질문 이력 | PRD §11-1 — smartfarm_ai#66 으로 등재(비활성/익명화/태깅 택일 결정 대기). 연동 개선 umbrella 포함 |
 | FE P004 반영 | FE ErrorCode 유니온·메시지 맵에 P004 추가 필요(사소, 다음 FE 작업에 동승) |
 | cropType | 1차 TOMATO 전용(ai-server 모델 제약), enum 확장 대비 |
