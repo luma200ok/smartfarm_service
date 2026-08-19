@@ -3,8 +3,8 @@ package com.smartfarm.service.service;
 import com.smartfarm.service.dto.AiPrescriptionResponse;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -22,11 +22,15 @@ import org.springframework.web.client.RestClientException;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class AiPrescriptionClient {
 
-    /** 빈 이름 매칭 주입 — RestClient 빈 2개 중 처방 전용(PrescriptionWorkerConfig) 선택. */
     private final RestClient aiServerPrescriptionRestClient;
+
+    /** RestClient 빈 2개(진단/처방) — 파라미터명 매칭에 기대지 않고 @Qualifier로 명시(reviewer P3). */
+    public AiPrescriptionClient(
+            @Qualifier("aiServerPrescriptionRestClient") RestClient aiServerPrescriptionRestClient) {
+        this.aiServerPrescriptionRestClient = aiServerPrescriptionRestClient;
+    }
 
     public AiPrescriptionResponse prescribe(String question, String diagnosisJson) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
@@ -57,7 +61,9 @@ public class AiPrescriptionClient {
         } catch (CustomException e) {
             throw e;
         } catch (RestClientException e) {
-            log.warn("ai-server 처방 요청 실패(접속불가/타임아웃)", e);
+            // 예외 본문에 요청 URL·응답 조각이 실릴 수 있어 WARN에는 클래스명만, 상세는 DEBUG로(reviewer P3)
+            log.warn("ai-server 처방 요청 실패(접속불가/타임아웃): {}", e.getClass().getSimpleName());
+            log.debug("ai-server 처방 요청 실패 상세", e);
             throw new CustomException(ErrorCode.P002);
         }
     }

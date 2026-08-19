@@ -36,6 +36,17 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
     @Query("SELECT p.id FROM Prescription p WHERE p.status = :status ORDER BY p.id ASC")
     List<Long> findIdsByStatus(@Param("status") PrescriptionStatus status);
 
+    /**
+     * 워커 픽업 — PENDING일 때만 PROCESSING으로 전이하는 조건부 UPDATE(반환 0 = 픽업 실패 → 스킵).
+     * 단일 워커 전제와 무관하게 "PENDING에서만 픽업" 불변식을 DB 수준에서 강제한다(#2 패턴:
+     * flushAutomatically로 벌크 연산 전 영속성 컨텍스트 flush, clearAutomatically로 이후 조회 최신화).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Prescription p SET p.status = :processing WHERE p.id = :id AND p.status = :pending")
+    int claimForProcessing(@Param("id") Long id,
+                           @Param("pending") PrescriptionStatus pending,
+                           @Param("processing") PrescriptionStatus processing);
+
     /** 스위퍼 재큐잉 후보 — 연령 컷오프 + Pageable LIMIT(무제한 스캔 방지, contract §3). */
     @Query("SELECT p.id FROM Prescription p WHERE p.status = :status AND p.createdAt < :cutoff ORDER BY p.id ASC")
     List<Long> findIdsByStatusAndCreatedAtBefore(@Param("status") PrescriptionStatus status,

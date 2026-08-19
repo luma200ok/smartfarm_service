@@ -19,6 +19,12 @@ spring:
     enabled: true
     out-of-order: true
 
+  data:
+    web:
+      pageable:
+        # ?size 상한 — 과대 페이지 요청으로 인한 과다 조회 방지(전역, reviewer P3)
+        max-page-size: 100
+
   servlet:
     multipart:
       # 서비스 검증 캡(10MB, DiagnosisService)보다 여유를 둬 캡 응답을 D002로 일관되게 매핑한다

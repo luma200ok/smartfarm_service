@@ -12,6 +12,7 @@ import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DiagnosisRepository;
 import com.smartfarm.service.repository.PrescriptionRepository;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -51,11 +52,18 @@ public class PrescriptionTransitionService {
      */
     @Transactional
     public Optional<PrescriptionJob> markProcessing(Long prescriptionId) {
-        Prescription prescription = prescriptionRepository.findById(prescriptionId).orElse(null);
-        if (prescription == null || prescription.getStatus() != PrescriptionStatus.PENDING) {
+        // 조건부 UPDATE(WHERE status=PENDING)로 픽업 — "PENDING에서만 픽업" 불변식을 DB가 강제(reviewer P3).
+        // 반환 0 = 이미 처리됨/중복 제출/미존재 → 스킵. clearAutomatically 덕에 이후 findById는 최신 행.
+        int claimed = prescriptionRepository.claimForProcessing(
+                prescriptionId, PrescriptionStatus.PENDING, PrescriptionStatus.PROCESSING);
+        if (claimed == 0) {
             return Optional.empty();
         }
-        prescription.startProcessing();
+        Prescription prescription = prescriptionRepository.findById(prescriptionId).orElse(null);
+        if (prescription == null) {
+            log.warn("픽업 직후 처방 행이 사라짐(예상 밖): id={}", prescriptionId);
+            return Optional.empty();
+        }
         return Optional.of(new PrescriptionJob(
                 prescription.getId(),
                 prescription.getQuestion(),
@@ -71,6 +79,8 @@ public class PrescriptionTransitionService {
             return;
         }
         prescription.complete(toJson(result));
+        log.info("처방 완료: id={}, 접수 후 소요={}ms", prescriptionId,
+                Duration.between(prescription.getCreatedAt(), prescription.getCompletedAt()).toMillis());
     }
 
     /** PENDING/PROCESSING → FAILED. 종료 상태면 스킵(결과 덮어쓰기 차단). */
@@ -131,6 +141,9 @@ public class PrescriptionTransitionService {
         if (diagnosisId == null) {
             return null;
         }
+        // farm 스코프 재검증 불요: 접수 시 existsByIdAndFarmId로 같은 farm 소속을 이미 검증했고
+        // (PrescriptionService.createPrescription — 검증 통과분만 diagnosis_id로 저장),
+        // Diagnosis는 불변 기록(수정·삭제 API 없음)이라 접수-처리 사이에 소속이 바뀔 수 없다.
         Diagnosis diagnosis = diagnosisRepository.findById(diagnosisId).orElse(null);
         if (diagnosis == null) {
             log.warn("처방 참조 진단이 조회되지 않음 — 질문만으로 진행: diagnosisId={}", diagnosisId);

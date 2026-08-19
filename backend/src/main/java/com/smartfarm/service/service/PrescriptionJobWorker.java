@@ -101,6 +101,14 @@ public class PrescriptionJobWorker {
             // 한글 키 원 응답 → contract §4 영문 result 매핑(빈 성공 금지·크기 캡 — PrescriptionResult.from)
             PrescriptionResult result = PrescriptionResult.from(callWithRetry(jobOpt.get()));
             transitionService.markCompleted(prescriptionId, result);
+        } catch (InterruptedException e) {
+            // 셧다운(shutdownNow) 인터럽트 — 실패 기록(best effort)이 끝난 뒤에 플래그를 복원한다.
+            // 복원을 먼저 하면 JDBC 드라이버가 인터럽트 상태를 보고 즉시 실패해 기록 자체가 안 된다(reviewer P3).
+            try {
+                safelyFail(prescriptionId, ErrorCode.P002);
+            } finally {
+                Thread.currentThread().interrupt();
+            }
         } catch (CustomException e) {
             ErrorCode code = e.getErrorCode() == ErrorCode.P003 ? ErrorCode.P003 : ErrorCode.P002;
             safelyFail(prescriptionId, code);
@@ -110,8 +118,12 @@ public class PrescriptionJobWorker {
         }
     }
 
-    /** 429(P003)만 백오프 재시도 — 총 시도 = 1 + retryBackoffs 크기. 그 외 오류는 즉시 전파. */
-    private AiPrescriptionResponse callWithRetry(PrescriptionJob job) {
+    /**
+     * 429(P003)만 백오프 재시도 — 총 시도 = 1 + retryBackoffs 크기. 그 외 오류는 즉시 전파.
+     * 백오프 대기 중 인터럽트(셧다운)는 InterruptedException 그대로 전파 — 호출부(doProcess)가
+     * 실패 기록 후 플래그를 복원한다.
+     */
+    private AiPrescriptionResponse callWithRetry(PrescriptionJob job) throws InterruptedException {
         List<Duration> backoffs = prescriptionProperties.retryBackoffs();
         int maxAttempts = backoffs.size() + 1;
         for (int attempt = 1; ; attempt++) {
@@ -122,19 +134,8 @@ public class PrescriptionJobWorker {
                     throw e;
                 }
                 log.info("ai-server 혼잡(429) — 백오프 후 재시도 {}/{}: id={}", attempt, maxAttempts - 1, job.id());
-                sleep(backoffs.get(attempt - 1));
+                Thread.sleep(backoffs.get(attempt - 1).toMillis());
             }
-        }
-    }
-
-    private void sleep(Duration backoff) {
-        try {
-            Thread.sleep(backoff.toMillis());
-        } catch (InterruptedException e) {
-            // 셧다운(shutdownNow) 인터럽트 — 재시도를 접고 P002로 수렴시킨다(best effort,
-            // DB까지 이미 닫혔으면 PROCESSING으로 남아 재기동 복구가 정리)
-            Thread.currentThread().interrupt();
-            throw new CustomException(ErrorCode.P002);
         }
     }
 
