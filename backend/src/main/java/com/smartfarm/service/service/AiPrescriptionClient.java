@@ -1,6 +1,6 @@
 package com.smartfarm.service.service;
 
-import com.smartfarm.service.dto.PrescriptionResult;
+import com.smartfarm.service.dto.AiPrescriptionResponse;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,7 @@ public class AiPrescriptionClient {
     /** 빈 이름 매칭 주입 — RestClient 빈 2개 중 처방 전용(PrescriptionWorkerConfig) 선택. */
     private final RestClient aiServerPrescriptionRestClient;
 
-    public PrescriptionResult prescribe(String question, String diagnosisJson) {
+    public AiPrescriptionResponse prescribe(String question, String diagnosisJson) {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("question", question);
         if (diagnosisJson != null) {
@@ -36,7 +36,7 @@ public class AiPrescriptionClient {
         }
 
         try {
-            PrescriptionResult result = aiServerPrescriptionRestClient.post()
+            AiPrescriptionResponse result = aiServerPrescriptionRestClient.post()
                     .uri("/api/prescriptions")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(body)
@@ -49,7 +49,7 @@ public class AiPrescriptionClient {
                             (req, res) -> {
                                 throw new CustomException(ErrorCode.P002);
                             })
-                    .body(PrescriptionResult.class);
+                    .body(AiPrescriptionResponse.class);
             if (result == null) {
                 throw new CustomException(ErrorCode.P002);
             }

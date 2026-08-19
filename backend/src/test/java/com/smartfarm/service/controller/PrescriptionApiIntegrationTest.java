@@ -54,9 +54,12 @@ class PrescriptionApiIntegrationTest extends PrescriptionApiTestSupport {
 
         JsonNode done = awaitPrescriptionTerminal(token, farmId, prescriptionId);
         assertThat(done.get("status").asText()).isEqualTo("COMPLETED");
-        assertThat(done.get("result").get("summary").asText()).contains("질소 결핍");
-        assertThat(done.get("result").get("actions").get(0).asText()).isEqualTo("요소 0.2% 엽면시비");
-        assertThat(done.get("result").get("caution").asText()).contains("고온기");
+        // 한글 키 → contract §4 영문 스키마 매핑 검증(summary←진단요약, actions←즉시조치+예방, caution←원인/재촬영시점, sources←근거출처)
+        assertThat(done.get("result").get("summary").asText()).contains("잎곰팡이병");
+        assertThat(done.get("result").get("actions").get(0).asText()).isEqualTo("감염된 잎을 제거하고 환기를 강화하세요");
+        assertThat(done.get("result").get("actions").get(1).asText()).contains("물주기는 아침에");
+        assertThat(done.get("result").get("caution").asText()).contains("원인: 잎곰팡이병은 습한 환경");
+        assertThat(done.get("result").get("caution").asText()).contains("재촬영 시점: 3일 뒤");
         assertThat(done.get("result").get("sources").get(0).asText()).contains("농진청");
         assertThat(done.get("errorCode").isNull()).isTrue();
         assertThat(done.get("completedAt").asText()).isNotBlank();
@@ -158,6 +161,55 @@ class PrescriptionApiIntegrationTest extends PrescriptionApiTestSupport {
 
         assertThat(done.get("status").asText()).isEqualTo("FAILED");
         assertThat(done.get("errorCode").asText()).isEqualTo("P002");
+    }
+
+    // ── 응답 스키마 매핑 (한글 키 → contract 영문 result) ────────
+
+    @Test
+    @DisplayName("미매핑 응답(영문 키 등 이상 스키마)은 빈 COMPLETED 대신 FAILED P002가 된다(빈 성공 금지)")
+    void unmappedSchemaFailsInsteadOfEmptyCompleted() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "미매핑 농장");
+        // 구(영문) 스키마 — 한글 키 필드가 전부 null로 역직렬화되는 fail-open 상황 재현
+        AI_SERVER.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"summary": "english schema", "actions": ["a"], "caution": "c", "sources": ["s"]}
+                        """));
+
+        long prescriptionId = createPrescription(token, farmId, "미매핑 응답 질문", null);
+        JsonNode done = awaitPrescriptionTerminal(token, farmId, prescriptionId);
+
+        assertThat(done.get("status").asText()).isEqualTo("FAILED");
+        assertThat(done.get("errorCode").asText()).isEqualTo("P002");
+        assertThat(done.get("result").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("필드별 크기 캡 — summary 2,000자·목록 20개·원소 500자로 절단된다")
+    void oversizedFieldsAreCapped() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "캡 농장");
+        String bigSummary = "가".repeat(2_500);
+        String bigSource = "출".repeat(600);
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("진단요약", bigSummary);
+        body.put("근거출처", java.util.Collections.nCopies(25, bigSource));
+        AI_SERVER.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody(objectMapper.writeValueAsString(body)));
+
+        long prescriptionId = createPrescription(token, farmId, "크기 캡 질문", null);
+        JsonNode done = awaitPrescriptionTerminal(token, farmId, prescriptionId);
+
+        assertThat(done.get("status").asText()).isEqualTo("COMPLETED");
+        assertThat(done.get("result").get("summary").asText()).hasSize(2_000);
+        assertThat(done.get("result").get("sources")).hasSize(20);
+        assertThat(done.get("result").get("sources").get(0).asText()).hasSize(500);
+        assertThat(done.get("result").get("actions")).isEmpty(); // 즉시조치·예방 부재 → 빈 목록
+        assertThat(done.get("result").get("caution").isNull()).isTrue(); // 원인·재촬영시점 부재 → null
     }
 
     // ── 직렬화 (단일 워커 — 동시 접수도 순차 처리) ──────────────

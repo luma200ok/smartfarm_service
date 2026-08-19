@@ -67,7 +67,7 @@ class PrescriptionRecoveryTest extends PrescriptionApiTestSupport {
         awaitPrescriptionTerminal(token, farmId, pending.getId());
         Prescription completed = prescriptionRepository.findById(pending.getId()).orElseThrow();
         assertThat(completed.getStatus()).isEqualTo(PrescriptionStatus.COMPLETED);
-        assertThat(completed.getResult()).contains("질소 결핍");
+        assertThat(completed.getResult()).contains("잎곰팡이병");
         assertThat(completed.getErrorCode()).isNull();
         assertThat(completed.getCompletedAt()).isNotNull();
     }
@@ -86,7 +86,7 @@ class PrescriptionRecoveryTest extends PrescriptionApiTestSupport {
         Prescription untouched = prescriptionRepository.findById(completedId).orElseThrow();
         assertThat(untouched.getStatus()).isEqualTo(PrescriptionStatus.COMPLETED);
         assertThat(untouched.getErrorCode()).isNull();
-        assertThat(untouched.getResult()).contains("질소 결핍");
+        assertThat(untouched.getResult()).contains("잎곰팡이병");
     }
 
     private long myUserId(String token) throws Exception {

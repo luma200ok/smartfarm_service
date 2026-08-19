@@ -1,6 +1,7 @@
 package com.smartfarm.service.service;
 
 import com.smartfarm.service.config.PrescriptionProperties;
+import com.smartfarm.service.dto.AiPrescriptionResponse;
 import com.smartfarm.service.dto.PrescriptionResult;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
@@ -66,7 +67,8 @@ public class PrescriptionJobWorker {
         }
 
         try {
-            PrescriptionResult result = callWithRetry(jobOpt.get());
+            // 한글 키 원 응답 → contract §4 영문 result 매핑(빈 성공 금지·크기 캡 — PrescriptionResult.from)
+            PrescriptionResult result = PrescriptionResult.from(callWithRetry(jobOpt.get()));
             transitionService.markCompleted(prescriptionId, result);
         } catch (CustomException e) {
             ErrorCode code = e.getErrorCode() == ErrorCode.P003 ? ErrorCode.P003 : ErrorCode.P002;
@@ -78,7 +80,7 @@ public class PrescriptionJobWorker {
     }
 
     /** 429(P003)만 백오프 재시도 — 총 시도 = 1 + retryBackoffs 크기. 그 외 오류는 즉시 전파. */
-    private PrescriptionResult callWithRetry(PrescriptionJob job) {
+    private AiPrescriptionResponse callWithRetry(PrescriptionJob job) {
         List<Duration> backoffs = prescriptionProperties.retryBackoffs();
         int maxAttempts = backoffs.size() + 1;
         for (int attempt = 1; ; attempt++) {

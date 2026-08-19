@@ -18,12 +18,15 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
  */
 public abstract class PrescriptionApiTestSupport extends DiagnosisApiTestSupport {
 
+    /** ai-server 실스키마(한글 키 — smartfarm_ai src/llm/prescribe.py Prescription, contract §3). */
     protected static final String PRESCRIPTION_OK_BODY = """
             {
-              "summary": "질소 결핍 의심 — 관주 시비를 권장합니다",
-              "actions": ["요소 0.2% 엽면시비", "관수 주기 단축"],
-              "caution": "고온기 낮 시간 시비 금지",
-              "sources": ["농진청 토마토 재배 매뉴얼"]
+              "진단요약": "잎곰팡이병으로 보입니다(신뢰도 87%)",
+              "원인": "잎곰팡이병은 습한 환경에서 곰팡이가 번져 생깁니다",
+              "즉시조치": "감염된 잎을 제거하고 환기를 강화하세요",
+              "예방": "물주기는 아침에 하고 잎이 젖지 않게 관리하세요",
+              "재촬영시점": "3일 뒤 같은 잎을 밝은 곳에서 다시 찍어 확인하세요",
+              "근거출처": ["농진청 토마토 재배 매뉴얼"]
             }
             """;
 
