@@ -23,6 +23,9 @@
 - 요청 헤더: `Authorization: Bearer {accessToken}`.
 - 프론트 저장 키: `localStorage['farmAccessToken']` / `['farmRefreshToken']` (앱 prefix = `farm`).
 - 인증 실패 401(A003/A004) / 권한 없음 403(A005/F002/F003).
+- **A003 = access 토큰 만료(refresh로 회복 가능한 유일한 401)**. `/api/auth/refresh` 자체의 만료·무효·재사용은 전부 **A004**(재로그인 필요) — 클라이언트는 A003만 refresh 재시도한다. (2026-08-19 확정)
+- **클라이언트 refresh는 single-flight 의무**: 동시 401 시 refresh 요청은 1개만 발화하고 나머지는 그 결과를 공유(로테이션 1회성 토큰이라 병렬 refresh는 재사용 감지 오탐 유발). FE `lib/api/auth.ts` in-flight Promise로 구현됨.
+- 로그아웃·전체 무효화 후에도 이미 발급된 access 토큰은 stateless 특성상 최대 30분 유효(수용된 트레이드오프).
 
 ## 2. 멀티테넌시 (Farm = 테넌트)
 
@@ -77,7 +80,9 @@
 - **DiagnosisResponse** `{id, status(ok|ood_blocked), label, labelKr, prob, part, reason?, imageUrl?, camPngBase64?, createdBy, createdAt}` — ai-server DiagnosisResponse를 이력 엔티티로 저장 후 매핑
 - **PrescriptionRequest** `{question(1~500), diagnosisId?}` 
 - **PrescriptionResponse** `{id, status, question, diagnosisId?, result?{summary, actions[], caution, sources[]}, errorCode?, createdBy, createdAt, completedAt?}` — result는 ai-server `Prescription` 구조화 JSON 저장
-- 목록 Summary는 각 상세에서 무거운 필드(base64·result 본문) 제외.
+- **Summary 필드 확정**: `DiagnosisSummaryResponse` `{id, status, label, labelKr, prob, part, createdBy, createdAt}` / `PrescriptionSummaryResponse` `{id, status, question, createdBy, createdAt, completedAt?}` (무거운 필드 base64·result 본문 제외).
+- **PageResponse\<T\>** `{content: T[], page, size, totalElements, totalPages}` — backend는 Spring `Page` 직접 노출 금지, 이 record로 매핑.
+- 이메일은 서버에서 `trim().toLowerCase()` 정규화 후 저장·비교(대소문자 무관 단일 계정).
 
 ## 5. ErrorCode 체계
 
@@ -85,12 +90,14 @@
 
 | 코드 | HTTP | 의미 |
 |---|---|---|
-| C001 | 400 | 요청 검증 실패(Bean Validation) |
+| C001 | 400 | 요청 검증 실패(Bean Validation·본문 파싱 실패 포함) |
 | C002 | 500 | 내부 서버 오류 |
+| C003 | 404 | 존재하지 않는 경로 |
+| C004 | 405 | 허용되지 않는 메서드 |
 | A001 | 409 | 이메일 중복 |
 | A002 | 401 | 이메일/비밀번호 불일치 |
-| A003 | 401 | 토큰 만료 |
-| A004 | 401 | 토큰 무효(변조·재사용 감지 포함) |
+| A003 | 401 | access 토큰 만료(refresh로 회복 가능) |
+| A004 | 401 | 토큰 무효(변조·재사용·refresh 만료/미존재 포함 — 재로그인) |
 | A005 | 403 | 접근 권한 없음 |
 | F001 | 404 | 농장 없음 |
 | F002 | 403 | 농장 멤버 아님 |
