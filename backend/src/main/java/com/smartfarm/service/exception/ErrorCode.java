@@ -27,7 +27,12 @@ public enum ErrorCode {
     F003(HttpStatus.FORBIDDEN, "F003", "농장 소유자 권한이 필요합니다."),
     F004(HttpStatus.BAD_REQUEST, "F004", "유효하지 않거나 만료된 초대코드입니다."),
     F005(HttpStatus.CONFLICT, "F005", "이미 농장 멤버입니다."),
-    F006(HttpStatus.BAD_REQUEST, "F006", "농장 소유자는 탈퇴할 수 없습니다. 농장 삭제만 가능합니다.");
+    F006(HttpStatus.BAD_REQUEST, "F006", "농장 소유자는 탈퇴할 수 없습니다. 농장 삭제만 가능합니다."),
+
+    // Diagnosis
+    D001(HttpStatus.NOT_FOUND, "D001", "진단 이력을 찾을 수 없습니다."),
+    D002(HttpStatus.BAD_REQUEST, "D002", "이미지 형식 또는 크기가 올바르지 않습니다."),
+    D003(HttpStatus.BAD_GATEWAY, "D003", "AI 서버 오류가 발생했습니다.");
 
     private final HttpStatus status;
     private final String code;
