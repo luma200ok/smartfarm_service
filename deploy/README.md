@@ -51,8 +51,9 @@ AI_SERVER_URL=http://127.0.0.1:8000
 - [ ] `mkdir -p /home/opc/apps/smartfarm-service/incoming /home/opc/apps/smartfarm-service/frontend/releases`
 - [ ] 소유자 `opc:opc`
 
-## 4. Node 22 설치 (arm1)
+## 4. Java 21 / Node 22 설치 (arm1)
 
+- [ ] `java -version`으로 21 확인 — **arm1 실측 Java 21.0.11 설치돼 있음**(미설치 시 `dnf install java-21-openjdk`)
 - [ ] NodeSource 또는 nvm으로 Node 22 LTS 설치 (frontend systemd 유닛이 `/usr/bin/node`를 직접 호출하므로
       PATH에 걸리는 전역 설치 또는 `/usr/bin/node` 심링크 필요)
 - [ ] `node -v` 확인
@@ -67,9 +68,12 @@ AI_SERVER_URL=http://127.0.0.1:8000
 
 ## 6. nginx
 
-- [ ] `deploy/nginx-farm.conf` → `/etc/nginx/sites-available/farm.luma200ok.com`
+**arm1 실측**: `/etc/nginx/nginx.conf`가 `include /etc/nginx/conf.d/*.conf;`만 사용 —
+sites-available/sites-enabled 구조 없음(hajacheck.conf 등 기존 설정 전부 `conf.d/` 평면 구조). 이 구조를 따른다.
+
 - [ ] nginx-farm.conf 하단 주석의 `proxy_set_header` 4줄을 `/etc/nginx/snippets/proxy-common.conf`로 저장
-- [ ] `ln -s /etc/nginx/sites-available/farm.luma200ok.com /etc/nginx/sites-enabled/`
+- [ ] `deploy/nginx-farm.conf` → `/etc/nginx/conf.d/farm.conf` 로 복사
+      (`limit_req_zone`은 파일 최상단에 있어도 `http` 컨텍스트로 include되므로 이 구조에서 그대로 유효)
 - [ ] `sudo nginx -t` → `sudo systemctl reload nginx`
 
 ## 7. DNS + certbot
@@ -91,11 +95,18 @@ AI_SERVER_URL=http://127.0.0.1:8000
 - [ ] main에 backend/frontend 변경을 머지해 `.github/workflows/deploy.yml` 최초 실행 확인
       (또는 `workflow_dispatch`로 수동 실행)
 - [ ] 배포 후 `sudo systemctl status smartfarm-service-backend smartfarm-service-frontend`
-- [ ] `curl -I https://farm.luma200ok.com/` (프론트) / `curl -s https://farm.luma200ok.com/api/health-nonexistent`
-      → 404 JSON(C003) 이면 backend 정상
+- [ ] `curl -I https://farm.luma200ok.com/` (프론트) / `curl -s https://farm.luma200ok.com/api/health`
+      → 200 `{"status":"ok"}` 이면 backend 정상(HealthController, 무인증)
 - [ ] 회원가입 → 로그인 → 농장 생성 → 진단 업로드까지 브라우저로 1회 수동 스모크
 
-## 10. 알려진 후속 (STATUS.md 참조)
+## 10. 롤백 절차
+
+- **backend**: `deploy.yml`이 교체 전 `app.jar.bak`(직전 1세대)을 남긴다.
+  `cp -f app.jar.bak app.jar && sudo systemctl restart smartfarm-service-backend`로 즉시 복귀.
+- **frontend**: `releases/<이전 타임스탬프>`가 남아있으므로
+  `ln -sfn releases/<이전 타임스탬프> current.tmp && mv -Tf current.tmp current && sudo systemctl restart smartfarm-service-frontend`.
+
+## 11. 알려진 후속 (STATUS.md 참조)
 
 - ai-server 질문 이력이 farm/user 구분 없이 자체 DB에 혼합 저장됨 — 배포 전 보존정책 검토 필요
   (smartfarm_ai src/llm/history.py, 이 레포 범위 밖)
