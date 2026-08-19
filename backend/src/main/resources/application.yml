@@ -61,6 +61,11 @@ prescription:
   sweep-initial-delay: PT5M
   sweep-fixed-delay: PT5M
 
+# refresh_tokens 퍼지(RefreshTokenPurgeScheduler) — 만료+7일 유예 경과분 삭제, 주기는 1일 1회
+refresh-token:
+  purge-initial-delay: P1D
+  purge-fixed-delay: P1D
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
