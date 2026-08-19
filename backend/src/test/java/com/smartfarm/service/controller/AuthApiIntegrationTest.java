@@ -87,6 +87,64 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
         }
 
         @Test
+        @DisplayName("이메일은 trim+소문자로 정규화 저장되고, 대소문자만 다른 이메일은 중복(A001)이다")
+        void signupNormalizesEmail() throws Exception {
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest("  Mixed.Case@Example.COM ", "password123", "정규화유저"))))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.email").value("mixed.case@example.com"));
+
+            // 대소문자만 다른 재가입 → A001
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest("MIXED.CASE@example.com", "password123", "중복시도"))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("A001"));
+
+            // 다른 케이스 표기로 로그인 성공
+            login("Mixed.Case@EXAMPLE.com", "password123");
+        }
+
+        @Test
+        @DisplayName("비밀번호가 72바이트 초과(한글 25자)면 500이 아닌 400 C001로 응답한다")
+        void signupPasswordOver72Bytes() throws Exception {
+            String koreanPassword = "가".repeat(25); // 75바이트 (BCrypt 상한 72바이트 초과)
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest("bytes-over@example.com", koreanPassword, "바이트유저"))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("C001"));
+        }
+
+        @Test
+        @DisplayName("이메일 255자 초과는 400 C001 (A001 오매핑 방지)")
+        void signupEmailTooLong() throws Exception {
+            String longEmail = "a".repeat(250) + "@ex.com"; // 257자
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest(longEmail, "password123", "긴이메일"))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("C001"));
+        }
+
+        @Test
+        @DisplayName("깨진 JSON 본문이면 400 C001로 응답한다")
+        void signupBrokenJsonBody() throws Exception {
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"email\": \"broken@example.com\", \"password\": "))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("C001"))
+                    .andExpect(jsonPath("$.timestamp").exists())
+                    .andExpect(jsonPath("$.message").exists());
+        }
+
+        @Test
         @DisplayName("비밀번호 8자 미만이면 400 C001과 {timestamp, code, message} 형식으로 응답한다")
         void signupValidationFail() throws Exception {
             mockMvc.perform(post("/api/auth/signup")
@@ -179,7 +237,7 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
         }
 
         @Test
-        @DisplayName("만료된 refresh 토큰이면 401 A003을 반환한다")
+        @DisplayName("만료된 refresh 토큰이면 401 A004를 반환한다 (A003은 access 만료 전용)")
         void refreshExpired() throws Exception {
             signup("expired-rt@example.com", "password123", "만료유저");
             Long userId = userRepository.findByEmail("expired-rt@example.com").orElseThrow().getId();
@@ -193,7 +251,20 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
 
             refresh(rawToken)
                     .andExpect(status().isUnauthorized())
-                    .andExpect(jsonPath("$.code").value("A003"));
+                    .andExpect(jsonPath("$.code").value("A004"));
+        }
+
+        @Test
+        @DisplayName("soft delete된 유저의 refresh 토큰은 401 A004 — 세션 연장 차단")
+        void refreshAfterUserSoftDeleted() throws Exception {
+            signup("deleted-user@example.com", "password123", "삭제유저");
+            JsonNode tokens = login("deleted-user@example.com", "password123");
+
+            userRepository.delete(userRepository.findByEmail("deleted-user@example.com").orElseThrow());
+
+            refresh(tokens.get("refreshToken").asText())
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A004"));
         }
 
         @Test
@@ -226,6 +297,27 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
             refresh(refreshToken)
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.code").value("A004"));
+        }
+
+        @Test
+        @DisplayName("타 유저의 refresh 토큰으로 로그아웃해도 204 no-op — 남의 토큰은 무효화되지 않는다")
+        void logoutWithOtherUsersRefreshTokenIsNoOp() throws Exception {
+            signup("owner-a@example.com", "password123", "소유자A");
+            signup("attacker-b@example.com", "password123", "유저B");
+            JsonNode tokensA = login("owner-a@example.com", "password123");
+            JsonNode tokensB = login("attacker-b@example.com", "password123");
+
+            // B가 A의 refresh 토큰으로 로그아웃 시도 → 204 (존재 여부 비노출)
+            mockMvc.perform(post("/api/auth/logout")
+                            .header("Authorization", "Bearer " + tokensB.get("accessToken").asText())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new RefreshRequest(tokensA.get("refreshToken").asText()))))
+                    .andExpect(status().isNoContent());
+
+            // A의 refresh 토큰은 여전히 유효
+            refresh(tokensA.get("refreshToken").asText())
+                    .andExpect(status().isOk());
         }
 
         @Test

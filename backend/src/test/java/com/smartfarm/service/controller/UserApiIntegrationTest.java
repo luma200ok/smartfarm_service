@@ -78,6 +78,24 @@ class UserApiIntegrationTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("인증된 요청의 미존재 경로는 404 C003을 반환한다")
+    void unknownPathReturnsC003() throws Exception {
+        String accessToken = signupAndGetAccessToken("c003@example.com");
+        mockMvc.perform(get("/api/no-such-path")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("C003"));
+    }
+
+    @Test
+    @DisplayName("허용되지 않는 메서드는 405 C004를 반환한다")
+    void methodNotAllowedReturnsC004() throws Exception {
+        mockMvc.perform(get("/api/auth/signup"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("C004"));
+    }
+
+    @Test
     @DisplayName("변조된 토큰이면 401 A004를 반환한다")
     void meWithInvalidToken() throws Exception {
         mockMvc.perform(get("/api/users/me")
