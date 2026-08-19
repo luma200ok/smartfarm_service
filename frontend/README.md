@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# smartfarm_service — frontend
 
-## Getting Started
+Next.js(App Router) · TypeScript · Tailwind 프론트엔드. 회원 인증, 농장(테넌트) 관리,
+잎 사진 진단·LLM 처방 화면을 제공한다.
 
-First, run the development server:
+## 로컬 실행
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+NEXT_PUBLIC_API_URL=http://localhost:8085 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`NEXT_PUBLIC_API_URL`은 backend(Spring Boot) 주소다. 미설정 시 프로덕션 빌드(`npm run build`)가
+실패하도록 `next.config.ts`에서 강제한다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 빌드
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+NEXT_PUBLIC_API_URL=https://farm.luma200ok.com npm run build
+```
 
-## Learn More
+`output: "standalone"`으로 빌드되어 systemd 등에서 `node .next/standalone/server.js`로 실행한다.
 
-To learn more about Next.js, take a look at the following resources:
+## 문서
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [API Contract(단일 진실)](../docs/api-contract.md)
+- [진행 현황(STATUS)](../docs/STATUS.md)
