@@ -63,17 +63,14 @@ class ArchitectureRulesTest {
      * 경계 자체가 대상 범위다. ArchUnit은 어노테이션 "속성 값" 검사에 적합하지 않아(핸드오프 허용대로)
      * 리플렉션 기반 커스텀 검증을 쓴다.
      *
-     * <p><b>알려진 예외</b>: {@code PrescriptionRepository#failAllProcessing} — flushAutomatically
-     * 미설정(clearAutomatically만 있음) 발견. claimForProcessing·failStaleByStatusBefore와 같은
-     * 벌크 UPDATE인데 패턴이 어긋난다. 재기동 복구(SmartLifecycle, 트래픽 수신 전 1회 실행)라
-     * 즉시 위험은 낮아 보이나, 프로덕션 코드 변경은 도메인 판단이 필요해 이번 범위에서는 수정하지
-     * 않고 이 목록으로만 고정한다(핸드오프: "위반 발견 시 수정 말고 보고" — main 보고 완료, 수정
-     * 여부는 main 판단 대기). 이 예외가 남아있는 한 새 위반이 섞여 들어와도 이 테스트가 잡아낸다.
+     * <p>구현 중 {@code PrescriptionRepository#failAllProcessing}에서 flushAutomatically 누락을
+     * 발견했으나(clearAutomatically만 있었음), main 결정에 따라 즉시 수정해 패턴을 통일했다
+     * (claimForProcessing·failStaleByStatusBefore와 동일). 예외 0건이 이 규칙의 정상 상태다.
      */
     @Test
-    @DisplayName("규칙②: @Modifying 벌크 쿼리 메서드는 flushAutomatically=true여야 한다(알려진 예외 제외)")
+    @DisplayName("규칙②: @Modifying 벌크 쿼리 메서드는 flushAutomatically=true여야 한다")
     void modifyingBulkQueryMethodsMustFlushAutomatically() {
-        Set<String> knownExceptions = Set.of("PrescriptionRepository#failAllProcessing");
+        Set<String> knownExceptions = Set.of();
 
         JavaClasses classes = new ClassFileImporter().importPackages("com.smartfarm.service.repository");
 

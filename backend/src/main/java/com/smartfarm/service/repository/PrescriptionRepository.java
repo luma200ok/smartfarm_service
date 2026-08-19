@@ -78,7 +78,7 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
      * 재요청하게 한다(중복 처방 생성 방지 — LLM 호출은 멱등이 아님). 단일 UPDATE로 처리해
      * 잔존 건수와 무관하게 복구가 즉시 끝나게 한다.
      */
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Prescription p SET p.status = :failed, p.errorCode = :errorCode, p.completedAt = :now "
             + "WHERE p.status = :processing")
     int failAllProcessing(@Param("processing") PrescriptionStatus processing,
