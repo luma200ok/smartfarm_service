@@ -7,8 +7,11 @@ import com.smartfarm.service.dto.FarmUpdateRequest;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.FarmMember;
 import com.smartfarm.service.entity.FarmRole;
+import com.smartfarm.service.exception.CustomException;
+import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.FarmMemberRepository;
 import com.smartfarm.service.repository.FarmRepository;
+import com.smartfarm.service.repository.UserRepository;
 import com.smartfarm.service.service.FarmAccessGuard.FarmAccess;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -23,9 +26,16 @@ public class FarmService {
     private final FarmRepository farmRepository;
     private final FarmMemberRepository farmMemberRepository;
     private final FarmAccessGuard farmAccessGuard;
+    private final UserRepository userRepository;
 
+    /**
+     * 농장 생성은 FarmAccessGuard를 타지 않는 진입점이라 유저 생존을 직접 검증한다
+     * (contract 탈퇴 봉쇄 ① — 탈퇴 유저의 잔존 access 토큰으로 유령 OWNER 농장 생성 차단).
+     */
     @Transactional
     public FarmResponse createFarm(Long userId, FarmRequest request) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.A004));
         Farm farm = farmRepository.save(Farm.builder()
                 .name(request.name())
                 .cropType(request.cropType())
@@ -46,7 +56,7 @@ public class FarmService {
     public FarmResponse findFarm(Long farmId, Long userId) {
         FarmAccess access = farmAccessGuard.requireMember(farmId, userId);
         return FarmResponse.of(access.farm(), access.membership().getRole(),
-                farmMemberRepository.countByFarmId(farmId));
+                farmMemberRepository.countLiveMembersByFarmId(farmId));
     }
 
     @Transactional
@@ -54,7 +64,7 @@ public class FarmService {
         FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
         access.farm().update(request.name(), request.cropType(), request.location());
         return FarmResponse.of(access.farm(), FarmRole.OWNER,
-                farmMemberRepository.countByFarmId(farmId));
+                farmMemberRepository.countLiveMembersByFarmId(farmId));
     }
 
     @Transactional
