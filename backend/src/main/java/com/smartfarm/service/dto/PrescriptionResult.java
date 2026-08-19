@@ -79,7 +79,16 @@ public record PrescriptionResult(
         return value == null || value.isBlank();
     }
 
+    /**
+     * cap 절단 — 경계가 서로게이트 쌍(이모지 등) 한가운데면 1자 후퇴해 쌍을 통째로 버린다.
+     * 짝 잃은 high surrogate가 남으면 이후 toJson(UTF-8 직렬화)이 실패해 정상 처방이
+     * FAILED로 수렴하는 경로가 생긴다(reviewer P3).
+     */
     private static String truncate(String value, int cap) {
-        return value.length() <= cap ? value : value.substring(0, cap);
+        if (value.length() <= cap) {
+            return value;
+        }
+        int end = Character.isHighSurrogate(value.charAt(cap - 1)) ? cap - 1 : cap;
+        return value.substring(0, end);
     }
 }

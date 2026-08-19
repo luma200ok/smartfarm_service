@@ -8,6 +8,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 /**
@@ -41,6 +42,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PrescriptionRecoveryInitializer implements SmartLifecycle {
 
+    static final int RECOVERY_REQUEUE_LIMIT = 200;
+
     private final PrescriptionTransitionService transitionService;
     private final PrescriptionRepository prescriptionRepository;
     private final PrescriptionJobWorker prescriptionJobWorker;
@@ -58,7 +61,9 @@ public class PrescriptionRecoveryInitializer implements SmartLifecycle {
             log.warn("재기동 복구 — PROCESSING 잔존 {}건을 FAILED(P002) 처리", failedCount);
         }
 
-        List<Long> pendingIds = prescriptionRepository.findIdsByStatus(PrescriptionStatus.PENDING);
+        // LIMIT — 스위퍼 경로와 일관(무제한 로드 방지). 초과 잔존분은 5분 주기 스위퍼가 회수한다.
+        List<Long> pendingIds = prescriptionRepository.findIdsByStatus(
+                PrescriptionStatus.PENDING, PageRequest.of(0, RECOVERY_REQUEUE_LIMIT));
         if (!pendingIds.isEmpty()) {
             log.info("재기동 복구 — PENDING 잔존 {}건 재큐잉", pendingIds.size());
             pendingIds.forEach(prescriptionJobWorker::submit);

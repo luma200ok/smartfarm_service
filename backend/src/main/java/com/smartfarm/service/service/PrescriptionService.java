@@ -54,6 +54,15 @@ public class PrescriptionService {
     public PrescriptionResponse createPrescription(Long farmId, Long userId, PrescriptionRequest request) {
         farmAccessGuard.requireMember(farmId, userId);
 
+        // 요청 자체의 오류(D001)를 혼잡(P004/429)보다 먼저 판정 — 잘못된 diagnosisId 요청이
+        // 429로 오인되면 클라이언트가 "잠시 후 재시도"를 무한 반복하게 된다(reviewer P3).
+        if (request.diagnosisId() != null
+                && !diagnosisRepository.existsByIdAndFarmId(request.diagnosisId(), farmId)) {
+            // 진단 참조는 같은 farm 스코프만 허용 — 타 농장 진단 참조는 D001(cross-tenant IDOR 차단).
+            // exists 쿼리 사용 — 엔티티 로드는 @Lob 필드 때문에 논트랜잭션 경로에서 불가(repository 주석)
+            throw new CustomException(ErrorCode.D001);
+        }
+
         // 접수 상한(contract §3): 농장당 진행 중(PENDING+PROCESSING) 3건 — 초과 접수는 P004(429).
         // count-저장 사이 TOCTOU로 동시 접수가 상한을 살짝 넘을 수 있으나(단일 인스턴스·개인 서비스)
         // 상한의 목적(폴링 적체·중복 클릭 완화)에는 충분하다 — 엄밀 상한이 필요해지면 유니크 제약/락으로 승격.
@@ -65,13 +74,6 @@ public class PrescriptionService {
         // 워커 큐 포화 시 저장 없이 P004(contract §3 "워커 큐는 유한(포화 시 저장 없이 P004)")
         if (!prescriptionJobWorker.hasCapacity()) {
             throw new CustomException(ErrorCode.P004);
-        }
-
-        if (request.diagnosisId() != null
-                && !diagnosisRepository.existsByIdAndFarmId(request.diagnosisId(), farmId)) {
-            // 진단 참조는 같은 farm 스코프만 허용 — 타 농장 진단 참조는 D001(cross-tenant IDOR 차단).
-            // exists 쿼리 사용 — 엔티티 로드는 @Lob 필드 때문에 논트랜잭션 경로에서 불가(repository 주석)
-            throw new CustomException(ErrorCode.D001);
         }
 
         Prescription saved = prescriptionRepository.save(Prescription.builder()

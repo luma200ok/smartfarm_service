@@ -32,9 +32,12 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
     /** 접수 상한(contract §3) — 농장당 진행 중(PENDING+PROCESSING) 건수. partial index 스캔. */
     long countByFarmIdAndStatusIn(Long farmId, Collection<PrescriptionStatus> statuses);
 
-    /** 재기동 복구 — PENDING 잔존 건 재큐잉용(id 오름차순 = 접수 순서 유지, partial index 스캔). */
+    /**
+     * 재기동 복구 — PENDING 잔존 건 재큐잉용(id 오름차순 = 접수 순서 유지, partial index 스캔).
+     * Pageable LIMIT — 스위퍼 경로와 일관되게 무제한 로드를 막는다(초과분은 스위퍼가 회수).
+     */
     @Query("SELECT p.id FROM Prescription p WHERE p.status = :status ORDER BY p.id ASC")
-    List<Long> findIdsByStatus(@Param("status") PrescriptionStatus status);
+    List<Long> findIdsByStatus(@Param("status") PrescriptionStatus status, Pageable pageable);
 
     /**
      * 워커 픽업 — PENDING일 때만 PROCESSING으로 전이하는 조건부 UPDATE(반환 0 = 픽업 실패 → 스킵).

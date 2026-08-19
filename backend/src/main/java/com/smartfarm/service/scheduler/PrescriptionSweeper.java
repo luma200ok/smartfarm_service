@@ -8,7 +8,6 @@ import com.smartfarm.service.service.PrescriptionTransitionService;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -48,8 +47,13 @@ public class PrescriptionSweeper {
     private final PrescriptionJobWorker prescriptionJobWorker;
     private final PrescriptionProperties prescriptionProperties;
 
-    /** initialDelay로 기동 직후 재기동 복구(SmartLifecycle)와의 중복 구동을 피한다(겹쳐도 멱등이라 무해). */
-    @Scheduled(initialDelay = 5, fixedDelay = 5, timeUnit = TimeUnit.MINUTES)
+    /**
+     * 주기·초기 지연은 프로퍼티(ISO-8601 Duration) — 운영 기본 5분, 테스트는 1시간으로 키워
+     * 테스트 중 자동 발화를 차단한다(테스트는 sweep() 직접 호출). initialDelay로 기동 직후
+     * 재기동 복구(SmartLifecycle)와의 중복 구동도 피한다(겹쳐도 멱등이라 무해).
+     */
+    @Scheduled(initialDelayString = "${prescription.sweep-initial-delay:PT5M}",
+            fixedDelayString = "${prescription.sweep-fixed-delay:PT5M}")
     public void sweep() {
         LocalDateTime now = LocalDateTime.now();
 

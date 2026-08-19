@@ -25,8 +25,12 @@ import org.springframework.web.client.RestClient;
 @RequiredArgsConstructor
 public class PrescriptionWorkerConfig {
 
-    /** 워커 큐 상한 — job당 최대 ~6분(120s×3+백오프)이라 200건이면 이미 수 시간 적체(그 이상은 거절이 옳다). */
-    static final int QUEUE_CAPACITY = 200;
+    /**
+     * 워커 큐 상한 — PENDING 연령 컷오프(스위퍼 30분)와 정합하게 산정: 웜 기준 job ~16s ×
+     * 100건 ≈ 27분 < 30분. 즉 큐에 들어간(202를 받은) 건은 순번이 오기 전에 컷오프로 죽지 않는다.
+     * (200이면 큐 끝 대기 ~53분 — 202를 주고도 자기 방어책(컷오프)에 죽는 구간이 생겨 100으로 축소.)
+     */
+    static final int QUEUE_CAPACITY = 100;
 
     private final AiServerProperties aiServerProperties;
     private final PrescriptionProperties prescriptionProperties;

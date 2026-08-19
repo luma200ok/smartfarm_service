@@ -57,6 +57,9 @@ prescription:
   read-timeout: 120s
   # 429(혼잡) 백오프 재시도 간격 — 재시도 횟수 = 목록 크기(handoff: 2회)
   retry-backoffs: 5s, 15s
+  # 스위퍼 주기(ISO-8601 Duration) — 테스트는 크게 잡아 자동 발화 차단
+  sweep-initial-delay: PT5M
+  sweep-fixed-delay: PT5M
 
 springdoc:
   swagger-ui:

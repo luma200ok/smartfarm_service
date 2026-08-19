@@ -21,7 +21,10 @@ ai-server:
   connect-timeout: 1s
   read-timeout: 2s
 
-# 처방 비동기 job — 백오프를 짧게 줄여 429 재시도 테스트를 빠르게 수행
+# 처방 비동기 job — 백오프를 짧게 줄여 429 재시도 테스트를 빠르게 수행.
+# 스위퍼는 1시간으로 키워 테스트 실행 중 자동 발화를 차단(테스트는 sweep() 직접 호출)
 prescription:
   read-timeout: 2s
   retry-backoffs: 50ms, 100ms
+  sweep-initial-delay: PT1H
+  sweep-fixed-delay: PT1H
