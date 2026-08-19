@@ -36,6 +36,7 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setMyUserId(null); // farmId 전환 시 이전 농장의 본인 판별값 잔존 방지 (getMe는 뒤늦게 갱신됨)
       try {
         const [farmData, memberData] = await Promise.all([getFarm(farmId), listMembers(farmId)]);
         if (cancelled) return;
