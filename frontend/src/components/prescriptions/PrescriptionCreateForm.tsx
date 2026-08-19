@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { VALIDATION } from "@/constants";
-import { resolveErrorMessage } from "@/lib/api/errorMessage";
+import { isPrescriptionLimitExceeded, resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listDiagnoses } from "@/lib/api/diagnoses";
 import { createPrescription } from "@/lib/api/prescriptions";
 import type { DiagnosisSummaryResponse } from "@/types";
@@ -19,6 +19,8 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
   const [diagnosisId, setDiagnosisId] = useState<string>("");
   const [diagnoses, setDiagnoses] = useState<DiagnosisSummaryResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // P004(처방 대기 한도 초과) 전용 — 재시도 유도 문구(error)와 달리 한도 안내로 별도 렌더한다.
+  const [limitExceeded, setLimitExceeded] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -32,6 +34,7 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setLimitExceeded(null);
 
     if (
       question.length < VALIDATION.prescriptionQuestion.minLength ||
@@ -49,7 +52,11 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
       });
       router.push(`/farms/${farmId}/prescriptions/${prescription.id}`);
     } catch (err) {
-      setError(resolveErrorMessage(err));
+      if (isPrescriptionLimitExceeded(err)) {
+        setLimitExceeded(resolveErrorMessage(err));
+      } else {
+        setError(resolveErrorMessage(err));
+      }
       setSubmitting(false);
     }
   }
@@ -94,6 +101,11 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
         />
       </div>
 
+      {limitExceeded && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          {limitExceeded}
+        </p>
+      )}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <button

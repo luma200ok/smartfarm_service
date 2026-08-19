@@ -55,7 +55,7 @@ export default function PrescriptionStatusCard({ prescription }: PrescriptionSta
             </div>
           )}
           {prescription.result.caution && (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            <p className="whitespace-pre-line rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
               ⚠ {prescription.result.caution}
             </p>
           )}

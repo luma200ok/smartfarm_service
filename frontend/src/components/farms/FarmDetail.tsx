@@ -36,16 +36,12 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setMyUserId(null); // farmId 전환 시 이전 농장의 본인 판별값 잔존 방지 (getMe는 뒤늦게 갱신됨)
       try {
-        const [farmData, memberData, me] = await Promise.all([
-          getFarm(farmId),
-          listMembers(farmId),
-          getMe(),
-        ]);
+        const [farmData, memberData] = await Promise.all([getFarm(farmId), listMembers(farmId)]);
         if (cancelled) return;
         setFarm(farmData);
         setMembers(memberData);
-        setMyUserId(me.id);
         setEditName(farmData.name);
         setEditLocation(farmData.location ?? "");
       } catch (err) {
@@ -55,6 +51,16 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
         } else {
           setLoadError(resolveErrorMessage(err));
         }
+        return;
+      }
+
+      // getMe는 별도 처리 — 단독 실패해도 farm·members는 이미 정상 렌더된 상태를 유지하고
+      // myUserId=null로 남겨 본인 식별이 필요한 UI(탈퇴 버튼)만 숨긴다.
+      try {
+        const me = await getMe();
+        if (!cancelled) setMyUserId(me.id);
+      } catch {
+        // no-op — myUserId는 null 유지
       }
     }
     load();
