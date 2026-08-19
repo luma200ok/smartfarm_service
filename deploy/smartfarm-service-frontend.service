@@ -1,0 +1,21 @@
+# 서버 적용용 원본 유닛 — 메타(A)가 서버의 /etc/systemd/system/smartfarm-service-frontend.service 로 설치한다.
+# ExecStart는 배포(.github/workflows/deploy.yml)가 심링크로 원자 교체하는 current/server.js 를 가리킨다.
+[Unit]
+Description=SmartFarm Service Frontend (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+Environment=PORT=3000 HOSTNAME=127.0.0.1 NODE_ENV=production
+
+WorkingDirectory=/home/opc/apps/smartfarm-service/frontend/current
+ExecStart=/usr/bin/node /home/opc/apps/smartfarm-service/frontend/current/server.js
+
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
