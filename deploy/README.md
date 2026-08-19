@@ -71,6 +71,7 @@ AI_SERVER_URL=http://127.0.0.1:8000
 **arm1 실측**: `/etc/nginx/nginx.conf`가 `include /etc/nginx/conf.d/*.conf;`만 사용 —
 sites-available/sites-enabled 구조 없음(hajacheck.conf 등 기존 설정 전부 `conf.d/` 평면 구조). 이 구조를 따른다.
 
+- [ ] `sudo mkdir -p /etc/nginx/snippets` (RHEL nginx는 기본 미제공)
 - [ ] nginx-farm.conf 하단 주석의 `proxy_set_header` 4줄을 `/etc/nginx/snippets/proxy-common.conf`로 저장
 - [ ] `deploy/nginx-farm.conf` → `/etc/nginx/conf.d/farm.conf` 로 복사
       (`limit_req_zone`은 파일 최상단에 있어도 `http` 컨텍스트로 include되므로 이 구조에서 그대로 유효)
