@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-20 (서비스 라이브 · PRD v1.0 확정 → 사이클1(FE 마감+BE 하드닝) 병렬 진행 중. 백업 cron·certbot 확인 완료)**
+> 마지막 갱신: **2026-08-20 (사이클1 완료 — PR #17 FE 마감·PR #18 BE 하드닝 머지. 다음: PRD §11 결정 사안)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 개요
@@ -45,9 +45,9 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 
 ## 🗺️ 다음 플랜 (✅ PRD v1.0 확정 — docs/prd/PRD_smartfarm_service.md §2.3·§11 기준, 2026-08-20)
 
-### P0 — 사이클 1 (🔄 병렬 진행 중)
-- [ ] FE 마감(frontend/9-polish): P004·caution 렌더 정합·FarmDetail getMe 분리
-- [ ] BE 하드닝(backend/9-hardening): refresh_tokens 퍼지 @Scheduled(V5 인덱스) + ArchUnit 가드 규칙
+### P0 — 사이클 1 (✅ 완료 2026-08-20)
+- [x] FE 마감 (PR #17)
+- [x] BE 하드닝 (PR #18) — ArchUnit이 기존 잠복 불일치 1건 즉시 검출·픽스
 
 ### P1 — 기능 확장 (PRD §11 결정 후 착수)
 - [ ] **환경 대시보드 연동**: smartfarm_ai '오늘 운영'(KMA 외기·제어 후 내부값·장치 상태)을 서비스 대시보드에 노출 — ai-server 조회 엔드포인트 추가 필요 = **"1차 ai-server 무변경" 원칙 첫 해제 지점**, 범위 협의 필수
@@ -67,5 +67,5 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | 멀티테넌시 | Farm=테넌트, path `{farmId}` 입력값 취급·매 요청 멤버십 재검증 (contract §2) |
 | 이미지 저장 | 1차 미저장(진단 결과만 이력화) |
 | ai-server 질문 이력 | PRD §11-1 — smartfarm_ai#66 으로 등재(비활성/익명화/태깅 택일 결정 대기). 연동 개선 umbrella 포함 |
-| FE P004 반영 | FE ErrorCode 유니온·메시지 맵에 P004 추가 필요(사소, 다음 FE 작업에 동승) |
+| FE P004 반영 | ✅ PR #17에서 해소 |
 | cropType | 1차 TOMATO 전용(ai-server 모델 제약), enum 확장 대비 |
