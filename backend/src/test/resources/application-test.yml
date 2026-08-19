@@ -28,3 +28,10 @@ prescription:
   retry-backoffs: 50ms, 100ms
   sweep-initial-delay: PT1H
   sweep-fixed-delay: PT1H
+
+# refresh_tokens 퍼지도 스위퍼와 동일하게 자동 발화 차단(테스트는 purge() 직접 호출).
+# 배치 크기를 작게 둬 소수 행으로도 배치 반복(loop) 동작을 검증할 수 있게 한다.
+refresh-token:
+  purge-initial-delay: PT1H
+  purge-fixed-delay: PT1H
+  purge-batch-size: 2
