@@ -42,8 +42,25 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 - [x] #6 [FE] 농장·진단·처방 화면 (PR #11)
 ### P2 (Phase 2 — 배포)
 - [x] #7 [INFRA] arm1 배포 완주 (PR #15·#16, 파이프라인 green·HTTPS·스모크 통과)
-- [ ] refresh_tokens 만료분 퍼지 스케줄러(BE 리뷰 P2-6, 컴포넌트 상이로 후속 분리)
-- [ ] 환경 대시보드(오늘 운영 데이터) 연동 — 범위 미정, contract 갱신 필요
+
+## 🗺️ 다음 플랜 후보 (⏸️ 결정 대기 — 별도 세션 PRD 확인 후 확정, 2026-08-20)
+> 우선순위·범위는 PRD와 대조 후 A가 확정한다. 아래는 오픈 직후 시점의 제안 스냅샷.
+
+### 후보 P0 — 오픈 직후 마감재 (#9 umbrella 발췌, 1~2사이클)
+- [ ] FE 마감 한 브랜치(Normal 1회): P004 ErrorCode·메시지 반영 + 처방 caution 렌더 정합(본문이 자체 라벨 포함 — "주의사항" 헤딩 금지, actions=즉시조치+예방 통합 리스트) + FarmDetail getMe 분리
+- [ ] refresh_tokens 퍼지 @Scheduled (BE 리뷰 P2-6)
+- [ ] ArchUnit 가드 규칙(farm-scoped 서비스 FarmAccessGuard 의존 강제) — 다음 farm-scoped 기능 전 안전망
+
+### 후보 P1 — 기능 확장 (contract 개정 필요·사용자 결정 사항)
+- [ ] **환경 대시보드 연동**: smartfarm_ai '오늘 운영'(KMA 외기·제어 후 내부값·장치 상태)을 서비스 대시보드에 노출 — ai-server 조회 엔드포인트 추가 필요 = **"1차 ai-server 무변경" 원칙 첫 해제 지점**, 범위 협의 필수
+- [ ] 회원 탈퇴: soft delete + `revokeAllByUserId` 동반(보안 리뷰 P2-3이 완료 조건 지정) + farm_members 유령 멤버십 정리
+- [ ] 알림: 경보·처방 완료 디스코드 웹훅(기존 smartfarm_ai notify 재활용)
+
+### 후보 P2 — 운영 안정화
+- [ ] PG 백업 cron(pg_dump smartfarm_service)
+- [ ] certbot 자동갱신 cron에 farm 도메인 포함 확인(arm1 pip certbot — /etc/cron.d 전체경로)
+- [ ] processing_started_at(V5)·@Lob 제거 등 #9 구조 개선 잔여
+- [ ] README 아키텍처 다이어그램·라이브 링크(포트폴리오 정리)
 
 ## 알려진 이슈 / 결정 기록
 | 항목 | 내용 |
