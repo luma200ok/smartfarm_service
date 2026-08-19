@@ -1,0 +1,26 @@
+# 서버 적용용 원본 유닛 — 메타(A)가 서버의 /etc/systemd/system/smartfarm-service-backend.service 로 설치한다.
+# docs/api-contract.md §0, §6 / docs/STATUS.md 인프라 표 기준.
+[Unit]
+Description=SmartFarm Service Backend (Spring Boot)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=opc
+
+# SPRING_PROFILES_ACTIVE=prod, SPRING_DATASOURCE_USERNAME/_PASSWORD, JWT_SECRET 등을 담는다.
+# SPRING_PROFILES_ACTIVE=prod 가 반드시 포함돼야 한다 — 누락 시 Swagger가 운영에 노출된다(docs/api-contract.md §6).
+EnvironmentFile=/etc/app-secrets/smartfarm-service.env
+
+WorkingDirectory=/home/opc/apps/smartfarm-service
+ExecStart=/usr/bin/java -Xmx512m -jar /home/opc/apps/smartfarm-service/app.jar
+
+Restart=on-failure
+RestartSec=5
+# LLM(Ollama)·ai-server와 자원을 공유하는 3코어/16GB 인스턴스 — 무제한 재시작 폭주 방지
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
