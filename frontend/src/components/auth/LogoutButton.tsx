@@ -12,6 +12,8 @@ export default function LogoutButton() {
     setSubmitting(true);
     try {
       await logout();
+    } catch {
+      // 서버 로그아웃 실패 무시 — 로컬 토큰은 logout()의 finally에서 이미 클리어됨
     } finally {
       router.replace("/login");
     }
