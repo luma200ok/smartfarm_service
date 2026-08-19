@@ -52,15 +52,34 @@ export async function login(payload: LoginRequest): Promise<TokenResponse> {
   return tokens;
 }
 
+// 동시에 여러 authFetch가 401(A003)을 맞으면 각자 refresh를 호출하지 않도록
+// 모듈 스코프 in-flight Promise로 직렬화한다. 순차 호출 시 로테이션된 구
+// refreshToken으로 두 번째 요청이 나가면 백엔드가 재사용으로 감지(A004)해
+// 전체 세션이 무효화되는 문제를 막는다.
+let refreshInFlight: Promise<TokenResponse> | null = null;
+
 export async function refreshTokens(): Promise<TokenResponse> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     throw new ApiError(401, "리프레시 토큰이 없습니다.", "A004");
   }
-  const body: RefreshRequest = { refreshToken };
-  const tokens = await api<TokenResponse>(ENDPOINTS.auth.refresh, { method: "POST", body });
-  setTokens(tokens);
-  return tokens;
+
+  refreshInFlight = (async () => {
+    const body: RefreshRequest = { refreshToken };
+    const tokens = await api<TokenResponse>(ENDPOINTS.auth.refresh, { method: "POST", body });
+    setTokens(tokens);
+    return tokens;
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
 }
 
 export async function logout(): Promise<void> {
