@@ -61,7 +61,7 @@
 ### 처방 비동기 job (Ollama 직렬화)
 - POST 시 `PENDING` 저장 후 202 즉시 반환 → **backend 내 단일 스레드 executor**가 순차 처리(`PROCESSING`) → ai-server `POST /api/prescriptions`(동기, 웜 ~16s) 호출 → `COMPLETED`(result 저장) / `FAILED`(P002).
 - ai-server 429(혼잡) 시 백오프 재시도 2회 후 FAILED. 프론트는 2~3초 간격 폴링.
-- status: `PENDING → PROCESSING → COMPLETED | FAILED`.
+- status: `PENDING → PROCESSING → COMPLETED | FAILED`. **FAILED 시 `errorCode` = P002(생성 실패) 또는 P003(혼잡 재시도 소진)** — FE는 P003이면 재시도 유도 렌더.
 - **접수 상한(2026-08-19 확정)**: 농장당 진행 중(PENDING+PROCESSING) 3건 초과 접수 → **P004(429)**. 워커 큐는 유한(포화 시 저장 없이 P004). 재기동 복구 재큐잉도 상한·연령 컷오프 적용(초과분 P002 FAILED).
 
 ### ai-server 연동 (기존 계약 그대로, 변경 없음)

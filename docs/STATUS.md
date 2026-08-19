@@ -21,6 +21,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | CI/CD | GitHub Actions — PR CI(빌드/테스트) + main 머지 시 배포 | ⬜ 미구성 |
 
 ⚠️ 용량 전제: LLM 로드 피크 12~14GB/16GB. 처방은 backend 단일 워커로 직렬화(contract §3). Next 빌드는 절대 서버에서 하지 않음.
+⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
 
 ## 마지막 머지 PR
 - **PR #13** (이슈 #3) — BE 진단 프록시+이력. P1 1(트랜잭션 내 외부 호출) 픽스, 테스트 85건
@@ -49,4 +50,6 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | DB 엔진 | PG16 확정(2026-08-19). arm1 mysqld는 6월 이전 잔재(구 community·mes·planner·smartfarm 스키마) — 신규 서비스와 무관, 추후 정리 후보 |
 | 멀티테넌시 | Farm=테넌트, path `{farmId}` 입력값 취급·매 요청 멤버십 재검증 (contract §2) |
 | 이미지 저장 | 1차 미저장(진단 결과만 이력화) |
+| ai-server 질문 이력 | ai-server가 처방 질문 원문을 farm/user 구분 없이 자체 DB(history)에 혼합 저장(smartfarm_ai src/llm/history.py) — **#7 오픈 전 보존정책 검토 필요**(비활성화 or 익명화) |
+| FE P004 반영 | FE ErrorCode 유니온·메시지 맵에 P004 추가 필요(사소, 다음 FE 작업에 동승) |
 | cropType | 1차 TOMATO 전용(ai-server 모델 제약), enum 확장 대비 |
