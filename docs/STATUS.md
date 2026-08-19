@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-19 (PR #13 머지 — BE #3 진단 프록시. 잔여: #4 처방 job 진행 중 → #7 배포)**
+> 마지막 갱신: **2026-08-19 (PR #14 머지 — BE #4 처방 job. 백엔드 API 완성, 다음: #7 arm1 배포)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 개요
@@ -24,6 +24,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
 
 ## 마지막 머지 PR
+- **PR #14** (이슈 #4) — BE 처방 job. opus 2종 P1 3→0(한글 스키마 fail-open·접수 무제한), 테스트 120건
 - **PR #13** (이슈 #3) — BE 진단 프록시+이력. P1 1(트랜잭션 내 외부 호출) 픽스, 테스트 85건
 - **PR #12** (이슈 #2) — BE Farm 멀티테넌시. opus 2종 P1 1→0, IDOR 전수 통과, 테스트 70건
 - **PR #11** (이슈 #6) — FE 농장·진단·처방 화면. P2 2 픽스 후 머지
@@ -36,7 +37,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 - [x] #2 [BE] Farm 멀티테넌시 (PR #12)
 ### P1 (Phase 1 — 도메인 + 프론트)
 - [x] #3 [BE] 진단 프록시 + 이력 (PR #13)
-- [ ] #4 [BE] 처방 비동기 job (단일 워커 직렬화) — 진행 중
+- [x] #4 [BE] 처방 비동기 job (PR #14)
 - [x] #5 [FE] 스캐폴드 + 인증 화면 (PR #8)
 - [x] #6 [FE] 농장·진단·처방 화면 (PR #11)
 ### P2 (Phase 2 — 배포)
