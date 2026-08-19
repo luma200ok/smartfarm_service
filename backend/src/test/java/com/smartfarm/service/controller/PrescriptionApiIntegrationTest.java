@@ -12,6 +12,8 @@ import com.smartfarm.service.PrescriptionApiTestSupport;
 import com.smartfarm.service.dto.PrescriptionRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.mockwebserver.Dispatcher;
 import okhttp3.mockwebserver.MockResponse;
@@ -254,6 +256,58 @@ class PrescriptionApiIntegrationTest extends PrescriptionApiTestSupport {
         } finally {
             AI_SERVER.setDispatcher(new QueueDispatcher()); // 이후 테스트는 다시 enqueue 방식
         }
+    }
+
+    // ── 접수 상한 (농장당 진행 중 3건 → P004) ───────────────────
+
+    @Test
+    @DisplayName("농장당 진행 중(PENDING+PROCESSING) 3건 상태에서 추가 접수는 429 P004로 거절된다")
+    void createPrescriptionOverActiveCapReturnsP004() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "상한 농장");
+
+        CountDownLatch release = new CountDownLatch(1);
+        AI_SERVER.setDispatcher(new Dispatcher() {
+            @Override
+            public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
+                // 응답을 붙잡아 3건이 전부 진행 중(PENDING/PROCESSING) 상태를 유지하게 한다
+                release.await(10, TimeUnit.SECONDS);
+                return new MockResponse()
+                        .setResponseCode(200)
+                        .addHeader("Content-Type", "application/json")
+                        .setBody(PRESCRIPTION_OK_BODY);
+            }
+        });
+        try {
+            long first = createPrescription(token, farmId, "상한 질문 1", null);
+            long second = createPrescription(token, farmId, "상한 질문 2", null);
+            long third = createPrescription(token, farmId, "상한 질문 3", null);
+
+            mockMvc.perform(post("/api/farms/" + farmId + "/prescriptions")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new PrescriptionRequest("상한 초과 질문", null))))
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(jsonPath("$.code").value("P004"));
+
+            release.countDown();
+            assertThat(awaitPrescriptionTerminal(token, farmId, first).get("status").asText())
+                    .isEqualTo("COMPLETED");
+            assertThat(awaitPrescriptionTerminal(token, farmId, second).get("status").asText())
+                    .isEqualTo("COMPLETED");
+            assertThat(awaitPrescriptionTerminal(token, farmId, third).get("status").asText())
+                    .isEqualTo("COMPLETED");
+        } finally {
+            release.countDown();
+            AI_SERVER.setDispatcher(new QueueDispatcher()); // enqueue는 QueueDispatcher 전제 — 복원 후 사용
+        }
+
+        // 진행 중이 모두 끝나면 다시 접수 가능(상한은 진행 중 건수 기준)
+        enqueuePrescriptionOk();
+        long fourth = createPrescription(token, farmId, "상한 해제 질문", null);
+        assertThat(awaitPrescriptionTerminal(token, farmId, fourth).get("status").asText())
+                .isEqualTo("COMPLETED");
     }
 
     // ── cross-tenant ─────────────────────────────────────────

@@ -9,8 +9,8 @@ import com.smartfarm.service.service.PrescriptionTransitionService.PrescriptionJ
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -35,20 +35,30 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PrescriptionJobWorker {
 
-    private final ExecutorService prescriptionWorkerExecutor;
+    private final ThreadPoolExecutor prescriptionWorkerExecutor;
     private final PrescriptionTransitionService transitionService;
     private final AiPrescriptionClient aiPrescriptionClient;
     private final PrescriptionProperties prescriptionProperties;
 
     /**
+     * 큐 여유 확인 — 접수 시 포화면 저장 없이 P004로 거절한다(contract §3 "포화 시 저장 없이 P004").
+     * 확인-제출 사이 레이스로 드물게 제출이 거절될 수 있으나, 그 경우 행은 PENDING으로 남고
+     * 스위퍼(5분 주기)가 회수하므로 유실은 없다(재량 결정 — 하드 실패 대신 지연 수용).
+     */
+    public boolean hasCapacity() {
+        return prescriptionWorkerExecutor.getQueue().remainingCapacity() > 0;
+    }
+
+    /**
      * job 제출 — 호출 전 처방 행이 반드시 커밋돼 있어야 한다(PrescriptionService.createPrescription의
-     * NOT_SUPPORTED 근거 참고). 셧다운 중 거절되면 행은 PENDING으로 남고 재기동 복구가 재큐잉한다.
+     * NOT_SUPPORTED 근거 참고). 거절(셧다운/큐 포화 AbortPolicy)되면 행은 PENDING으로 남고
+     * 스위퍼·재기동 복구가 재큐잉한다.
      */
     public void submit(Long prescriptionId) {
         try {
             prescriptionWorkerExecutor.execute(() -> process(prescriptionId));
         } catch (RejectedExecutionException e) {
-            log.warn("워커 종료 중 제출 거절 — PENDING 유지, 재기동 복구 대상: id={}", prescriptionId);
+            log.warn("워커 제출 거절(셧다운/큐 포화) — PENDING 유지, 스위퍼·재기동 복구 대상: id={}", prescriptionId);
         }
     }
 

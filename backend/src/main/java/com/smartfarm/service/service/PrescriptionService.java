@@ -8,10 +8,12 @@ import com.smartfarm.service.dto.PrescriptionResponse;
 import com.smartfarm.service.dto.PrescriptionResult;
 import com.smartfarm.service.dto.PrescriptionSummaryResponse;
 import com.smartfarm.service.entity.Prescription;
+import com.smartfarm.service.entity.PrescriptionStatus;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DiagnosisRepository;
 import com.smartfarm.service.repository.PrescriptionRepository;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,6 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class PrescriptionService {
+
+    /** 농장당 진행 중(PENDING+PROCESSING) 접수 상한(contract §3, 2026-08-19 확정). */
+    private static final int MAX_ACTIVE_PER_FARM = 3;
+    private static final List<PrescriptionStatus> ACTIVE_STATUSES =
+            List.of(PrescriptionStatus.PENDING, PrescriptionStatus.PROCESSING);
 
     private final PrescriptionRepository prescriptionRepository;
     private final DiagnosisRepository diagnosisRepository;
@@ -46,6 +53,20 @@ public class PrescriptionService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public PrescriptionResponse createPrescription(Long farmId, Long userId, PrescriptionRequest request) {
         farmAccessGuard.requireMember(farmId, userId);
+
+        // 접수 상한(contract §3): 농장당 진행 중(PENDING+PROCESSING) 3건 — 초과 접수는 P004(429).
+        // count-저장 사이 TOCTOU로 동시 접수가 상한을 살짝 넘을 수 있으나(단일 인스턴스·개인 서비스)
+        // 상한의 목적(폴링 적체·중복 클릭 완화)에는 충분하다 — 엄밀 상한이 필요해지면 유니크 제약/락으로 승격.
+        long activeCount = prescriptionRepository.countByFarmIdAndStatusIn(
+                farmId, ACTIVE_STATUSES);
+        if (activeCount >= MAX_ACTIVE_PER_FARM) {
+            throw new CustomException(ErrorCode.P004);
+        }
+        // 워커 큐 포화 시 저장 없이 P004(contract §3 "워커 큐는 유한(포화 시 저장 없이 P004)")
+        if (!prescriptionJobWorker.hasCapacity()) {
+            throw new CustomException(ErrorCode.P004);
+        }
+
         if (request.diagnosisId() != null
                 && !diagnosisRepository.existsByIdAndFarmId(request.diagnosisId(), farmId)) {
             // 진단 참조는 같은 farm 스코프만 허용 — 타 농장 진단 참조는 D001(cross-tenant IDOR 차단).

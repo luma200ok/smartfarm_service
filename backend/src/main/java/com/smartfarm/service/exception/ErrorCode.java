@@ -37,7 +37,8 @@ public enum ErrorCode {
     // Prescription
     P001(HttpStatus.NOT_FOUND, "P001", "처방 이력을 찾을 수 없습니다."),
     P002(HttpStatus.INTERNAL_SERVER_ERROR, "P002", "처방 생성에 실패했습니다."),
-    P003(HttpStatus.TOO_MANY_REQUESTS, "P003", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
+    P003(HttpStatus.TOO_MANY_REQUESTS, "P003", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요."),
+    P004(HttpStatus.TOO_MANY_REQUESTS, "P004", "처방 대기 한도를 초과했습니다. 진행 중인 처방 완료 후 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String code;

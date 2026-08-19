@@ -4,6 +4,7 @@ import com.smartfarm.service.dto.PrescriptionSummaryResponse;
 import com.smartfarm.service.entity.Prescription;
 import com.smartfarm.service.entity.PrescriptionStatus;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -27,6 +28,9 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
             + "FROM Prescription p WHERE p.farmId = :farmId ORDER BY p.createdAt DESC, p.id DESC",
             countQuery = "SELECT COUNT(p) FROM Prescription p WHERE p.farmId = :farmId")
     Page<PrescriptionSummaryResponse> findSummariesByFarmId(@Param("farmId") Long farmId, Pageable pageable);
+
+    /** 접수 상한(contract §3) — 농장당 진행 중(PENDING+PROCESSING) 건수. partial index 스캔. */
+    long countByFarmIdAndStatusIn(Long farmId, Collection<PrescriptionStatus> statuses);
 
     /** 재기동 복구 — PENDING 잔존 건 재큐잉용(id 오름차순 = 접수 순서 유지, partial index 스캔). */
     @Query("SELECT p.id FROM Prescription p WHERE p.status = :status ORDER BY p.id ASC")

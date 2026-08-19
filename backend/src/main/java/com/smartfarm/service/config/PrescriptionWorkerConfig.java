@@ -1,7 +1,8 @@
 package com.smartfarm.service.config;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
@@ -22,6 +23,9 @@ import org.springframework.web.client.RestClient;
 @RequiredArgsConstructor
 public class PrescriptionWorkerConfig {
 
+    /** 워커 큐 상한 — job당 최대 ~6분(120s×3+백오프)이라 200건이면 이미 수 시간 적체(그 이상은 거절이 옳다). */
+    static final int QUEUE_CAPACITY = 200;
+
     private final AiServerProperties aiServerProperties;
     private final PrescriptionProperties prescriptionProperties;
 
@@ -41,20 +45,26 @@ public class PrescriptionWorkerConfig {
     }
 
     /**
-     * 단일 워커 executor — 명시적 ExecutorService 빈(@Async 대신: 스레드 수 1 보장을 설정 파일이 아닌
-     * 코드로 고정하고, 테스트에서 동일 빈을 그대로 쓰기 위함). 큐는 무제한(LinkedBlockingQueue) —
-     * job당 수십 초가 걸려도 접수는 202로 즉시 받고 큐에 쌓는 설계이며, 유실분은 재기동 복구가 흡수한다.
+     * 단일 워커 executor — 명시적 ThreadPoolExecutor 빈(@Async 대신: 스레드 수 1 보장을 설정 파일이
+     * 아닌 코드로 고정하고, 테스트에서 동일 빈을 그대로 쓰기 위함). 큐는 <b>유한</b>
+     * (ArrayBlockingQueue {@value #QUEUE_CAPACITY} + AbortPolicy — contract §3 "워커 큐는 유한") —
+     * 접수 상한(농장당 3건)이 1차 방어지만, 다농장 누적으로도 무제한 적체가 못 생기게 상한을 둔다.
+     * 포화 시 접수는 저장 전에 P004로 거절({@code PrescriptionService.createPrescription}), 제출
+     * 레이스로 거절된 건은 PENDING 유지 → 스위퍼가 회수한다.
      *
      * <p><b>종료 정책</b>: 데몬 스레드 + shutdownNow — 셧다운 시 in-flight LLM 호출(최대 120s)을
      * 기다리지 않고 즉시 중단한다. 중단된 job은 PROCESSING으로 남고, 재기동 복구가 FAILED(P002)로
      * 정리한다(우아한 대기보다 배포 속도·확실한 수렴을 택함 — 처방은 사용자가 재요청 가능한 작업).
      */
     @Bean(destroyMethod = "shutdownNow")
-    public ExecutorService prescriptionWorkerExecutor() {
-        return Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "prescription-worker");
-            thread.setDaemon(true);
-            return thread;
-        });
+    public ThreadPoolExecutor prescriptionWorkerExecutor() {
+        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(QUEUE_CAPACITY),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "prescription-worker");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
     }
 }
