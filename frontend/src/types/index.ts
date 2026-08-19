@@ -31,7 +31,8 @@ export type ErrorCode =
   | "D003"
   | "P001"
   | "P002"
-  | "P003";
+  | "P003"
+  | "P004";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
