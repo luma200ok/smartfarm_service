@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import FormField from "@/components/ui/FormField";
 import { VALIDATION } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
+import { getMe } from "@/lib/api/auth";
 import { createInvitation, deleteFarm, getFarm, listMembers, removeMember, updateFarm } from "@/lib/api/farms";
 import type { FarmResponse, InvitationResponse, MemberResponse } from "@/types";
 
@@ -20,6 +21,7 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
   const router = useRouter();
   const [farm, setFarm] = useState<FarmResponse | null>(null);
   const [members, setMembers] = useState<MemberResponse[] | null>(null);
+  const [myUserId, setMyUserId] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
 
@@ -35,10 +37,15 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
     let cancelled = false;
     async function load() {
       try {
-        const [farmData, memberData] = await Promise.all([getFarm(farmId), listMembers(farmId)]);
+        const [farmData, memberData, me] = await Promise.all([
+          getFarm(farmId),
+          listMembers(farmId),
+          getMe(),
+        ]);
         if (cancelled) return;
         setFarm(farmData);
         setMembers(memberData);
+        setMyUserId(me.id);
         setEditName(farmData.name);
         setEditLocation(farmData.location ?? "");
       } catch (err) {
@@ -129,11 +136,27 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
     setActionBusy(true);
     try {
       await removeMember(farmId, memberId);
-      const memberData = await listMembers(farmId);
+      const [memberData, farmData] = await Promise.all([listMembers(farmId), getFarm(farmId)]);
       setMembers(memberData);
+      setFarm(farmData);
     } catch (err) {
       setActionError(resolveErrorMessage(err));
     } finally {
+      setActionBusy(false);
+    }
+  }
+
+  // 본인 탈퇴 (contract §3 "OWNER 또는 본인" — OWNER 본인은 F006으로 서버가 차단, 탈퇴 후 농장 목록으로 이동).
+  async function handleLeaveFarm(memberId: number) {
+    if (!window.confirm("정말 이 농장에서 탈퇴하시겠습니까?")) return;
+    setActionError(null);
+    setActionBusy(true);
+    try {
+      await removeMember(farmId, memberId);
+      router.push("/farms");
+      router.refresh();
+    } catch (err) {
+      setActionError(resolveErrorMessage(err));
       setActionBusy(false);
     }
   }
@@ -256,23 +279,40 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
       <section className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">멤버 ({members.length})</h3>
         <ul className="flex flex-col gap-2">
-          {members.map((m) => (
-            <li key={m.memberId} className="flex items-center justify-between text-sm">
-              <span>
-                {m.nickname} <span className="text-zinc-400 dark:text-zinc-500">({ROLE_LABELS[m.role] ?? m.role})</span>
-              </span>
-              {isOwner && m.role !== "OWNER" && (
-                <button
-                  type="button"
-                  disabled={actionBusy}
-                  onClick={() => handleRemoveMember(m.memberId)}
-                  className="text-xs text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
-                >
-                  제거
-                </button>
-              )}
-            </li>
-          ))}
+          {members.map((m) => {
+            const isSelf = myUserId !== null && m.userId === myUserId;
+            return (
+              <li key={m.memberId} className="flex items-center justify-between text-sm">
+                <span>
+                  {m.nickname}{" "}
+                  <span className="text-zinc-400 dark:text-zinc-500">
+                    ({ROLE_LABELS[m.role] ?? m.role}
+                    {isSelf ? " · 나" : ""})
+                  </span>
+                </span>
+                {isOwner && m.role !== "OWNER" && !isSelf && (
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => handleRemoveMember(m.memberId)}
+                    className="text-xs text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
+                  >
+                    제거
+                  </button>
+                )}
+                {isSelf && m.role !== "OWNER" && (
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => handleLeaveFarm(m.memberId)}
+                    className="text-xs text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
+                  >
+                    탈퇴하기
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </section>
 
