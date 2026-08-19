@@ -11,3 +11,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 15MB
+
+# 타임아웃 테스트를 빠르게 하려고 응답 타임아웃을 짧게 둔다(url은 테스트별 MockWebServer로 동적 오버라이드)
+ai-server:
+  connect-timeout: 1s
+  read-timeout: 2s
