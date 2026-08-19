@@ -9,7 +9,9 @@ Type=simple
 User=opc
 Environment=PORT=3000 HOSTNAME=127.0.0.1 NODE_ENV=production
 
-WorkingDirectory=/home/opc/apps/smartfarm-service/frontend/current
+# WorkingDirectory 미기재 — Next standalone server.js가 자체적으로 process.chdir(__dirname) 수행.
+# systemd(init_t)의 /home(user_home_t) CHDIR을 SELinux가 차단(dontaudit, AVC 미기록)해
+# 첫 배포(2026-08-20)에서 기동 실패했던 원인. 서버 반영 완료 — 이 파일은 원본 동기화.
 ExecStart=/usr/bin/node /home/opc/apps/smartfarm-service/frontend/current/server.js
 
 Restart=on-failure
