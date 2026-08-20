@@ -34,6 +34,7 @@ public enum ErrorCode {
     D001(HttpStatus.NOT_FOUND, "D001", "진단 이력을 찾을 수 없습니다."),
     D002(HttpStatus.BAD_REQUEST, "D002", "이미지 형식 또는 크기가 올바르지 않습니다."),
     D003(HttpStatus.BAD_GATEWAY, "D003", "AI 서버 오류가 발생했습니다."),
+    D004(HttpStatus.NOT_FOUND, "D004", "진단 원본 이미지를 찾을 수 없습니다."),
 
     // Prescription
     P001(HttpStatus.NOT_FOUND, "P001", "처방 이력을 찾을 수 없습니다."),
