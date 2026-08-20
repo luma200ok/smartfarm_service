@@ -1,0 +1,57 @@
+name: deploy-home
+
+# 홈서버 self-hosted runner 배포 (이슈 #27 PR-2). 기존 deploy.yml(OCI 배포)과 병행 유지 — 서로 독립.
+#
+# 보안 결정 요약:
+#   1) 트리거는 workflow_dispatch만 — public 레포 + self-hosted runner 조합에서 pull_request 계열
+#      트리거를 두면 포크 PR의 코드가 홈서버 러너에서 실행될 수 있으므로 수동 트리거로 원천 차단.
+#      (push 트리거는 파일럿 안정화 후 별도 PR에서 추가 예정)
+#   2) GitHub Actions 시크릿 미사용 — 시크릿은 전부 러너 로컬 env-file(/home/jb/srv/smartfarm/.env)에만
+#      존재하고 워크플로우/레포에는 어떤 값도 없다. GITHUB_TOKEN 권한도 contents: read로 최소화.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# 배포 중복 실행 방지 — 진행 중 배포는 취소하지 않고 뒤 실행을 대기시킨다
+concurrency:
+  group: deploy-home
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, home]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & up (docker compose)
+        # --env-file 값은 compose 변수 치환(interpolation)에 쓰이므로 frontend build args의
+        # NEXT_PUBLIC_API_URL=${PUBLIC_URL}도 이 env-file에서 공급된다.
+        # 빌드 컨텍스트(../../backend 등)는 compose 파일 위치 기준 상대경로라 실행 CWD와 무관.
+        run: docker compose -f deploy/home/compose.yml --env-file /home/jb/srv/smartfarm/.env up -d --build
+
+      - name: Health check
+        # nginx는 127.0.0.1:8088에만 publish — 러너가 홈서버 로컬이므로 여기서 직접 curl 가능.
+        # 재시도 패턴은 deploy.yml과 동일(6회 × 5초). 접속 실패(curl 비정상 종료)도 재시도로 흡수.
+        run: |
+          set -euo pipefail
+          ok=""
+          for i in 1 2 3 4 5 6; do
+            sleep 5
+            if curl -fs http://127.0.0.1:8088/api/health > /dev/null; then
+              echo "healthy (attempt $i)"
+              ok=1
+              break
+            fi
+            echo "not ready yet (attempt $i)"
+          done
+          if [ -z "$ok" ]; then
+            echo "health check failed after 6 attempts" >&2
+            docker compose -f deploy/home/compose.yml --env-file /home/jb/srv/smartfarm/.env logs --tail=100 || true
+            exit 1
+          fi
+
+      - name: Prune dangling images
+        # --build 반복으로 쌓이는 dangling 레이어 정리 — 홈서버 디스크 보호(태그된 이미지는 유지)
+        run: docker image prune -f
