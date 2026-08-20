@@ -1,13 +1,14 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-20 (🏠 홈서버 이전 파일럿 PR-1 머지 — 이슈 #27 PR #28, 도커화·홈 배포 구성 추가)**
+> 마지막 갱신: **2026-08-20 (🏠 파일럿 PR-2 완료 — PR #29·#30 머지, 홈서버 첫 배포 성공·전 컨테이너 healthy)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
 - **배경**: OCI Free Tier 축소로 arm1·arm2 전면 폐기 → 홈서버(x86_64, 32GB, Ubuntu 26.04, `192.168.0.6`) 이전. DNS 전환까지 OCI 배포 병행.
 - **PR-1 ✅ (PR #28)**: backend/frontend Dockerfile + `deploy/home/`(compose·nginx·cloudflared·.env.example·세팅 README). 기존 파일 무수정. 리뷰 P1 1(업로드 UID 권한)→픽스, P2 4 반영.
-- **PR-2 (다음)**: `.github/workflows/deploy-home.yml` — self-hosted runner(라벨 home) 배포, Critical(public 레포 runner 보안). 선행 수동 세팅: shared-net·db compose 조인·`~/srv/smartfarm/.env`·runner 설치·CF 터널 생성(`deploy/home/README.md` 체크리스트).
-- **PR-3**: 홈서버 기동+스모크(`farm-home.luma200ok.com`) / **PR-4**: 컷오버(DNS 전환+최종 데이터 동기, 이슈 #27 닫음).
+- **PR-2 ✅ (PR #29)**: deploy-home.yml(dispatch 전용) + smartfarm-deploy.sh(sudo 헬퍼). opus 리뷰 2종×2라운드로 보안 P1 3건 해소 — 러너=전용 runner 계정(도커 그룹 X), sudoers 인자 고정, 배포 입력=root 소유 /opt/smartfarm/repo(origin/main 직접 체크아웃, 워크스페이스 미사용). 잔여 보안 항목은 후속 이슈 분리.
+- **PR #30 ✅**: 첫 배포의 frontend unhealthy 픽스 — Next standalone HOSTNAME 바인딩 함정 + alpine localhost=::1. **홈서버 첫 배포 성공: backend·frontend healthy, 내부 스모크 200.**
+- **PR-3 (다음)**: Public Hostname(farm-home) 등록 후 외부 e2e 스모크 + 컷오버 체크리스트 / **PR-4**: 컷오버(DNS 전환+최종 데이터 동기, 이슈 #27 닫음).
 - 홈서버 DB: 공용 스택 `~/srv/db/compose.yml`(**pgvector/pg16**·mysql8·redis7), 리허설 복원 검증 완료. 이전 순서·백업 현황은 메모리 `oci-migration-progress` 참조.
 
 ## 개요
