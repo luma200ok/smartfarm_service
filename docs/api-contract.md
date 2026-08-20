@@ -64,7 +64,8 @@
 
 ### 2026-08-20 Phase 3 확장 (FR-7·탈퇴·알림·이미지 — ai-server 무변경 원칙 해제 결정)
 - **회원 탈퇴**: soft delete + `revokeAllByUserId` + 본인 farm_members 전부 삭제(각 농장 활성 초대 무효화 동반 — 기존 탈퇴 정책 재사용). OWNER인 농장(살아있는 농장 기준)이 하나라도 있으면 **A006(409)** — 농장 삭제 후 탈퇴. 탈퇴 후 이메일 재가입 허용(partial unique index가 이미 보장).
-- **탈퇴 봉쇄(2026-08-20 보안 리뷰 확정)**: ① 인증 필터가 **매 요청 유저 생존(soft delete 여부)을 검증** — 잔존 access 토큰으로 신규 농장 생성·초대 수락 등 쓰기 경로 차단(A004) ② 탈퇴 트랜잭션은 users 행 잠금으로 동시 멤버십 생성 race 직렬화 ③ 재인증: 비밀번호 재확인 ④ PII 즉시 익명화(email·nickname — bcrypt 해시 포함 소거).
+- **탈퇴 봉쇄(2026-08-20 보안·코드 리뷰 확정)**: ① **FarmAccessGuard 멤버십 조회가 User 생존을 함께 검증**(JOIN User + @SQLRestriction — 전 farm-scoped 표면) + 가드 밖 진입점(농장 생성·초대 수락) 유저 생존 검사(A004) ② 탈퇴 트랜잭션은 users 행 잠금(FOR UPDATE)으로 동시 멤버십 생성·동시 탈퇴 직렬화 ③ 재인증: 비밀번호 재확인 ④ PII 즉시 익명화(email·nickname·비밀번호 해시 소거).
+- **탈퇴 유저 잔존 데이터**: diagnoses/prescriptions의 createdBy는 탈퇴 후에도 원 userId를 유지(팀 이력 보존 — join 없어 PII 미노출, FE는 미해석 id 표기 허용). 수용된 정책.
 - **알림(디스코드 웹훅)**: farms에 `webhook_url` 컬럼(nullable). 처방 **COMPLETED/FAILED 전이 시** 워커가 **트랜잭션 밖에서** 발송(실패는 로그만 — 알림 실패가 처방 상태에 영향 금지, 타임아웃 5s). URL은 응답에 마스킹(설정 여부 boolean `webhookConfigured`만 노출 — 멤버에게 URL 원문 비노출).
 - **진단 이미지 저장**: 원본을 `${IMAGE_STORAGE_DIR}/{farmId}/{diagnosisId}.{ext}`에 저장(운영 /home/opc/apps/smartfarm-service/uploads). diagnoses에 `image_path` 컬럼. 응답 `imageUrl` = 위 GET 경로(테넌트 인가 필수라 nginx 정적 서빙 금지, backend 스트리밍). 저장 실패는 진단 자체를 실패시키지 않음(imageUrl null, WARN). 보존 정책은 후속.
 - **환경 대시보드**: ai-server 신규 `GET /api/environment/today`(무변경 원칙 해제, smartfarm_ai#66) 프록시. **1차: 전 농장 공용 데모 온실 데이터**(farm↔센서 매핑은 후속). **ai-server 응답 확정(2026-08-20, snake_case — 진단과 동일하게 backend가 @JsonNaming 매핑)**: `{demo: true, updated_at, outdoor: {temp, humidity}, indoor: {temp, humidity, controlled}, devices: [{name, on}], alerts: [str]}` — 상태 파일·KMA 불가 시에도 **항상 200 + 가용 필드 + alerts 사유**. 서비스 응답 `EnvironmentTodayResponse`는 camelCase(`updatedAt`)로 변환, 60s 캐시.
