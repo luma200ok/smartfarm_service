@@ -63,6 +63,32 @@ public class FarmMemberService {
     }
 
     /**
+     * 회원 탈퇴 전용 — 본인 멤버십 전부 벌크 삭제 + 소속했던 각 농장의 활성 초대 전부 무효화.
+     * 단건 탈퇴({@link #removeMember})와 동일한 초대 무효화 정책(revokeActiveInvitations)을
+     * 재사용한다(contract §3 탈퇴 절).
+     *
+     * <p>userId는 인증 principal(본인)만 전달되는 내부 경로라 FarmAccessGuard를 태우지 않는다
+     * — 본인 소유 행만 삭제하므로 cross-tenant 접근 여지가 없다. OWNER 부재 검증(A006)·
+     * 유저 행 잠금은 호출자(UserService#withdraw)가 선행한다.
+     *
+     * <p>초대 무효화용 farmId는 벌크 DELETE 전에 프로젝션으로 선조회한다. 엔티티
+     * select-then-deleteAll이 아닌 벌크 DELETE라 동시 탈퇴의 패자도 0건 삭제로 조용히
+     * 수렴한다(500 여지 제거).
+     *
+     * @return 삭제된 멤버십 행 수(감사 로그용)
+     */
+    @Transactional
+    public int removeAllMemberships(Long userId) {
+        List<Long> farmIds = farmMemberRepository.findFarmIdsByUserId(userId);
+        if (farmIds.isEmpty()) {
+            return 0;
+        }
+        int removed = farmMemberRepository.deleteAllByUserId(userId);
+        farmIds.forEach(this::revokeActiveInvitations);
+        return removed;
+    }
+
+    /**
      * 멤버 제거(탈퇴 포함) 시 해당 농장 활성 초대코드 전부 무효화 (contract §2)
      * — 제거된 멤버가 보유한 코드로 재합류하는 것을 차단.
      */

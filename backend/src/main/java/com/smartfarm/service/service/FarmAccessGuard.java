@@ -19,6 +19,11 @@ import org.springframework.stereotype.Component;
  *       항상 같은 응답을 받으므로 farmId 열거로 농장 존재를 유추할 수 없다.</li>
  *   <li>멤버십은 있으나 농장 soft delete → 404 F001. 전(前) 멤버에게만 노출되므로 유추 채널 아님.</li>
  * </ol>
+ *
+ * <p>멤버십 조회는 User join(@SQLRestriction) 기반 — 탈퇴(soft delete) 유저는 잔존 access
+ * 토큰·잔존 멤버십 행이 있어도 이 가드를 타는 전 farm-scoped 표면에서 F002로 차단된다
+ * (contract 탈퇴 봉쇄 ①). 가드 밖 farm 표면인 내 농장 목록(findMyFarms)도 동일한
+ * User join으로 빈 목록을 반환해, farm 표면 전체에서 성립한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,7 +36,7 @@ public class FarmAccessGuard {
     }
 
     public FarmAccess requireMember(Long farmId, Long userId) {
-        FarmMember membership = farmMemberRepository.findByFarmIdAndUserId(farmId, userId)
+        FarmMember membership = farmMemberRepository.findLiveByFarmIdAndUserId(farmId, userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.F002));
         Farm farm = farmRepository.findById(farmId)
                 .orElseThrow(() -> new CustomException(ErrorCode.F001));

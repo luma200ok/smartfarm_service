@@ -60,4 +60,25 @@ public class User {
     void preUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
+
+    /**
+     * 회원 탈퇴 — soft delete + PII 즉시 익명화(contract 탈퇴 봉쇄 ④).
+     * <ul>
+     *   <li>email → {@code withdrawn-{id}@invalid}: PII 소거. partial unique index
+     *       (WHERE deleted_at IS NULL) 밖이라 충돌 없음, 원 이메일 재가입은 그대로 허용.</li>
+     *   <li>nickname → 탈퇴회원, password → BCrypt 형식이 아닌 고정값
+     *       ({@link org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder#matches}가
+     *       항상 false — 어떤 비밀번호로도 인증 불가).</li>
+     * </ul>
+     * <p><b>유일한 탈퇴 경로.</b> {@code userRepository.delete()}(@SQLDelete)는 익명화를
+     * 건너뛴 soft delete가 되므로 호출 금지 — ArchitectureRulesTest 규칙③이 delete 계열
+     * 호출을 정적으로 차단한다. @SQLDelete 어노테이션 자체는 유지한다(제거 시 미래의
+     * delete 호출이 hard delete로 떨어져 더 위험).
+     */
+    public void withdraw() {
+        this.deletedAt = LocalDateTime.now();
+        this.email = "withdrawn-" + this.id + "@invalid";
+        this.nickname = "탈퇴회원";
+        this.password = "withdrawn";
+    }
 }

@@ -9,11 +9,13 @@ import com.smartfarm.service.dto.AcceptInvitationRequest;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.Invitation;
+import com.smartfarm.service.entity.User;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.FarmMemberRepository;
 import com.smartfarm.service.repository.FarmRepository;
 import com.smartfarm.service.repository.InvitationRepository;
+import com.smartfarm.service.repository.UserRepository;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -34,11 +36,15 @@ class InvitationServiceUnitTest {
     private final FarmRepository farmRepository = mock(FarmRepository.class);
     private final FarmMemberRepository farmMemberRepository = mock(FarmMemberRepository.class);
     private final FarmAccessGuard farmAccessGuard = mock(FarmAccessGuard.class);
+    private final UserRepository userRepository = mock(UserRepository.class);
 
     private final InvitationService invitationService = new InvitationService(
-            invitationRepository, farmRepository, farmMemberRepository, farmAccessGuard);
+            invitationRepository, farmRepository, farmMemberRepository, farmAccessGuard, userRepository);
 
     private void stubAcceptUntilSave(DataIntegrityViolationException saveFailure) {
+        // 진입부 유저 생존 검사(탈퇴 봉쇄 ①) 통과 스텁
+        when(userRepository.findById(any())).thenReturn(Optional.of(
+                User.builder().email("unit@example.com").password("x").nickname("단위유저").build()));
         Invitation invitation = Invitation.builder()
                 .farmId(1L)
                 .codeHash(TokenHasher.sha256(RAW_CODE))

@@ -12,6 +12,7 @@ import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.FarmMemberRepository;
 import com.smartfarm.service.repository.FarmRepository;
 import com.smartfarm.service.repository.InvitationRepository;
+import com.smartfarm.service.repository.UserRepository;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -37,6 +38,7 @@ public class InvitationService {
     private final FarmRepository farmRepository;
     private final FarmMemberRepository farmMemberRepository;
     private final FarmAccessGuard farmAccessGuard;
+    private final UserRepository userRepository;
 
     /**
      * 초대코드 발급 — 농장당 활성 코드 1건 (contract §2):
@@ -58,9 +60,14 @@ public class InvitationService {
     /**
      * 초대 수락 — 코드 미존재/폐기/만료/soft delete된 농장의 코드는 전부 F004로 통일
      * (수락자에게 코드 상태·농장 존재 여부를 구분해 노출하지 않음).
+     *
+     * <p>FarmAccessGuard를 타지 않는 진입점이라 유저 생존을 직접 검증한다
+     * (contract 탈퇴 봉쇄 ① — 탈퇴 유저의 잔존 access 토큰으로 멤버십 재획득 차단).
      */
     @Transactional
     public FarmResponse acceptInvitation(Long userId, AcceptInvitationRequest request) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.A004));
         Invitation invitation = invitationRepository.findByCodeHash(TokenHasher.sha256(request.code()))
                 .orElseThrow(() -> new CustomException(ErrorCode.F004));
         if (invitation.isRevoked() || invitation.isExpired()) {
@@ -86,7 +93,8 @@ public class InvitationService {
             }
             throw e;
         }
-        return FarmResponse.of(farm, FarmRole.MEMBER, farmMemberRepository.countByFarmId(farm.getId()));
+        return FarmResponse.of(farm, FarmRole.MEMBER,
+                farmMemberRepository.countLiveMembersByFarmId(farm.getId()));
     }
 
     private boolean isMemberUniqueViolation(DataIntegrityViolationException e) {
