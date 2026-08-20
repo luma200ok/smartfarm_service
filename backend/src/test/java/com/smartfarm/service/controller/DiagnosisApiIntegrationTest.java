@@ -1,20 +1,31 @@
 package com.smartfarm.service.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartfarm.service.DiagnosisApiTestSupport;
+import com.smartfarm.service.entity.Diagnosis;
+import com.smartfarm.service.repository.DiagnosisRepository;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 
 class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
+
+    @Autowired
+    private DiagnosisRepository diagnosisRepository;
 
     private MockMultipartFile leafImage() {
         return new MockMultipartFile("file", "leaf.jpg", "image/jpeg",
@@ -30,7 +41,7 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
         long farmId = createFarm(token, "진단 농장");
         enqueueOkResponse();
 
-        mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
+        MvcResult result = mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
                         .file(leafImage())
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isCreated())
@@ -40,10 +51,15 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
                 .andExpect(jsonPath("$.labelKr").value("잎마름병"))
                 .andExpect(jsonPath("$.prob").value(0.93))
                 .andExpect(jsonPath("$.part").value("leaf"))
-                .andExpect(jsonPath("$.imageUrl").doesNotExist())
+                .andExpect(jsonPath("$.imageUrl").exists())
                 .andExpect(jsonPath("$.camPngBase64").value("aGVsbG8="))
                 .andExpect(jsonPath("$.createdBy").isNumber())
-                .andExpect(jsonPath("$.createdAt").exists());
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andReturn();
+
+        long diagnosisId = readJson(result).get("id").asLong();
+        assertThat(readJson(result).get("imageUrl").asText())
+                .isEqualTo("/api/farms/" + farmId + "/diagnoses/" + diagnosisId + "/image");
     }
 
     @Test
@@ -284,5 +300,110 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
                 .andExpect(status().isCreated())
                 .andReturn();
         return readJson(result).get("id").asLong();
+    }
+
+    // ── 이미지 저장 (성공/실패가 진단 자체에 영향 없음) ──────────
+
+    @Test
+    @DisplayName("이미지 저장 실패(디렉터리 생성 불가)여도 진단은 201로 유지되고 imageUrl은 null이다")
+    void createDiagnosisImageStorageFailureDoesNotFailDiagnosis() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "저장실패 농장");
+        // farmId 서브디렉터리 자리에 파일을 미리 만들어 두어 디렉터리 생성을 강제로 실패시킨다.
+        Path blocker = IMAGE_STORAGE_DIR.resolve(String.valueOf(farmId));
+        Files.write(blocker, "blocker".getBytes(StandardCharsets.UTF_8));
+        enqueueOkResponse();
+
+        mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
+                        .file(leafImage())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.imageUrl").doesNotExist());
+    }
+
+    // ── 이미지 조회 (인가 스트리밍) ──────────────────────────
+
+    @Test
+    @DisplayName("정상 이미지 스트리밍 — content-type·바이트가 원본과 일치한다")
+    void findDiagnosisImageSuccess() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "이미지 농장");
+        enqueueOkResponse();
+        long diagnosisId = createDiagnosis(token, farmId);
+
+        MvcResult result = mockMvc.perform(get(
+                                "/api/farms/" + farmId + "/diagnoses/" + diagnosisId + "/image")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsByteArray())
+                .isEqualTo("fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("cross-tenant: 미멤버가 이미지 조회 시 403 F002를 반환한다")
+    void findDiagnosisImageAsNonMember() throws Exception {
+        String ownerToken = signupAndLogin("주인장");
+        String otherToken = signupAndLogin("남남남");
+        long farmId = createFarm(ownerToken, "격리 이미지 농장");
+        enqueueOkResponse();
+        long diagnosisId = createDiagnosis(ownerToken, farmId);
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/diagnoses/" + diagnosisId + "/image")
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("F002"));
+    }
+
+    @Test
+    @DisplayName("cross-tenant: 타 농장 diagnosisId로 이미지 조회 시 404 D001을 반환한다(농장 스코프)")
+    void findDiagnosisImageCrossTenantDiagnosisId() throws Exception {
+        String ownerAToken = signupAndLogin("농장주A-이미지");
+        String ownerBToken = signupAndLogin("농장주B-이미지");
+        long farmA = createFarm(ownerAToken, "이미지 농장 A");
+        long farmB = createFarm(ownerBToken, "이미지 농장 B");
+        enqueueOkResponse();
+        long diagnosisId = createDiagnosis(ownerAToken, farmA);
+
+        mockMvc.perform(get("/api/farms/" + farmB + "/diagnoses/" + diagnosisId + "/image")
+                        .header("Authorization", "Bearer " + ownerBToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("D001"));
+    }
+
+    @Test
+    @DisplayName("이미지 미보유 진단(저장 실패) 조회 시 404 D004를 반환한다")
+    void findDiagnosisImageNotStored() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "이미지없음 농장");
+        Path blocker = IMAGE_STORAGE_DIR.resolve(String.valueOf(farmId));
+        Files.write(blocker, "blocker".getBytes(StandardCharsets.UTF_8));
+        enqueueOkResponse();
+        long diagnosisId = createDiagnosis(token, farmId);
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/diagnoses/" + diagnosisId + "/image")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("D004"));
+    }
+
+    @Test
+    @DisplayName("image_path에 path traversal 문자열이 주입돼도 500이 아닌 안전하게 404 D004로 실패한다")
+    void findDiagnosisImagePathTraversalRejected() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "트래버설 농장");
+        enqueueOkResponse();
+        long diagnosisId = createDiagnosis(token, farmId);
+
+        Diagnosis diagnosis = diagnosisRepository.findById(diagnosisId).orElseThrow();
+        diagnosis.attachImage("../../../../etc/passwd");
+        diagnosisRepository.save(diagnosis);
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/diagnoses/" + diagnosisId + "/image")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("D004"));
     }
 }
