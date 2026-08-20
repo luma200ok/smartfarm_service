@@ -20,6 +20,14 @@ export const VALIDATION = {
 
 export const DEFAULT_ERROR_MESSAGE = "요청 처리 중 오류가 발생했습니다.";
 
+// 환경 대시보드 장치명 한글 라벨 (docs/_local/handoff/fs-22-dashboard-next.md FE 범위 6)
+export const DEVICE_LABELS: Record<string, string> = {
+  dehumidifier: "제습기",
+  humidifier: "가습기",
+  cooling_fan: "쿨링팬",
+  heater: "히터",
+};
+
 // ErrorCode -> 사용자 노출 메시지 (docs/api-contract.md §5)
 export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   C001: "입력값을 확인해주세요.",
