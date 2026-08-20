@@ -48,7 +48,8 @@ mkdir -p ~/srv/smartfarm/images
 sudo chown -R 1000:1000 ~/srv/smartfarm/images
 ```
 
-- [ ] `deploy/home/compose.yml`의 backend 볼륨(`~/srv/smartfarm/images:/data/images`)과 경로 일치 확인
+- [ ] `deploy/home/compose.yml`의 backend 볼륨(`${DATA_DIR}/images:/data/images`)과 경로 일치 확인
+      — `.env`의 `DATA_DIR`(절대경로, 예: `/home/jb/srv/smartfarm`)이 이 디렉터리를 가리켜야 한다
 - [ ] `chown` UID/GID 1000은 `backend/Dockerfile`의 비루트 유저(spring)와 고정 매칭된다(리뷰 P1) —
       컨테이너 내부에서 쓰기 권한이 필요하므로 반드시 먼저 실행. 검증: `docker run --rm <backend 이미지> id -u` → `1000`
 - [ ] 디스크 여유 공간 확인(진단 이미지 누적)
@@ -56,12 +57,17 @@ sudo chown -R 1000:1000 ~/srv/smartfarm/images
 ## 4. GitHub self-hosted runner 설치 (라벨 `home`)
 
 - [ ] 레포 Settings → Actions → Runners → New self-hosted runner, 라벨에 `home` 추가
-- [ ] **비루트 전용 계정**으로 설치(예: `runner` 유저) + `docker` 그룹에 추가
-      (`sudo usermod -aG docker runner`) — runner 프로세스가 루트 권한 없이 docker 명령 실행 가능하도록
+- [ ] **전용 `runner` 계정**으로 설치 — `jb`가 아닌 별도 비루트 계정이며, **`docker` 그룹에 넣지 않는다**.
+      runner(=워크플로우 코드)가 docker 소켓·시크릿에 직접 접근하지 못하게 권한을 분리하는 것이 목적.
+- [ ] 배포 실행 권한은 sudo 헬퍼 **1개만** 허용: `/usr/local/bin/smartfarm-deploy`(root 소유,
+      서브커맨드 `up|ps|prune` 화이트리스트)를 sudoers에 `runner ALL=(root) NOPASSWD: /usr/local/bin/smartfarm-deploy`
+      형태로 등록. 헬퍼가 root로 compose를 실행하고 `.env`(root만 접근, 600)를 `--env-file`로 공급한다 —
+      워크플로우는 `sudo -n /usr/local/bin/smartfarm-deploy <서브커맨드>`만 호출하며 임의 docker 명령·시크릿
+      열람이 불가능하다.
 - [ ] 이 파일럿의 배포 워크플로우는 **`pull_request` 트리거를 절대 사용하지 않는다** — self-hosted
       runner에서 fork PR의 워크플로우가 실행되면 PR 작성자가 임의 코드를 runner(홈 네트워크 접근 가능)에서
       실행시킬 수 있어 원격 코드 실행(RCE)/내부망 피벗 위험이 있다(GitHub Actions 공식 보안 권고사항).
-      `push`(main, 보호된 브랜치) 또는 `workflow_dispatch`만 사용 — 이는 후속 워크플로우 PR에서 강제한다.
+      현행 `.github/workflows/deploy-home.yml`은 `workflow_dispatch`만 사용하고 main ref 가드를 건다.
 - [ ] runner 서비스로 등록(`svc.sh install && svc.sh start`)해 재부팅 후에도 유지
 
 ## 5. Cloudflare Tunnel 생성
@@ -90,8 +96,8 @@ docker compose up -d
 
 ## 7. 알려진 제약 / 후속
 
-- 이 PR은 도커화 산출물만 포함 — self-hosted runner용 배포 워크플로우(`.github/workflows/deploy-home.yml`
-  등)는 별도 PR(#27 PR-2 이후)에서 추가한다.
+- 배포 워크플로우는 `.github/workflows/deploy-home.yml`(#27 PR-2)로 추가됨 — `workflow_dispatch` 전용이며
+  push(main) 자동 트리거는 파일럿 안정화 후 별도 PR에서 추가 예정.
 - `docker compose logs`의 백엔드 로그는 stdout이라 systemd/journalctl 기반이 아님 — 로그 보존 정책은
   후속 검토 필요(예: `logging: driver: json-file, options: max-size`).
 - OCI arm1과 홈서버 두 곳에 동시에 서비스가 뜨는 동안 DB는 서로 다른 인스턴스(arm1=native PG,

@@ -9,6 +9,9 @@
 #
 # TLS는 이 스택에서 종단하지 않는다 — cloudflared(Cloudflare Tunnel)가 종단하고 nginx는 평문 80만 처리한다.
 
+# 프로젝트명 고정 — 실행 CWD·유저에 따라 프로젝트명이 달라져 같은 스택이 이중으로 뜨는 것을 방지
+name: smartfarm-home
+
 networks:
   shared-net:
     external: true
@@ -34,7 +37,9 @@ services:
       # 홈서버는 ollama·smartfarm-ai와 자원을 공유 — 기존 systemd 유닛(deploy/*.service)과 동일하게 512m 캡 유지
       JAVA_OPTS: -Xmx512m
     volumes:
-      - ~/srv/smartfarm/images:/data/images
+      # ~ 사용 금지 — sudo 헬퍼(root)로 실행하면 ~가 /root로 풀린다. env-file의 DATA_DIR(절대경로)로
+      # 주입하고, 미설정 시 :?로 즉시 실패시켜 잘못된 경로 마운트를 차단(예: DATA_DIR=/home/jb/srv/smartfarm)
+      - ${DATA_DIR:?required}/images:/data/images
     networks:
       - default
       - shared-net

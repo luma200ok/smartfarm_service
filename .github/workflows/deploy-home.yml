@@ -6,8 +6,12 @@ name: deploy-home
 #   1) 트리거는 workflow_dispatch만 — public 레포 + self-hosted runner 조합에서 pull_request 계열
 #      트리거를 두면 포크 PR의 코드가 홈서버 러너에서 실행될 수 있으므로 수동 트리거로 원천 차단.
 #      (push 트리거는 파일럿 안정화 후 별도 PR에서 추가 예정)
-#   2) GitHub Actions 시크릿 미사용 — 시크릿은 전부 러너 로컬 env-file(/home/jb/srv/smartfarm/.env)에만
-#      존재하고 워크플로우/레포에는 어떤 값도 없다. GITHUB_TOKEN 권한도 contents: read로 최소화.
+#   2) GitHub Actions 시크릿 미사용 — 시크릿은 전부 홈서버 로컬 env-file(root 전용)에만 존재하고
+#      워크플로우/레포에는 어떤 값도 없다. GITHUB_TOKEN 권한도 contents: read로 최소화.
+#   3) 러너 권한 분리 — 러너는 전용 `runner` 계정(docker 그룹 미소속)으로 실행되고, 배포는
+#      sudoers 화이트리스트에 등록된 헬퍼(/usr/local/bin/smartfarm-deploy, 서브커맨드 up|ps|prune만)를
+#      sudo로만 경유한다. docker 소켓·시크릿(.env, root만 접근)이 러너(=워크플로우 코드)와 분리되어
+#      워크플로우가 임의 docker 명령 실행이나 시크릿 열람을 할 수 없다.
 on:
   workflow_dispatch: {}
 
@@ -21,25 +25,38 @@ concurrency:
 
 jobs:
   deploy:
+    # 수동 dispatch라도 main 외 브랜치(리뷰 전 코드)의 워크플로우가 홈서버에서 실행되는 것을 차단
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, home]
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      # SHA 핀(태그 재지정·공급망 변조 방지) + persist-credentials 비활성(워크스페이스에 토큰 미보존)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Build & up (docker compose)
-        # --env-file 값은 compose 변수 치환(interpolation)에 쓰이므로 frontend build args의
-        # NEXT_PUBLIC_API_URL=${PUBLIC_URL}도 이 env-file에서 공급된다.
-        # 빌드 컨텍스트(../../backend 등)는 compose 파일 위치 기준 상대경로라 실행 CWD와 무관.
-        run: docker compose -f deploy/home/compose.yml --env-file /home/jb/srv/smartfarm/.env up -d --build
+      - name: Build & up (sudo helper)
+        # 헬퍼가 root로 `docker compose -f deploy/home/compose.yml --env-file <root 전용 .env> up -d --build`
+        # 를 실행한다. --env-file 값은 compose 변수 치환(interpolation)에 쓰이므로 frontend build args의
+        # NEXT_PUBLIC_API_URL=${PUBLIC_URL}과 backend 볼륨의 DATA_DIR도 이 env-file에서 공급된다.
+        run: sudo -n /usr/local/bin/smartfarm-deploy up
+
+      - name: Diagnose (up failed)
+        # up 자체가 unhealthy 대기 등으로 실패하면 아래 헬스체크 스텝이 실행되지 않으므로 상태를 남긴다
+        if: failure()
+        run: sudo -n /usr/local/bin/smartfarm-deploy ps || true
 
       - name: Health check
         # nginx는 127.0.0.1:8088에만 publish — 러너가 홈서버 로컬이므로 여기서 직접 curl 가능.
-        # 재시도 패턴은 deploy.yml과 동일(6회 × 5초). 접속 실패(curl 비정상 종료)도 재시도로 흡수.
+        # 재시도 패턴은 deploy.yml과 동일(6회 × 5초).
+        # 실패해도 서비스 로그는 절대 출력하지 않는다 — public 레포라 Actions 로그가 공개되므로
+        # 컨테이너 상태(ps)만 남기고, 상세 로그는 홈서버에서 직접 확인한다.
         run: |
           set -euo pipefail
           ok=""
           for i in 1 2 3 4 5 6; do
             sleep 5
-            if curl -fs http://127.0.0.1:8088/api/health > /dev/null; then
+            if curl -fs --max-time 5 http://127.0.0.1:8088/api/health > /dev/null; then
               echo "healthy (attempt $i)"
               ok=1
               break
@@ -48,10 +65,15 @@ jobs:
           done
           if [ -z "$ok" ]; then
             echo "health check failed after 6 attempts" >&2
-            docker compose -f deploy/home/compose.yml --env-file /home/jb/srv/smartfarm/.env logs --tail=100 || true
+            sudo -n /usr/local/bin/smartfarm-deploy ps || true
             exit 1
           fi
+          # frontend 스모크 — nginx 경유 루트 페이지 응답 확인
+          curl -fsI --max-time 5 http://127.0.0.1:8088/ >/dev/null
+          echo "frontend smoke OK"
 
       - name: Prune dangling images
-        # --build 반복으로 쌓이는 dangling 레이어 정리 — 홈서버 디스크 보호(태그된 이미지는 유지)
-        run: docker image prune -f
+        # --build 반복으로 쌓이는 dangling 레이어 정리 — 홈서버 디스크 보호(태그된 이미지는 유지).
+        # 배포 실패 시에도 디스크는 지켜야 하므로 always
+        if: always()
+        run: sudo -n /usr/local/bin/smartfarm-deploy prune
