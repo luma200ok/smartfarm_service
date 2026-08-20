@@ -1,0 +1,43 @@
+# smartfarm_service frontend — 홈서버 이전 파일럿(이슈 #27) 도커 이미지.
+# next.config.ts는 수정하지 않는다 — NEXT_PUBLIC_API_URL 미설정 시 빌드가 실패하는 것은
+# 의도된 가드(docs/api-contract.md §6)이므로 반드시 --build-arg로 전달해야 한다.
+
+# ---- deps 스테이지 ----
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# ---- build 스테이지 ----
+FROM node:22-alpine AS build
+WORKDIR /app
+
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+RUN npm run build
+
+# ---- 런타임 스테이지 ----
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+RUN addgroup --system nodejs && adduser --system --ingroup nodejs nextjs
+
+ENV NODE_ENV=production
+
+# .github/workflows/deploy.yml:134-141 의 standalone 패키징 구조를 그대로 이식:
+# .next/standalone(server.js + 필요한 node_modules 실체) + .next/static + public
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
+
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
