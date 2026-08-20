@@ -87,7 +87,7 @@
 - **SignupRequest** `{email, password(8+), nickname(2~20)}` / **LoginRequest** `{email, password}` / **RefreshRequest** `{refreshToken}`
 - **TokenResponse** `{accessToken, refreshToken}` / **UserResponse** `{id, email, nickname, createdAt}`
 - **FarmRequest** `{name(2~50), cropType, location?}` — cropType enum: `TOMATO`(1차, ai-server 모델이 토마토 전용) 확장 대비 enum
-- **FarmResponse** `{id, name, cropType, location, myRole, memberCount, createdAt}` / **FarmSummaryResponse** `{id, name, cropType, myRole}`
+- **FarmResponse** `{id, name, cropType, location, myRole, memberCount, webhookConfigured, createdAt}` — webhookConfigured=웹훅 설정 여부(URL 원문은 어떤 응답에도 미노출) / **FarmSummaryResponse** `{id, name, cropType, myRole}`
 - **InvitationResponse** `{code, expiresAt}` / **AcceptInvitationRequest** `{code}` — 시각 필드는 전부 서버 로컬(Asia/Seoul) naive datetime(레포 공통)
 - **MemberResponse** `{memberId, userId, nickname, role, joinedAt}`
 - **DiagnosisResponse** `{id, status(ok|ood_blocked), label, labelKr, prob, part, reason?, imageUrl?, camPngBase64?, createdBy, createdAt}` — ai-server DiagnosisResponse를 이력 엔티티로 저장 후 매핑
