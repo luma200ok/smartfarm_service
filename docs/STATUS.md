@@ -1,7 +1,14 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-20 (🏁 Phase 3 완주 — PR #23~#26·smartfarm_ai#67 전부 머지·배포. PRD P1 전 항목 완료)**
+> 마지막 갱신: **2026-08-20 (🏠 홈서버 이전 파일럿 PR-1 머지 — 이슈 #27 PR #28, 도커화·홈 배포 구성 추가)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
+
+## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
+- **배경**: OCI Free Tier 축소로 arm1·arm2 전면 폐기 → 홈서버(x86_64, 32GB, Ubuntu 26.04, `192.168.0.6`) 이전. DNS 전환까지 OCI 배포 병행.
+- **PR-1 ✅ (PR #28)**: backend/frontend Dockerfile + `deploy/home/`(compose·nginx·cloudflared·.env.example·세팅 README). 기존 파일 무수정. 리뷰 P1 1(업로드 UID 권한)→픽스, P2 4 반영.
+- **PR-2 (다음)**: `.github/workflows/deploy-home.yml` — self-hosted runner(라벨 home) 배포, Critical(public 레포 runner 보안). 선행 수동 세팅: shared-net·db compose 조인·`~/srv/smartfarm/.env`·runner 설치·CF 터널 생성(`deploy/home/README.md` 체크리스트).
+- **PR-3**: 홈서버 기동+스모크(`farm-home.luma200ok.com`) / **PR-4**: 컷오버(DNS 전환+최종 데이터 동기, 이슈 #27 닫음).
+- 홈서버 DB: 공용 스택 `~/srv/db/compose.yml`(**pgvector/pg16**·mysql8·redis7), 리허설 복원 검증 완료. 이전 순서·백업 현황은 메모리 `oci-migration-progress` 참조.
 
 ## 개요
 smartfarm_ai(솔로 프로젝트, ML/DL/LLM)를 **멀티테넌시 3-tier 서비스**로 확장.
