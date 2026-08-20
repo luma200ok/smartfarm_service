@@ -69,6 +69,8 @@ class EnvironmentApiIntegrationTest extends EnvironmentApiTestSupport {
         long farmA = createFarm(ownerToken, "캐시 농장 A");
         long farmB = createFarm(ownerToken, "캐시 농장 B");
         // 응답은 딱 1건만 큐잉 — 두 번째 조회가 ai-server를 다시 두드리면 큐가 비어 있어 실패한다.
+        // 카운트는 절대값이 아닌 delta로 비교(클래스 누적 카운터 + JUnit 미명시 실행 순서 의존 차단 — PrescriptionApiIntegrationTest 관례).
+        int before = AI_SERVER.getRequestCount();
         enqueueOkEnvironmentResponse();
 
         mockMvc.perform(get("/api/farms/" + farmA + "/environment/today")
@@ -82,7 +84,7 @@ class EnvironmentApiIntegrationTest extends EnvironmentApiTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outdoor.temp").value(28.5));
 
-        assertThat(AI_SERVER.getRequestCount()).isEqualTo(1);
+        assertThat(AI_SERVER.getRequestCount() - before).isEqualTo(1);
     }
 
     // ── ai-server 장애 ────────────────────────────────────
