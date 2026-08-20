@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import EnvironmentWidget from "@/components/environment/EnvironmentWidget";
 import FormField from "@/components/ui/FormField";
 import { VALIDATION } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
@@ -169,6 +170,8 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
 
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
+      <EnvironmentWidget farmId={farmId} />
+
       <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
         {editing ? (
           <div className="flex flex-col gap-3">

@@ -11,10 +11,13 @@ const ROLE_LABELS: Record<string, string> = { OWNER: "관리자", MEMBER: "멤�
 
 interface FarmSummaryListProps {
   emptyHint?: React.ReactNode;
+  // 목록 조회 완료(성공) 시 상위 컴포넌트에 결과를 전달 — 대시보드 홈의 환경 위젯이 별도
+  // listFarms() 호출 없이 같은 결과를 재사용하도록(이슈 #22, 중복 조회 방지).
+  onLoaded?: (farms: FarmSummaryResponse[]) => void;
 }
 
 // 내 농장 목록 요약 카드 — 대시보드 홈·농장 목록 화면에서 공용으로 쓴다.
-export default function FarmSummaryList({ emptyHint }: FarmSummaryListProps) {
+export default function FarmSummaryList({ emptyHint, onLoaded }: FarmSummaryListProps) {
   const [farms, setFarms] = useState<FarmSummaryResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +25,10 @@ export default function FarmSummaryList({ emptyHint }: FarmSummaryListProps) {
     let cancelled = false;
     listFarms()
       .then((data) => {
-        if (!cancelled) setFarms(data);
+        if (!cancelled) {
+          setFarms(data);
+          onLoaded?.(data);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(resolveErrorMessage(err));
@@ -30,6 +36,7 @@ export default function FarmSummaryList({ emptyHint }: FarmSummaryListProps) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (error) {
