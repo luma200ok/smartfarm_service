@@ -41,11 +41,12 @@ class PrescriptionJobWorkerUnitTest {
 
     private final PrescriptionTransitionService transitionService = mock(PrescriptionTransitionService.class);
     private final AiPrescriptionClient aiPrescriptionClient = mock(AiPrescriptionClient.class);
+    private final PrescriptionWebhookNotifier webhookNotifier = mock(PrescriptionWebhookNotifier.class);
     private final PrescriptionProperties properties =
             new PrescriptionProperties(Duration.ofSeconds(1), List.of(Duration.ofMillis(10), Duration.ofMillis(10)));
 
     private final PrescriptionJobWorker worker =
-            new PrescriptionJobWorker(executor, transitionService, aiPrescriptionClient, properties);
+            new PrescriptionJobWorker(executor, transitionService, aiPrescriptionClient, properties, webhookNotifier);
 
     private static final AiPrescriptionResponse OK_RESPONSE =
             new AiPrescriptionResponse("잎곰팡이병으로 보입니다", "습한 환경", "환기 강화", "아침 물주기", "3일 뒤", List.of());
@@ -84,7 +85,7 @@ class PrescriptionJobWorkerUnitTest {
     @DisplayName("markCompleted가 실패하면 best-effort로 markFailed(P002)가 호출된다")
     void markCompletedFailureFallsBackToMarkFailed() {
         when(transitionService.markProcessing(1L))
-                .thenReturn(Optional.of(new PrescriptionJob(1L, "질문", null)));
+                .thenReturn(Optional.of(new PrescriptionJob(1L, 100L, "질문", null)));
         when(aiPrescriptionClient.prescribe("질문", null)).thenReturn(OK_RESPONSE);
         doThrow(new RuntimeException("커밋 실패")).when(transitionService)
                 .markCompleted(anyLong(), any(PrescriptionResult.class));
@@ -98,7 +99,7 @@ class PrescriptionJobWorkerUnitTest {
     @DisplayName("429(P003)가 재시도까지 전부 소진되면 markFailed(P003) — 시도는 정확히 3회")
     void retryExhaustionFailsWithP003() {
         when(transitionService.markProcessing(1L))
-                .thenReturn(Optional.of(new PrescriptionJob(1L, "질문", null)));
+                .thenReturn(Optional.of(new PrescriptionJob(1L, 100L, "질문", null)));
         when(aiPrescriptionClient.prescribe("질문", null)).thenThrow(new CustomException(ErrorCode.P003));
 
         worker.submit(1L);
