@@ -7,6 +7,7 @@ import com.smartfarm.service.service.DiagnosisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
@@ -53,5 +54,16 @@ public class DiagnosisController {
                                                             @PathVariable Long farmId,
                                                             @PathVariable Long diagnosisId) {
         return ResponseEntity.ok(diagnosisService.findDiagnosis(farmId, userId, diagnosisId));
+    }
+
+    @Operation(summary = "진단 원본 이미지 조회 (멤버) — 인가 스트리밍, 미저장/구 데이터는 404 D004")
+    @GetMapping("/{diagnosisId}/image")
+    public ResponseEntity<Resource> findDiagnosisImage(@AuthenticationPrincipal Long userId,
+                                                         @PathVariable Long farmId,
+                                                         @PathVariable Long diagnosisId) {
+        DiagnosisService.DiagnosisImage image = diagnosisService.findDiagnosisImage(farmId, userId, diagnosisId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(image.contentType()))
+                .body(image.resource());
     }
 }
