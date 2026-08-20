@@ -40,6 +40,10 @@ public class Farm {
     @Column(length = 255)
     private String location;
 
+    /** 처방 완료/실패 디스코드 웹훅 URL(contract §3 Phase 3) — null=미설정. API 응답엔 원문 노출 금지. */
+    @Column(name = "webhook_url", length = 512)
+    private String webhookUrl;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -77,5 +81,14 @@ public class Farm {
         if (location != null) {
             this.location = location;
         }
+    }
+
+    /**
+     * 웹훅 URL 전체 교체 — PATCH `/webhook` 전용(contract §3: null=해제, 프리픽스 검증은 요청 DTO에서
+     * 이미 끝난 값만 들어온다). {@link #update}의 "null=미변경" 부분 수정과 달리 여기는 null도 유효값
+     * (해제)이라 별도 메서드로 분리한다 — 같은 시그니처로 묶으면 "null=미변경"과 "null=해제"가 충돌한다.
+     */
+    public void updateWebhookUrl(String webhookUrl) {
+        this.webhookUrl = webhookUrl;
     }
 }

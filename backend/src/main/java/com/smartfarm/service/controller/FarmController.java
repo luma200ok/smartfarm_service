@@ -4,6 +4,7 @@ import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.FarmResponse;
 import com.smartfarm.service.dto.FarmSummaryResponse;
 import com.smartfarm.service.dto.FarmUpdateRequest;
+import com.smartfarm.service.dto.WebhookRequest;
 import com.smartfarm.service.service.FarmService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,6 +57,14 @@ public class FarmController {
                                                    @PathVariable Long farmId,
                                                    @Valid @RequestBody FarmUpdateRequest request) {
         return ResponseEntity.ok(farmService.updateFarm(farmId, userId, request));
+    }
+
+    @Operation(summary = "농장 디스코드 웹훅 설정/해제 (OWNER) — null=해제, URL 원문은 응답에 없음(webhookConfigured만)")
+    @PatchMapping("/{farmId}/webhook")
+    public ResponseEntity<FarmResponse> updateWebhook(@AuthenticationPrincipal Long userId,
+                                                       @PathVariable Long farmId,
+                                                       @Valid @RequestBody WebhookRequest request) {
+        return ResponseEntity.ok(farmService.updateWebhook(farmId, userId, request));
     }
 
     @Operation(summary = "농장 삭제 — soft delete (OWNER)")

@@ -4,6 +4,7 @@ import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.FarmResponse;
 import com.smartfarm.service.dto.FarmSummaryResponse;
 import com.smartfarm.service.dto.FarmUpdateRequest;
+import com.smartfarm.service.dto.WebhookRequest;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.FarmMember;
 import com.smartfarm.service.entity.FarmRole;
@@ -63,6 +64,15 @@ public class FarmService {
     public FarmResponse updateFarm(Long farmId, Long userId, FarmUpdateRequest request) {
         FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
         access.farm().update(request.name(), request.cropType(), request.location());
+        return FarmResponse.of(access.farm(), FarmRole.OWNER,
+                farmMemberRepository.countLiveMembersByFarmId(farmId));
+    }
+
+    /** 웹훅 설정/해제(OWNER) — URL 원문 검증은 요청 DTO(@DiscordWebhookUrl)에서 이미 끝났다. */
+    @Transactional
+    public FarmResponse updateWebhook(Long farmId, Long userId, WebhookRequest request) {
+        FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
+        access.farm().updateWebhookUrl(request.webhookUrl());
         return FarmResponse.of(access.farm(), FarmRole.OWNER,
                 farmMemberRepository.countLiveMembersByFarmId(farmId));
     }

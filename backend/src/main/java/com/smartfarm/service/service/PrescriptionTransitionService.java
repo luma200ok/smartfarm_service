@@ -37,8 +37,11 @@ public class PrescriptionTransitionService {
     private final DiagnosisRepository diagnosisRepository;
     private final ObjectMapper objectMapper;
 
-    /** 워커가 ai-server 호출에 필요한 스냅샷 — 전이 트랜잭션 안에서 한 번에 읽어 전달한다. */
-    public record PrescriptionJob(Long id, String question, String diagnosisJson) {
+    /**
+     * 워커가 ai-server 호출·웹훅 발송에 필요한 스냅샷 — 전이 트랜잭션 안에서 한 번에 읽어 전달한다.
+     * farmId는 웹훅 발송(contract §3 Phase 3 — 완료/실패 시 farm 조회)에 쓴다.
+     */
+    public record PrescriptionJob(Long id, Long farmId, String question, String diagnosisJson) {
     }
 
     /**
@@ -66,32 +69,44 @@ public class PrescriptionTransitionService {
         }
         return Optional.of(new PrescriptionJob(
                 prescription.getId(),
+                prescription.getFarmId(),
                 prescription.getQuestion(),
                 buildDiagnosisJson(prescription.getDiagnosisId())));
     }
 
-    /** PROCESSING → COMPLETED. result는 계약 4필드로 정규화된 JSON을 저장한다(JSONB). */
+    /**
+     * PROCESSING → COMPLETED. result는 계약 4필드로 정규화된 JSON을 저장한다(JSONB).
+     *
+     * @return 전이가 실제로 커밋됐으면 true — 워커가 이 값으로 웹훅 발송 여부를 결정한다
+     *         (contract §3 "COMPLETED/FAILED 전이 커밋 후" 발송 — 스킵된 경우 발송하면 안 됨).
+     */
     @Transactional
-    public void markCompleted(Long prescriptionId, PrescriptionResult result) {
+    public boolean markCompleted(Long prescriptionId, PrescriptionResult result) {
         Prescription prescription = prescriptionRepository.findById(prescriptionId).orElse(null);
         if (prescription == null || prescription.getStatus() != PrescriptionStatus.PROCESSING) {
             log.warn("완료 전이 스킵 — 처방이 없거나 PROCESSING이 아님: id={}", prescriptionId);
-            return;
+            return false;
         }
         prescription.complete(toJson(result));
         log.info("처방 완료: id={}, 접수 후 소요={}ms", prescriptionId,
                 Duration.between(prescription.getCreatedAt(), prescription.getCompletedAt()).toMillis());
+        return true;
     }
 
-    /** PENDING/PROCESSING → FAILED. 종료 상태면 스킵(결과 덮어쓰기 차단). */
+    /**
+     * PENDING/PROCESSING → FAILED. 종료 상태면 스킵(결과 덮어쓰기 차단).
+     *
+     * @return 전이가 실제로 커밋됐으면 true(markCompleted와 같은 이유 — 웹훅 중복/오발송 차단).
+     */
     @Transactional
-    public void markFailed(Long prescriptionId, ErrorCode errorCode) {
+    public boolean markFailed(Long prescriptionId, ErrorCode errorCode) {
         Prescription prescription = prescriptionRepository.findById(prescriptionId).orElse(null);
         if (prescription == null || prescription.getStatus().isTerminal()) {
             log.warn("실패 전이 스킵 — 처방이 없거나 이미 종료 상태: id={}", prescriptionId);
-            return;
+            return false;
         }
         prescription.fail(errorCode.getCode());
+        return true;
     }
 
     /**
