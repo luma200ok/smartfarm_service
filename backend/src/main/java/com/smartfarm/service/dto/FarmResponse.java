@@ -12,11 +12,12 @@ public record FarmResponse(
         String location,
         FarmRole myRole,
         long memberCount,
+        boolean webhookConfigured,
         LocalDateTime createdAt
 ) {
 
     public static FarmResponse of(Farm farm, FarmRole myRole, long memberCount) {
         return new FarmResponse(farm.getId(), farm.getName(), farm.getCropType(),
-                farm.getLocation(), myRole, memberCount, farm.getCreatedAt());
+                farm.getLocation(), myRole, memberCount, farm.getWebhookUrl() != null, farm.getCreatedAt());
     }
 }
