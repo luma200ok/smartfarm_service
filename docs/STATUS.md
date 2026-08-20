@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-20 (🏠 파일럿 PR-2 완료 — PR #29·#30 머지, 홈서버 첫 배포 성공·전 컨테이너 healthy)**
+> 마지막 갱신: **2026-08-21 (🏁 홈서버 컷오버 완료 — farm.luma200ok.com이 홈서버 터널로 서비스 중. smartfarm_ai#68 이전·e2e·최종 데이터 동기·DNS 전환까지 완료. OCI는 무트래픽 병행 관찰 중)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
