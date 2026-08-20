@@ -70,8 +70,10 @@ public class User {
      *       ({@link org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder#matches}가
      *       항상 false — 어떤 비밀번호로도 인증 불가).</li>
      * </ul>
-     * {@code @SQLDelete}(repository.delete 경로)와 달리 익명화를 동반해야 해서 상태 전이를
-     * 엔티티 메서드로 캡슐화한다. 탈퇴는 반드시 이 메서드로만 수행한다.
+     * <p><b>유일한 탈퇴 경로.</b> {@code userRepository.delete()}(@SQLDelete)는 익명화를
+     * 건너뛴 soft delete가 되므로 호출 금지 — ArchitectureRulesTest 규칙③이 delete 계열
+     * 호출을 정적으로 차단한다. @SQLDelete 어노테이션 자체는 유지한다(제거 시 미래의
+     * delete 호출이 hard delete로 떨어져 더 위험).
      */
     public void withdraw() {
         this.deletedAt = LocalDateTime.now();

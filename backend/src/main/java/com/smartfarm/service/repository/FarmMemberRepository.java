@@ -37,9 +37,12 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
             + "WHERE fm.farmId = :farmId")
     long countLiveMembersByFarmId(@Param("farmId") Long farmId);
 
-    /** 내 농장 목록 — Farm @SQLRestriction으로 soft delete 농장은 join에서 제외됨 */
+    /**
+     * 내 농장 목록 — Farm/User 양쪽 @SQLRestriction으로 soft delete 농장·탈퇴 유저의
+     * 잔존 멤버십 행은 join에서 제외됨(탈퇴 유저의 농장 요약 노출 차단, 가드 3곳과 동일 패턴).
+     */
     @Query("SELECT new com.smartfarm.service.dto.FarmSummaryResponse(f.id, f.name, f.cropType, fm.role) "
-            + "FROM FarmMember fm JOIN Farm f ON f.id = fm.farmId "
+            + "FROM FarmMember fm JOIN Farm f ON f.id = fm.farmId JOIN User u ON u.id = fm.userId "
             + "WHERE fm.userId = :userId ORDER BY f.id ASC")
     List<FarmSummaryResponse> findMyFarms(@Param("userId") Long userId);
 
@@ -59,8 +62,13 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
     boolean existsLiveFarmMembershipByUserIdAndRole(@Param("userId") Long userId,
                                                     @Param("role") FarmRole role);
 
-    /** 회원 탈퇴 시 초대 무효화 대상 농장 선조회용 프로젝션(soft delete 농장 포함 전체). */
-    @Query("SELECT DISTINCT fm.farmId FROM FarmMember fm WHERE fm.userId = :userId")
+    /**
+     * 회원 탈퇴 시 초대 무효화 대상 농장 선조회용 프로젝션(soft delete 농장 포함 전체).
+     * ORDER BY farmId — 동시 탈퇴 간 초대 무효화 UPDATE의 락 획득 순서를 결정화해
+     * 교차 대기(데드락) 여지를 없앤다.
+     */
+    @Query("SELECT DISTINCT fm.farmId FROM FarmMember fm WHERE fm.userId = :userId "
+            + "ORDER BY fm.farmId ASC")
     List<Long> findFarmIdsByUserId(@Param("userId") Long userId);
 
     /**

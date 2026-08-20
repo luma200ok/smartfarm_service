@@ -60,7 +60,7 @@ class WithdrawConcurrencyTest extends IntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("동시 탈퇴 2회 — 1건 이상 성공, 실패는 전부 A004 (500·미분류 예외 금지)")
+    @DisplayName("동시 탈퇴 2회 — 정확히 1건 성공, 패자는 A004 (500·미분류 예외 금지)")
     void concurrentWithdrawDoesNotBlowUp() throws Exception {
         String email = "concurrent-withdraw-" + UUID.randomUUID() + "@example.com";
         long userId = authService.signup(new SignupRequest(email, "password123", "동시탈퇴")).id();
@@ -75,13 +75,13 @@ class WithdrawConcurrencyTest extends IntegrationTestSupport {
                     return true;
                 });
 
-        // 승자 최소 1건 (204 상당)
-        assertThat(result.successes()).isNotEmpty();
-        // 패자가 있다면 전부 A004 — 다른 예외(락 충돌 500 상당)는 실패
+        // FOR UPDATE 직렬화 — 승자 정확히 1건(204 상당), 패자는 @SQLRestriction 재평가로 A004
+        assertThat(result.successes()).hasSize(1);
+        assertThat(result.failures()).hasSize(1);
+        // 패자 예외는 A004여야 한다 — 다른 예외(락 충돌 500 상당)는 실패
         assertThat(result.failures()).allSatisfy(t ->
                 assertThat(t).isInstanceOf(CustomException.class)
                         .extracting(e -> ((CustomException) e).getErrorCode())
                         .isEqualTo(ErrorCode.A004));
-        assertThat(result.successes().size() + result.failures().size()).isEqualTo(2);
     }
 }

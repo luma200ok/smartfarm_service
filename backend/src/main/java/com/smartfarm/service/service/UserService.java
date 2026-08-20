@@ -60,6 +60,8 @@ public class UserService {
         User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
+            // 감사 로그(브루트포스 탐지 신호) — 값·이메일 기록 금지
+            log.warn("회원 탈퇴 비밀번호 불일치 — userId={}", userId);
             throw new CustomException(ErrorCode.A002);
         }
         if (farmMemberRepository.existsLiveFarmMembershipByUserIdAndRole(userId, FarmRole.OWNER)) {

@@ -10,6 +10,7 @@ import com.smartfarm.service.dto.LoginRequest;
 import com.smartfarm.service.dto.RefreshRequest;
 import com.smartfarm.service.dto.SignupRequest;
 import com.smartfarm.service.entity.RefreshToken;
+import com.smartfarm.service.entity.User;
 import com.smartfarm.service.repository.RefreshTokenRepository;
 import com.smartfarm.service.repository.UserRepository;
 import com.smartfarm.service.service.TokenHasher;
@@ -273,7 +274,10 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
             signup("deleted-user@example.com", "password123", "삭제유저");
             JsonNode tokens = login("deleted-user@example.com", "password123");
 
-            userRepository.delete(userRepository.findByEmail("deleted-user@example.com").orElseThrow());
+            // soft delete는 User.withdraw() 단일 경로(익명화 동반 — ArchUnit 규칙③이 delete 계열 차단)
+            User deletedUser = userRepository.findByEmail("deleted-user@example.com").orElseThrow();
+            deletedUser.withdraw();
+            userRepository.save(deletedUser);
 
             refresh(tokens.get("refreshToken").asText())
                     .andExpect(status().isUnauthorized())

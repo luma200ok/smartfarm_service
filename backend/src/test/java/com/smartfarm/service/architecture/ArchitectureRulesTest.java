@@ -1,11 +1,13 @@
 package com.smartfarm.service.architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
 import java.lang.reflect.Method;
@@ -92,5 +94,30 @@ class ArchitectureRulesTest {
                 .as("새 @Modifying 메서드는 flushAutomatically=true로 선언하거나, 알려진 예외라면"
                         + " 이 테스트의 knownExceptions에 사유와 함께 추가해야 한다")
                 .containsExactlyInAnyOrderElementsOf(knownExceptions);
+    }
+
+    /**
+     * 규칙 ③ (BE #19 탈퇴): 회원 탈퇴는 {@code User#withdraw()}(soft delete + PII 즉시 익명화)
+     * 단일 경로만 허용한다. {@code UserRepository}의 delete 계열을 직접 호출하면 @SQLDelete가
+     * 익명화를 건너뛴 soft delete를 수행하므로 정적으로 차단한다(현재 호출자 0이 정상 상태 —
+     * @SQLDelete 어노테이션 자체는 유지: 제거 시 미래 delete 호출이 hard delete로 더 위험).
+     */
+    @Test
+    @DisplayName("규칙③: UserRepository의 delete 계열 호출 금지 — 탈퇴는 User.withdraw() 경유 강제")
+    void userDeletionMustGoThroughEntityWithdraw() {
+        JavaClasses classes = new ClassFileImporter().importPackages("com.smartfarm.service");
+
+        ArchRule rule = noClasses()
+                .should().callMethodWhere(new DescribedPredicate<JavaMethodCall>(
+                        "UserRepository의 delete 계열 메서드 호출") {
+                    @Override
+                    public boolean test(JavaMethodCall call) {
+                        return call.getTargetOwner().getFullName()
+                                .equals("com.smartfarm.service.repository.UserRepository")
+                                && call.getName().startsWith("delete");
+                    }
+                });
+
+        rule.check(classes);
     }
 }

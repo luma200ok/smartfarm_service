@@ -184,6 +184,13 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("F002"));
 
+        // 가드 밖 목록(findMyFarms)도 User join으로 농장 요약 비노출 → 빈 목록
+        MvcResult myFarmsResult = mockMvc.perform(get("/api/farms")
+                        .header("Authorization", "Bearer " + withdrawn))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(readJson(myFarmsResult)).isEmpty();
+
         // 유령 멤버 정합 — 목록·memberCount 모두 생존 유저 기준 1(오너뿐)
         MvcResult farmResult = mockMvc.perform(get("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + owner))

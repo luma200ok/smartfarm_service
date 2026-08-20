@@ -21,7 +21,9 @@ import org.springframework.stereotype.Component;
  * </ol>
  *
  * <p>멤버십 조회는 User join(@SQLRestriction) 기반 — 탈퇴(soft delete) 유저는 잔존 access
- * 토큰·잔존 멤버십 행이 있어도 전 farm-scoped 표면에서 F002로 차단된다(contract 탈퇴 봉쇄 ①).
+ * 토큰·잔존 멤버십 행이 있어도 이 가드를 타는 전 farm-scoped 표면에서 F002로 차단된다
+ * (contract 탈퇴 봉쇄 ①). 가드 밖 farm 표면인 내 농장 목록(findMyFarms)도 동일한
+ * User join으로 빈 목록을 반환해, farm 표면 전체에서 성립한다.
  */
 @Component
 @RequiredArgsConstructor
