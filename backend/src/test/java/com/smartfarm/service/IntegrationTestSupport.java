@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,9 +40,27 @@ public abstract class IntegrationTestSupport {
 
     private static Path createImageStorageDir() {
         try {
-            return Files.createTempDirectory("smartfarm-diagnosis-images-test");
+            Path dir = Files.createTempDirectory("smartfarm-diagnosis-images-test");
+            // 전 테스트 클래스가 공유하는 프로세스 수명 디렉터리라 @AfterAll로는 정리 시점을 못 잡는다
+            // (다른 테스트 클래스가 아직 쓰는 중일 수 있음) — JVM 종료 시점에 한 번만 정리한다.
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> deleteRecursively(dir)));
+            return dir;
         } catch (IOException e) {
             throw new UncheckedIOException("이미지 저장 임시 디렉터리 생성 실패", e);
+        }
+    }
+
+    private static void deleteRecursively(Path dir) {
+        try (var paths = Files.walk(dir)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ignored) {
+                    // 테스트 종료 시점 best-effort 정리 — 실패해도 무시(OS 임시 디렉터리 정리에 위임)
+                }
+            });
+        } catch (IOException ignored) {
+            // best-effort
         }
     }
 

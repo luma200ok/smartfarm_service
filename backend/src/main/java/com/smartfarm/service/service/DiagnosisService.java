@@ -9,6 +9,9 @@ import com.smartfarm.service.entity.DiagnosisStatus;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DiagnosisRepository;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
@@ -25,6 +28,13 @@ public class DiagnosisService {
 
     // 서버 진입 전 기본 캡(contract §3 handoff 예시 — 10MB)
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
+
+    /** 저장 포맷 화이트리스트(reviewer P2) — SVG 등 활성 콘텐츠는 애초에 image/*에서 배제. */
+    private static final Set<String> ALLOWED_CONTENT_TYPES =
+            Set.of("image/jpeg", "image/png", "image/gif", "image/webp");
+
+    /** 매직바이트 검증에 필요한 최대 헤더 길이 — WEBP(RIFF....WEBP)가 가장 길어 12바이트. */
+    private static final int SIGNATURE_HEADER_LENGTH = 12;
 
     private final DiagnosisRepository diagnosisRepository;
     private final FarmAccessGuard farmAccessGuard;
@@ -52,7 +62,7 @@ public class DiagnosisService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DiagnosisResponse createDiagnosis(Long farmId, Long userId, MultipartFile file) {
         farmAccessGuard.requireMember(farmId, userId);
-        validateImage(file);
+        String contentType = validateImage(file);
 
         AiDiagnosisResponse aiResponse = aiServerClient.diagnose(file);
         DiagnosisStatus status = aiResponse.oodBlocked() ? DiagnosisStatus.OOD_BLOCKED : DiagnosisStatus.OK;
@@ -69,7 +79,7 @@ public class DiagnosisService {
                 .camPngBase64(aiResponse.camPngBase64())
                 .build());
 
-        attachImageIfStored(diagnosis, file);
+        attachImageIfStored(diagnosis, file, contentType);
 
         return DiagnosisResponse.from(diagnosis);
     }
@@ -79,10 +89,10 @@ public class DiagnosisService {
      * 가능하다(IDENTITY 채번). 저장 실패는 {@link ImageStorageService#store}가 내부에서 흡수하므로
      * 여기서는 반환값 null 여부만 분기한다(진단 자체는 이미 성공 확정 — contract).
      */
-    private void attachImageIfStored(Diagnosis diagnosis, MultipartFile file) {
-        String imagePath = imageStorageService.store(diagnosis.getFarmId(), diagnosis.getId(), file);
+    private void attachImageIfStored(Diagnosis diagnosis, MultipartFile file, String contentType) {
+        String imagePath = imageStorageService.store(diagnosis.getFarmId(), diagnosis.getId(), file, contentType);
         if (imagePath != null) {
-            diagnosis.attachImage(imagePath);
+            diagnosis.attachImage(imagePath, contentType);
             diagnosisRepository.save(diagnosis);
         }
     }
@@ -107,11 +117,19 @@ public class DiagnosisService {
                 .orElseThrow(() -> new CustomException(ErrorCode.D001));
         Resource resource = imageStorageService.load(diagnosis.getImagePath())
                 .orElseThrow(() -> new CustomException(ErrorCode.D004));
-        return new DiagnosisImage(resource, imageStorageService.contentTypeOf(diagnosis.getImagePath()));
+        // image_content_type 컬럼을 우선 사용(불일치 원천 제거 — reviewer P2). 컬럼이 비어있는
+        // 과거 행에 한해서만 ImageStorageService의 확장자 기반 추정으로 폴백한다.
+        String contentType = diagnosis.getImageContentType() != null
+                ? diagnosis.getImageContentType()
+                : imageStorageService.contentTypeOf(diagnosis.getImagePath());
+        return new DiagnosisImage(resource, contentType);
     }
 
-    /** 빈 파일/용량 초과/비이미지 content-type은 전부 D002로 통일(handoff — 일관 선택). */
-    private void validateImage(MultipartFile file) {
+    /**
+     * 빈 파일/용량 초과/화이트리스트 밖 content-type/매직바이트 불일치는 전부 D002로 통일
+     * (handoff — 일관 선택). 화이트리스트를 통과한 실제 content-type을 반환해 저장·기록에 재사용한다.
+     */
+    private String validateImage(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new CustomException(ErrorCode.D002);
         }
@@ -119,8 +137,51 @@ public class DiagnosisService {
             throw new CustomException(ErrorCode.D002);
         }
         String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
+        if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
             throw new CustomException(ErrorCode.D002);
         }
+        validateSignature(file, contentType);
+        return contentType;
+    }
+
+    /**
+     * 선언된 content-type과 실제 파일 헤더(매직바이트)가 일치하는지 확인한다(reviewer P2 —
+     * content-type 헤더는 클라이언트가 임의로 지정 가능해 화이트리스트만으론 위조를 막지 못한다).
+     * 헤더 12바이트만 읽는다(전체 파일을 다시 읽지 않음 — MultipartFile은 반복 읽기가 가능하다).
+     */
+    private void validateSignature(MultipartFile file, String contentType) {
+        byte[] header;
+        try (InputStream inputStream = file.getInputStream()) {
+            header = inputStream.readNBytes(SIGNATURE_HEADER_LENGTH);
+        } catch (IOException e) {
+            throw new CustomException(ErrorCode.D002);
+        }
+        if (!matchesSignature(contentType, header)) {
+            throw new CustomException(ErrorCode.D002);
+        }
+    }
+
+    private boolean matchesSignature(String contentType, byte[] header) {
+        return switch (contentType) {
+            case "image/jpeg" -> startsWith(header, 0xFF, 0xD8, 0xFF);
+            case "image/png" -> startsWith(header, 0x89, 0x50, 0x4E, 0x47);
+            case "image/gif" -> startsWith(header, 0x47, 0x49, 0x46);
+            case "image/webp" -> header.length >= SIGNATURE_HEADER_LENGTH
+                    && startsWith(header, 0x52, 0x49, 0x46, 0x46) // "RIFF"
+                    && header[8] == 'W' && header[9] == 'E' && header[10] == 'B' && header[11] == 'P';
+            default -> false;
+        };
+    }
+
+    private boolean startsWith(byte[] header, int... expectedUnsignedBytes) {
+        if (header.length < expectedUnsignedBytes.length) {
+            return false;
+        }
+        for (int i = 0; i < expectedUnsignedBytes.length; i++) {
+            if ((header[i] & 0xFF) != expectedUnsignedBytes[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 }

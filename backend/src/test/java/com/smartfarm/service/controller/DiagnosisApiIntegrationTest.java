@@ -27,9 +27,20 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
     @Autowired
     private DiagnosisRepository diagnosisRepository;
 
+    /** 매직바이트 검증(reviewer P2)을 통과하도록 JPEG 시그니처(FF D8 FF)를 실제로 앞에 붙인다. */
+    private static final byte[] JPEG_SIGNATURE = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+    private static final byte[] LEAF_IMAGE_BYTES =
+            concat(JPEG_SIGNATURE, "fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8));
+
+    private static byte[] concat(byte[] first, byte[] second) {
+        byte[] result = new byte[first.length + second.length];
+        System.arraycopy(first, 0, result, 0, first.length);
+        System.arraycopy(second, 0, result, first.length, second.length);
+        return result;
+    }
+
     private MockMultipartFile leafImage() {
-        return new MockMultipartFile("file", "leaf.jpg", "image/jpeg",
-                "fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8));
+        return new MockMultipartFile("file", "leaf.jpg", "image/jpeg", LEAF_IMAGE_BYTES);
     }
 
     // ── 생성 (정상/ood_blocked) ──────────────────────────────
@@ -176,6 +187,37 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
 
         mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
                         .file(oversized)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("D002"));
+    }
+
+    // ── content-type 화이트리스트·매직바이트 검증 (reviewer P2) ──
+
+    @Test
+    @DisplayName("SVG 등 화이트리스트 밖 image/* content-type은 400 D002를 반환한다")
+    void createDiagnosisSvgContentTypeRejected() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "SVG거부 농장");
+        MockMultipartFile svgFile = new MockMultipartFile("file", "leaf.svg", "image/svg+xml",
+                "<svg onload=\"alert(1)\"></svg>".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
+                        .file(svgFile)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("D002"));
+    }
+
+    @Test
+    @DisplayName("content-type 위조(png 선언 + jpeg 매직바이트)는 400 D002를 반환한다")
+    void createDiagnosisContentTypeSignatureMismatch() throws Exception {
+        String token = signupAndLogin("농부");
+        long farmId = createFarm(token, "위조 농장");
+        MockMultipartFile forged = new MockMultipartFile("file", "leaf.png", "image/png", LEAF_IMAGE_BYTES);
+
+        mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
+                        .file(forged)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("D002"));
@@ -338,8 +380,7 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
                 .andExpect(content().contentType(MediaType.IMAGE_JPEG))
                 .andReturn();
 
-        assertThat(result.getResponse().getContentAsByteArray())
-                .isEqualTo("fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8));
+        assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(LEAF_IMAGE_BYTES);
     }
 
     @Test
@@ -398,7 +439,7 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
         long diagnosisId = createDiagnosis(token, farmId);
 
         Diagnosis diagnosis = diagnosisRepository.findById(diagnosisId).orElseThrow();
-        diagnosis.attachImage("../../../../etc/passwd");
+        diagnosis.attachImage("../../../../etc/passwd", "image/jpeg");
         diagnosisRepository.save(diagnosis);
 
         mockMvc.perform(get("/api/farms/" + farmId + "/diagnoses/" + diagnosisId + "/image")

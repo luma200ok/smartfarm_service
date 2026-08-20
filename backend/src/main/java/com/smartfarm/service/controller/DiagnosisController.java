@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -62,7 +63,9 @@ public class DiagnosisController {
                                                          @PathVariable Long farmId,
                                                          @PathVariable Long diagnosisId) {
         DiagnosisService.DiagnosisImage image = diagnosisService.findDiagnosisImage(farmId, userId, diagnosisId);
+        // 테넌트 인가가 걸린 원본 — 공유 캐시·디스크 캐시에 남지 않게(reviewer P3).
         return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore().cachePrivate())
                 .contentType(MediaType.parseMediaType(image.contentType()))
                 .body(image.resource());
     }
