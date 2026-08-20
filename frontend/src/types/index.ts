@@ -174,6 +174,34 @@ export interface PrescriptionSummaryResponse {
   completedAt?: string;
 }
 
+// ── 환경 대시보드 ──────────────────────────────────
+// contract §3·§4 Phase 3 확정 스키마 — ai-server가 상태 파일/KMA 조회 불가 시에도 항상 200 +
+// 가용 필드만 채워 alerts에 사유를 남기므로, 값 필드는 전부 null 허용으로 취급한다.
+export interface EnvironmentWeather {
+  temp: number | null;
+  humidity: number | null;
+}
+
+export interface EnvironmentIndoor {
+  temp: number | null;
+  humidity: number | null;
+  controlled: boolean | null;
+}
+
+export interface EnvironmentDevice {
+  name: string;
+  on: boolean | null;
+}
+
+export interface EnvironmentTodayResponse {
+  demo: boolean;
+  updatedAt: string;
+  outdoor: EnvironmentWeather | null;
+  indoor: EnvironmentIndoor | null;
+  devices: EnvironmentDevice[];
+  alerts: string[];
+}
+
 // ── 페이지네이션 ──────────────────────────────────
 // contract §4 확정 스키마.
 export interface PageResponse<T> {
