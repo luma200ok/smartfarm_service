@@ -21,6 +21,12 @@ ai-server:
   connect-timeout: 1s
   read-timeout: 2s
 
+# 환경 대시보드 전용 클라이언트도 진단과 동일하게 짧게(connect-timeout은 ai-server 값을 그대로 재사용 —
+# EnvironmentClientConfig 참고. 이슈 #22 리뷰: 프로덕션 기본 5s로 테스트를 돌리면 타임아웃 테스트가
+# 느려질 뿐 아니라 대기 구간이 길어져 환경에 따른 변동 여지가 커진다 — 진단(2s)과 동일하게 통일)
+environment-dashboard:
+  read-timeout: 2s
+
 # 처방 비동기 job — 백오프를 짧게 줄여 429 재시도 테스트를 빠르게 수행.
 # 스위퍼는 1시간으로 키워 테스트 실행 중 자동 발화를 차단(테스트는 sweep() 직접 호출)
 prescription:
