@@ -65,6 +65,11 @@ prescription:
   sweep-initial-delay: PT5M
   sweep-fixed-delay: PT5M
 
+# 처방 완료/실패 디스코드 웹훅 발송(contract §3 Phase 3) — 실패는 WARN 로그만, 처방 상태 무영향
+webhook:
+  timeout: 5s
+  detail-base-url: https://farm.luma200ok.com
+
 # refresh_tokens 퍼지(RefreshTokenPurgeScheduler) — 만료+7일 유예 경과분 삭제, 주기는 1일 1회
 refresh-token:
   purge-initial-delay: P1D

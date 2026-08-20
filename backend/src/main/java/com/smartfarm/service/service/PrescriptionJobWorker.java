@@ -40,6 +40,7 @@ public class PrescriptionJobWorker {
     private final PrescriptionTransitionService transitionService;
     private final AiPrescriptionClient aiPrescriptionClient;
     private final PrescriptionProperties prescriptionProperties;
+    private final PrescriptionWebhookNotifier webhookNotifier;
 
     /**
      * 지금 처리 중인 job id(없으면 null) — 스위퍼가 고아 PROCESSING을 정리할 때 in-flight 1건을
@@ -100,21 +101,24 @@ public class PrescriptionJobWorker {
         try {
             // 한글 키 원 응답 → contract §4 영문 result 매핑(빈 성공 금지·크기 캡 — PrescriptionResult.from)
             PrescriptionResult result = PrescriptionResult.from(callWithRetry(jobOpt.get()));
-            transitionService.markCompleted(prescriptionId, result);
+            if (transitionService.markCompleted(prescriptionId, result)) {
+                // 전이 커밋 후에만 발송(contract §3) — 워커는 이미 트랜잭션 밖이라 별도 경계 불필요.
+                webhookNotifier.notifyCompleted(jobOpt.get(), result);
+            }
         } catch (InterruptedException e) {
             // 셧다운(shutdownNow) 인터럽트 — 실패 기록(best effort)이 끝난 뒤에 플래그를 복원한다.
             // 복원을 먼저 하면 JDBC 드라이버가 인터럽트 상태를 보고 즉시 실패해 기록 자체가 안 된다(reviewer P3).
             try {
-                safelyFail(prescriptionId, ErrorCode.P002);
+                safelyFail(prescriptionId, ErrorCode.P002, jobOpt.get());
             } finally {
                 Thread.currentThread().interrupt();
             }
         } catch (CustomException e) {
             ErrorCode code = e.getErrorCode() == ErrorCode.P003 ? ErrorCode.P003 : ErrorCode.P002;
-            safelyFail(prescriptionId, code);
+            safelyFail(prescriptionId, code, jobOpt.get());
         } catch (Exception e) {
             log.error("처방 처리 중 예상 밖 오류: id={}", prescriptionId, e);
-            safelyFail(prescriptionId, ErrorCode.P002);
+            safelyFail(prescriptionId, ErrorCode.P002, jobOpt.get());
         }
     }
 
@@ -139,10 +143,15 @@ public class PrescriptionJobWorker {
         }
     }
 
-    /** 실패 기록도 실패할 수 있다(셧다운 중 DB 종료 등) — 로그만 남기고 재기동 복구에 맡긴다. */
-    private void safelyFail(Long prescriptionId, ErrorCode errorCode) {
+    /**
+     * 실패 기록도 실패할 수 있다(셧다운 중 DB 종료 등) — 로그만 남기고 재기동 복구에 맡긴다.
+     * 전이가 실제로 커밋됐을 때만(반환 true) 웹훅을 발송한다(contract §3 — 스킵된 전이는 미발송).
+     */
+    private void safelyFail(Long prescriptionId, ErrorCode errorCode, PrescriptionJob job) {
         try {
-            transitionService.markFailed(prescriptionId, errorCode);
+            if (transitionService.markFailed(prescriptionId, errorCode)) {
+                webhookNotifier.notifyFailed(job, errorCode);
+            }
         } catch (Exception e) {
             log.error("처방 실패 기록 불가 — PROCESSING 잔존, 재기동 복구 대상: id={}", prescriptionId, e);
         }
