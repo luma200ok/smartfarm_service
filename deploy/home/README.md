@@ -45,9 +45,12 @@ chmod 600 ~/srv/smartfarm/.env
 
 ```
 mkdir -p ~/srv/smartfarm/images
+sudo chown -R 1000:1000 ~/srv/smartfarm/images
 ```
 
 - [ ] `deploy/home/compose.yml`의 backend 볼륨(`~/srv/smartfarm/images:/data/images`)과 경로 일치 확인
+- [ ] `chown` UID/GID 1000은 `backend/Dockerfile`의 비루트 유저(spring)와 고정 매칭된다(리뷰 P1) —
+      컨테이너 내부에서 쓰기 권한이 필요하므로 반드시 먼저 실행. 검증: `docker run --rm <backend 이미지> id -u` → `1000`
 - [ ] 디스크 여유 공간 확인(진단 이미지 누적)
 
 ## 4. GitHub self-hosted runner 설치 (라벨 `home`)

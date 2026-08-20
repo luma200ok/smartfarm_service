@@ -26,7 +26,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --system spring && useradd --system --gid spring spring
+# UID/GID 1000 고정 — 바인드 마운트(~/srv/smartfarm/images -> /data/images)와 호스트 소유권을 맞추기 위해
+# (리뷰 P1: --system 유저는 UID가 서버마다 달라질 수 있어 호스트에서 미리 chown할 수 없다)
+# 베이스 이미지(Ubuntu 기반)에 이미 uid/gid 1000인 기본 "ubuntu" 계정이 있어 충돌하므로 먼저 제거한다.
+RUN (userdel -r ubuntu 2>/dev/null || true) \
+    && (groupdel ubuntu 2>/dev/null || true) \
+    && groupadd --gid 1000 spring \
+    && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin spring
 
 COPY --from=build /workspace/build/libs/*.jar app.jar
 
@@ -35,4 +41,6 @@ USER spring
 
 EXPOSE 8085
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# JAVA_OPTS로 힙 상한 등을 compose에서 주입할 수 있도록 shell 형태로 실행(리뷰 P2-1)
+ENV JAVA_OPTS=""
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

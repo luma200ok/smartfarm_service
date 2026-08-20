@@ -40,4 +40,9 @@ USER nextjs
 
 EXPOSE 3000
 
+# compose의 nginx가 depends_on: frontend: condition: service_healthy로 대기할 수 있도록(리뷰 P2-4)
+# node:22-alpine의 busybox wget 사용 — curl 미포함
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \
+    CMD wget -q --spider http://localhost:3000/ || exit 1
+
 CMD ["node", "server.js"]
