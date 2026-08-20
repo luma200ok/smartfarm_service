@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-20 (사이클1 완료 — PR #17 FE 마감·PR #18 BE 하드닝 머지. 다음: PRD §11 결정 사안)**
+> 마지막 갱신: **2026-08-20 (PR #23 머지 — 회원 탈퇴(4중 봉쇄). smartfarm_ai#67 배포로 환경 API 라이브. 진행: #20 이미지 저장)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 개요
@@ -49,10 +49,12 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 - [x] FE 마감 (PR #17)
 - [x] BE 하드닝 (PR #18) — ArchUnit이 기존 잠복 불일치 1건 즉시 검출·픽스
 
-### P1 — 기능 확장 (PRD §11 결정 후 착수)
-- [ ] **환경 대시보드 연동**: smartfarm_ai '오늘 운영'(KMA 외기·제어 후 내부값·장치 상태)을 서비스 대시보드에 노출 — ai-server 조회 엔드포인트 추가 필요 = **"1차 ai-server 무변경" 원칙 첫 해제 지점**, 범위 협의 필수
-- [ ] 회원 탈퇴: soft delete + `revokeAllByUserId` 동반(보안 리뷰 P2-3이 완료 조건 지정) + farm_members 유령 멤버십 정리
-- [ ] 알림: 경보·처방 완료 디스코드 웹훅(기존 smartfarm_ai notify 재활용)
+### P1 — Phase 3 (2026-08-20 결정: 원칙 해제·전부 착수)
+- [x] smartfarm_ai#67 — 환경 조회 API·fallback·caller_ref (머지·배포, 환경 API 라이브)
+- [x] #19 회원 탈퇴 (PR #23 — 4중 봉쇄·즉시 익명화·재인증)
+- [ ] #20 이미지 원본 저장 — 진행 중
+- [ ] #21 웹훅 알림
+- [ ] #22 **환경 대시보드 연동**(BE 프록시+FE): smartfarm_ai '오늘 운영'(KMA 외기·제어 후 내부값·장치 상태)을 서비스 대시보드에 노출 — ai-server 조회 엔드포인트 추가 필요 = **"1차 ai-server 무변경" 원칙 첫 해제 지점**, 범위 협의 필수
 
 ### P2 — 운영 안정화
 - [x] PG 백업 cron — 매일 04:10·14일 보관, 1회 실행+pg_restore 목록 검증 완료(8테이블) (2026-08-20)
