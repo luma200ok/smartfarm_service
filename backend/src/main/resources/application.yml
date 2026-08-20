@@ -55,6 +55,11 @@ ai-server:
   connect-timeout: 3s
   read-timeout: 30s
 
+# 환경 대시보드 ai-server 프록시 전용 타임아웃(contract §3 Phase 3 handoff) — 대시보드 위젯 진입 시
+# 동기 호출이라 진단(30s)만큼 기다리게 하지 않는다. base-url·connect-timeout은 ai-server 설정 재사용.
+environment-dashboard:
+  read-timeout: 5s
+
 # 처방 비동기 job — 단일 워커가 순차 처리(contract §3)
 prescription:
   # ai-server 처방 응답 대기(웜 ~16s, 콜드 LLM 웜업 고려 넉넉히 — handoff)
