@@ -10,6 +10,9 @@ import org.springframework.test.context.DynamicPropertySource;
  * 진단(Diagnosis) 통합 테스트 공통 지원 — ai-server를 MockWebServer로 대체한다.
  * (Testcontainers POSTGRES와 동일 패턴: static 초기화 블록에서 먼저 기동해야
  * {@code @DynamicPropertySource}가 컨텍스트 준비 시점에 포트를 읽을 수 있다)
+ *
+ * <p>이미지 저장 디렉터리({@code image.storage-dir})는 전체 컨텍스트가 필요로 하는 필수값이라
+ * {@link IntegrationTestSupport}에서 공통 등록한다({@link IntegrationTestSupport#IMAGE_STORAGE_DIR}).
  */
 public abstract class DiagnosisApiTestSupport extends FarmTestSupport {
 

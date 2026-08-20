@@ -46,6 +46,10 @@ jwt:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
+# 진단 이미지 원본 저장 base 디렉터리(contract §3 Phase 3) — 기본값 없음, 운영 필수(systemd env 파일 주입)
+image:
+  storage-dir: ${IMAGE_STORAGE_DIR}
+
 ai-server:
   url: ${AI_SERVER_URL:http://127.0.0.1:8000}
   connect-timeout: 3s

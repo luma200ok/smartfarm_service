@@ -17,8 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 진단 이력 — ai-server(/api/diagnoses) 프록시 결과를 농장 단위로 저장하는 불변 기록(soft delete 없음).
- * 이미지 원본은 저장하지 않는다(contract §6) — Grad-CAM 오버레이(cam_png_base64)만 보관.
+ * 진단 이력 — ai-server(/api/diagnoses) 프록시 결과를 농장 단위로 저장하는 기록(soft delete 없음).
+ * 이미지 원본은 진단 생성 성공 후 별도로 저장되며(contract §3 Phase 3), 저장 성공 시에만
+ * {@link #attachImage(String, String)}로 image_path·image_content_type이 채워진다(상태 전이 캡슐화).
  */
 @Entity
 @Table(name = "diagnoses")
@@ -58,6 +59,14 @@ public class Diagnosis {
     @Column(columnDefinition = "TEXT")
     private String camPngBase64;
 
+    /** {farmId}/{diagnosisId}.{ext} 상대경로 — 저장 실패 시 null 유지(진단 자체는 실패시키지 않음). */
+    @Column(length = 512)
+    private String imagePath;
+
+    /** 업로드 시 화이트리스트 검증을 통과한 원 content-type — 조회 응답 Content-Type을 이 값으로 고정. */
+    @Column(length = 64)
+    private String imageContentType;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -78,5 +87,11 @@ public class Diagnosis {
     @PrePersist
     void prePersist() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    /** 이미지 저장 성공 시에만 호출(ImageStorageService#store가 null을 반환하면 호출하지 않는다). */
+    public void attachImage(String imagePath, String contentType) {
+        this.imagePath = imagePath;
+        this.imageContentType = contentType;
     }
 }

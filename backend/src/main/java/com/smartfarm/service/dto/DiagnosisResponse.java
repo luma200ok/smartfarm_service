@@ -5,7 +5,8 @@ import com.smartfarm.service.entity.DiagnosisStatus;
 import java.time.LocalDateTime;
 
 /**
- * imageUrl은 항상 null — 진단 이미지 원본은 저장하지 않는다(contract §6). 필드는 계약 호환용으로만 유지.
+ * imageUrl은 image_path 저장이 성공한 진단에 한해 GET .../image 경로로 채워진다(contract §3 Phase 3).
+ * 저장 실패·저장 이전(구) 데이터는 null.
  */
 public record DiagnosisResponse(
         Long id,
@@ -30,10 +31,17 @@ public record DiagnosisResponse(
                 diagnosis.getProb(),
                 diagnosis.getPart(),
                 diagnosis.getReason(),
-                null,
+                toImageUrl(diagnosis),
                 diagnosis.getCamPngBase64(),
                 diagnosis.getCreatedBy(),
                 diagnosis.getCreatedAt()
         );
+    }
+
+    private static String toImageUrl(Diagnosis diagnosis) {
+        if (diagnosis.getImagePath() == null) {
+            return null;
+        }
+        return "/api/farms/%d/diagnoses/%d/image".formatted(diagnosis.getFarmId(), diagnosis.getId());
     }
 }

@@ -484,8 +484,13 @@ class PrescriptionApiIntegrationTest extends PrescriptionApiTestSupport {
     }
 
     private long createDiagnosisViaApi(String token, long farmId) throws Exception {
-        MockMultipartFile leafImage = new MockMultipartFile("file", "leaf.jpg", "image/jpeg",
-                "fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8));
+        // 매직바이트 검증(reviewer P2, 이슈 #20) 통과를 위해 JPEG 시그니처(FF D8 FF)를 앞에 붙인다.
+        byte[] jpegBytes = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+        byte[] content = new byte[jpegBytes.length + "fake-jpeg-bytes".length()];
+        System.arraycopy(jpegBytes, 0, content, 0, jpegBytes.length);
+        System.arraycopy("fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8), 0, content,
+                jpegBytes.length, "fake-jpeg-bytes".length());
+        MockMultipartFile leafImage = new MockMultipartFile("file", "leaf.jpg", "image/jpeg", content);
         MvcResult result = mockMvc.perform(multipart("/api/farms/" + farmId + "/diagnoses")
                         .file(leafImage)
                         .header("Authorization", "Bearer " + token))
