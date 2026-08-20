@@ -1,6 +1,7 @@
 package com.smartfarm.service.service;
 
 import com.smartfarm.service.config.WebhookProperties;
+import com.smartfarm.service.dto.DiscordWebhookUrlValidator;
 import com.smartfarm.service.dto.PrescriptionResult;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.exception.ErrorCode;
@@ -47,23 +48,38 @@ public class PrescriptionWebhookNotifier {
         send(job, "실패(" + errorCode.getCode() + ")", null);
     }
 
+    /**
+     * findById 조회부터 전부 try 안(리뷰 P3) — "예외는 절대 전파하지 않는다"는 이 메서드의 계약을
+     * 완결한다(조회 실패까지 포함해 어떤 예외 경로도 오해성 로그·전파 없이 여기서 끝난다).
+     */
     private void send(PrescriptionJob job, String statusLabel, String summary) {
-        Farm farm = farmRepository.findById(job.farmId()).orElse(null);
-        if (farm == null || farm.getWebhookUrl() == null) {
-            return; // 웹훅 미설정/농장 소멸 — 스킵(handoff)
-        }
-        String content = buildContent(farm.getName(), job, statusLabel, summary);
         try {
+            Farm farm = farmRepository.findById(job.farmId()).orElse(null);
+            if (farm == null || farm.getWebhookUrl() == null) {
+                return; // 웹훅 미설정/농장 소멸 — 스킵(handoff)
+            }
+            String webhookUrl = farm.getWebhookUrl();
+            // defense-in-depth(리뷰 P2) — 쓰기 시점 DTO 검증(@DiscordWebhookUrl)을 신뢰하되, 미래에
+            // 검증을 우회하는 쓰기 경로가 생겨도 발송 직전 한 번 더 막는다. URL 원문은 로그에 남기지 않는다.
+            if (!DiscordWebhookUrlValidator.isDiscordWebhookUrl(webhookUrl)) {
+                log.warn("웹훅 URL이 프리픽스 검증을 통과하지 못해 발송 스킵: farmId={}", farm.getId());
+                return;
+            }
+            String content = buildContent(farm.getName(), job, statusLabel, summary);
             webhookRestClient.post()
-                    .uri(farm.getWebhookUrl())
+                    .uri(webhookUrl)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new DiscordPayload(content))
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException e) {
-            log.warn("디스코드 웹훅 발송 실패(처방 상태 무영향): farmId={}", farm.getId(), e);
+            // 예외 메시지·스택트레이스에 요청 URI(디스코드 웹훅 토큰 포함)가 실릴 수 있어 원문을 절대
+            // 로깅하지 않는다(리뷰 P1) — farmId·예외 타입명만 남긴다.
+            log.warn("디스코드 웹훅 발송 실패(처방 상태 무영향): farmId={}, exceptionType={}",
+                    job.farmId(), e.getClass().getSimpleName());
         } catch (Exception e) {
-            log.warn("디스코드 웹훅 발송 중 예상 밖 오류(처방 상태 무영향): farmId={}", farm.getId(), e);
+            log.warn("디스코드 웹훅 발송 중 예상 밖 오류(처방 상태 무영향): farmId={}, exceptionType={}",
+                    job.farmId(), e.getClass().getSimpleName());
         }
     }
 
