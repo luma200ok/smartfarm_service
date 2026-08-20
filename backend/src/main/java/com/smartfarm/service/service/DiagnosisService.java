@@ -10,6 +10,7 @@ import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DiagnosisRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,11 @@ public class DiagnosisService {
     private final DiagnosisRepository diagnosisRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final AiServerClient aiServerClient;
+    private final ImageStorageService imageStorageService;
+
+    /** GET .../image 응답 조립용 — 컨트롤러가 그대로 스트리밍 바디로 사용한다. */
+    public record DiagnosisImage(Resource resource, String contentType) {
+    }
 
     /**
      * 트랜잭션 밖에서 실행(reviewer P1) — ai-server 호출(최대 응답 타임아웃 30s)이 DB 트랜잭션 안에서
@@ -62,7 +68,23 @@ public class DiagnosisService {
                 .reason(aiResponse.reason())
                 .camPngBase64(aiResponse.camPngBase64())
                 .build());
+
+        attachImageIfStored(diagnosis, file);
+
         return DiagnosisResponse.from(diagnosis);
+    }
+
+    /**
+     * 진단 생성 성공 후에만 실행 — image_path 컬럼용 id가 필요해 diagnosisRepository.save() 이후에만
+     * 가능하다(IDENTITY 채번). 저장 실패는 {@link ImageStorageService#store}가 내부에서 흡수하므로
+     * 여기서는 반환값 null 여부만 분기한다(진단 자체는 이미 성공 확정 — contract).
+     */
+    private void attachImageIfStored(Diagnosis diagnosis, MultipartFile file) {
+        String imagePath = imageStorageService.store(diagnosis.getFarmId(), diagnosis.getId(), file);
+        if (imagePath != null) {
+            diagnosis.attachImage(imagePath);
+            diagnosisRepository.save(diagnosis);
+        }
     }
 
     public PageResponse<DiagnosisSummaryResponse> findDiagnoses(Long farmId, Long userId, Pageable pageable) {
@@ -76,6 +98,16 @@ public class DiagnosisService {
         Diagnosis diagnosis = diagnosisRepository.findByIdAndFarmId(diagnosisId, farmId)
                 .orElseThrow(() -> new CustomException(ErrorCode.D001));
         return DiagnosisResponse.from(diagnosis);
+    }
+
+    /** 가드 첫 줄 → farm 스코프 진단 조회(D001) → image_path 없음/파일 부재는 D004(contract). */
+    public DiagnosisImage findDiagnosisImage(Long farmId, Long userId, Long diagnosisId) {
+        farmAccessGuard.requireMember(farmId, userId);
+        Diagnosis diagnosis = diagnosisRepository.findByIdAndFarmId(diagnosisId, farmId)
+                .orElseThrow(() -> new CustomException(ErrorCode.D001));
+        Resource resource = imageStorageService.load(diagnosis.getImagePath())
+                .orElseThrow(() -> new CustomException(ErrorCode.D004));
+        return new DiagnosisImage(resource, imageStorageService.contentTypeOf(diagnosis.getImagePath()));
     }
 
     /** 빈 파일/용량 초과/비이미지 content-type은 전부 D002로 통일(handoff — 일관 선택). */
