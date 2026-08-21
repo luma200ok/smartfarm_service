@@ -17,7 +17,8 @@ interface NavItem {
 }
 
 // 전 화면 공통 내비게이션(이슈 #38) — /farms 하위 상세 경로도 '농장 목록'을 활성 처리한다.
-const NAV_ITEMS: NavItem[] = [
+// Sidebar(이슈 #42)도 같은 항목을 재사용하므로 export한다.
+export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "대시보드", isActive: (pathname) => pathname === "/dashboard" },
   {
     href: "/farms",
@@ -29,6 +30,8 @@ const NAV_ITEMS: NavItem[] = [
 
 // 전역 공통 헤더 — 로고(홈 링크)+내비(현재 위치 활성 표시)+테마 토글+로그아웃.
 // 하위 상세 화면은 title/backHref로 부가 컨텍스트(뒤로가기)를 표시할 수 있다.
+// 데스크톱(lg 이상)은 Sidebar(이슈 #42)가 내비·테마 토글·로그아웃을 상시 노출하므로
+// 헤더에서는 해당 항목을 숨기고 title/backHref 표시 중심으로만 남긴다.
 export default function DashboardHeader({ title, backHref }: DashboardHeaderProps) {
   const pathname = usePathname() ?? "";
 
@@ -38,7 +41,7 @@ export default function DashboardHeader({ title, backHref }: DashboardHeaderProp
         <Link href="/dashboard" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
           스마트팜
         </Link>
-        <nav className="flex flex-wrap items-center gap-4 text-sm">
+        <nav className="flex flex-wrap items-center gap-4 text-sm lg:hidden">
           {NAV_ITEMS.map((item) => {
             const active = item.isActive(pathname);
             return (
