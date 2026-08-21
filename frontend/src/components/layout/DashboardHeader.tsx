@@ -33,6 +33,8 @@ export const NAV_ITEMS: NavItem[] = [
 // 데스크톱(lg 이상)은 Sidebar(이슈 #42)가 내비·테마 토글을 상시 노출하므로 헤더에서는
 // 해당 항목을 숨기고 title/backHref + 우측 프로필 메뉴만 남긴다(title 없는 페이지에서도
 // 프로필 메뉴는 항상 우측에 노출 — 이슈 #47).
+// ProfileMenu는 마운트 시 getMe()를 조회하므로(#47 리뷰 P1) 반응형별로 두 벌 두지 않고
+// 헤더 전체에서 단일 인스턴스만 렌더 — 배치는 CSS(justify-end/sm:ml-auto)로만 조정한다.
 export default function DashboardHeader({ title, backHref }: DashboardHeaderProps) {
   const pathname = usePathname() ?? "";
 
@@ -65,10 +67,10 @@ export default function DashboardHeader({ title, backHref }: DashboardHeaderProp
             );
           })}
           <ThemeToggle />
-          <ProfileMenu />
         </nav>
-        {/* lg 이상: title 유무와 무관하게 우측 정렬로 프로필 메뉴 상시 노출 */}
-        <div className="ml-auto hidden lg:block">
+        {/* 모바일: 자체 줄에서 우측 정렬(justify-end). sm 이상(행 레이아웃): ml-auto로
+            로고/내비가 lg에서 사라져도 항상 행 끝에 고정된다. */}
+        <div className="flex justify-end sm:ml-auto">
           <ProfileMenu />
         </div>
       </div>
