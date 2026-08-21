@@ -11,7 +11,13 @@ import type { CropType } from "@/types";
 // 1차 범위: cropType은 TOMATO만(ai-server 모델 전용, contract §4). 확장 대비 select 유지.
 const CROP_OPTIONS: { value: CropType; label: string }[] = [{ value: "TOMATO", label: "토마토" }];
 
-export default function FarmCreateForm() {
+interface FarmCreateFormProps {
+  // "card": 단독 페이지 등에서 카드 테두리+제목 포함(기존 동작, 기본값).
+  // "plain": 모달 내부처럼 바깥에서 이미 카드/제목을 그리는 컨텍스트에서 중복 제거.
+  variant?: "card" | "plain";
+}
+
+export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [cropType, setCropType] = useState<CropType>("TOMATO");
@@ -45,8 +51,17 @@ export default function FarmCreateForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">새 농장 만들기</h2>
+    <form
+      onSubmit={handleSubmit}
+      className={
+        variant === "card"
+          ? "flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+          : "flex flex-col gap-4"
+      }
+    >
+      {variant === "card" && (
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">새 농장 만들기</h2>
+      )}
 
       <FormField
         id="farm-name"

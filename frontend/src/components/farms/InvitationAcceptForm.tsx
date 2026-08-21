@@ -6,8 +6,14 @@ import FormField from "@/components/ui/FormField";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { acceptInvitation } from "@/lib/api/farms";
 
+interface InvitationAcceptFormProps {
+  // "card": 단독 페이지(/invitations)에서 카드 테두리+제목 포함(기존 동작, 기본값).
+  // "plain": 모달 내부처럼 바깥에서 이미 카드/제목을 그리는 컨텍스트에서 중복 제거.
+  variant?: "card" | "plain";
+}
+
 // 초대코드 입력 → 수락 화면 (contract §3 POST /api/invitations/accept).
-export default function InvitationAcceptForm() {
+export default function InvitationAcceptForm({ variant = "card" }: InvitationAcceptFormProps) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +40,17 @@ export default function InvitationAcceptForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">초대코드로 농장 합류</h2>
+    <form
+      onSubmit={handleSubmit}
+      className={
+        variant === "card"
+          ? "flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+          : "flex flex-col gap-4"
+      }
+    >
+      {variant === "card" && (
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">초대코드로 농장 합류</h2>
+      )}
       <FormField
         id="invitation-code"
         label="초대코드"
