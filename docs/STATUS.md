@@ -32,6 +32,7 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
 
 ## 마지막 머지 PR
+- **PR #41** (이슈 #38) — FE 전역 헤더 통일(usePathname 활성 내비, 홈 포함) + 테마 토글 필 스위치화. P1 0 APPROVE
 - **PR #37** (이슈 #36) — FE 라이트/다크 토글. Tailwind 4 @custom-variant .dark 전환 + no-flash 스크립트(farmTheme) + ThemeToggle 3곳. P1 0·P2 1(인증화면 겹침) 픽스
 - **PR #35** (이슈 #32) — FE /farms 목록/생성 분리 + 공용 Modal(포커스 트랩·복귀·스크롤 잠금). reviewer P1 2라운드(트랩 부재→오픈 직후 Shift+Tab 이탈) 픽스 후 재검증 PASS
 - **PR #34** (이슈 #33) — FE 인증 가드 hydration 레이스 픽스(useSyncExternalStore 서버 스냅샷 false 고정 → 마운트 후 직접 검사) + 로그인 역가드. P1 0·P2 1 픽스
