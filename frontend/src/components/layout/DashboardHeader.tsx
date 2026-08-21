@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import LogoutButton from "@/components/auth/LogoutButton";
+import ProfileMenu from "@/components/auth/ProfileMenu";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 interface DashboardHeaderProps {
@@ -28,10 +28,11 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/invitations", label: "초대코드", isActive: (pathname) => pathname === "/invitations" },
 ];
 
-// 전역 공통 헤더 — 로고(홈 링크)+내비(현재 위치 활성 표시)+테마 토글+로그아웃.
+// 전역 공통 헤더 — 로고(홈 링크)+내비(현재 위치 활성 표시)+테마 토글+프로필 메뉴(이슈 #47).
 // 하위 상세 화면은 title/backHref로 부가 컨텍스트(뒤로가기)를 표시할 수 있다.
-// 데스크톱(lg 이상)은 Sidebar(이슈 #42)가 내비·테마 토글·로그아웃을 상시 노출하므로
-// 헤더에서는 해당 항목을 숨기고 title/backHref 표시 중심으로만 남긴다.
+// 데스크톱(lg 이상)은 Sidebar(이슈 #42)가 내비·테마 토글을 상시 노출하므로 헤더에서는
+// 해당 항목을 숨기고 title/backHref + 우측 프로필 메뉴만 남긴다(title 없는 페이지에서도
+// 프로필 메뉴는 항상 우측에 노출 — 이슈 #47).
 export default function DashboardHeader({ title, backHref }: DashboardHeaderProps) {
   const pathname = usePathname() ?? "";
 
@@ -64,8 +65,12 @@ export default function DashboardHeader({ title, backHref }: DashboardHeaderProp
             );
           })}
           <ThemeToggle />
-          <LogoutButton />
+          <ProfileMenu />
         </nav>
+        {/* lg 이상: title 유무와 무관하게 우측 정렬로 프로필 메뉴 상시 노출 */}
+        <div className="ml-auto hidden lg:block">
+          <ProfileMenu />
+        </div>
       </div>
       {(title || backHref) && (
         <div className="flex items-center gap-3 text-sm">
