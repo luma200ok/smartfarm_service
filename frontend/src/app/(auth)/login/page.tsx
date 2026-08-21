@@ -11,11 +11,12 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <div className="flex flex-col gap-4">
-      <LoginRedirectGuard />
-      <Suspense fallback={null}>
-        <SignupSuccessBanner />
-      </Suspense>
-      <LoginForm />
+      <LoginRedirectGuard>
+        <Suspense fallback={null}>
+          <SignupSuccessBanner />
+        </Suspense>
+        <LoginForm />
+      </LoginRedirectGuard>
     </div>
   );
 }
