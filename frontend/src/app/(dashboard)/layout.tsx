@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import Sidebar from "@/components/layout/Sidebar";
 import { isAuthenticated } from "@/lib/api/auth";
 
 /**
@@ -39,5 +40,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return null;
   }
 
-  return <div className="flex flex-1 flex-col">{children}</div>;
+  // 좌측 사이드바(이슈 #42) — lg 이상은 Sidebar+콘텐츠를 가로로 배치, 그 미만은 Sidebar가
+  // 자체적으로 숨고(hidden lg:flex) 기존 상단 헤더 내비 흐름 그대로 세로 배치를 쓴다.
+  return (
+    <div className="flex flex-1 flex-col lg:flex-row">
+      <Sidebar />
+      <div className="flex flex-1 flex-col">{children}</div>
+    </div>
+  );
 }
