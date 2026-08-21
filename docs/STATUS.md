@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-21 (🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리(pension 스토리지 로컬화·외부 백업 cron·골든 덤프) 완료, OCI 전 서비스 정지·관찰 중(해지만 남음). 루트/www=포트폴리오·smartfarm-ai=Streamlit 데모·stats=ghstats 터널 공개. smartfarm_ai#73 UI 톤다운 머지(PR #74). 상세=`_local/oci-migration-plan.md`)**
+> 마지막 갱신: **2026-08-21 (FE UX 2건 머지 — PR #34 인증 가드 hydration 레이스 픽스(#33)·PR #35 /farms 목록/생성 분리+공용 Modal(#32), deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
@@ -32,6 +32,8 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
 
 ## 마지막 머지 PR
+- **PR #35** (이슈 #32) — FE /farms 목록/생성 분리 + 공용 Modal(포커스 트랩·복귀·스크롤 잠금). reviewer P1 2라운드(트랩 부재→오픈 직후 Shift+Tab 이탈) 픽스 후 재검증 PASS
+- **PR #34** (이슈 #33) — FE 인증 가드 hydration 레이스 픽스(useSyncExternalStore 서버 스냅샷 false 고정 → 마운트 후 직접 검사) + 로그인 역가드. P1 0·P2 1 픽스
 - **PR #14** (이슈 #4) — BE 처방 job. opus 2종 P1 3→0(한글 스키마 fail-open·접수 무제한), 테스트 120건
 - **PR #13** (이슈 #3) — BE 진단 프록시+이력. P1 1(트랜잭션 내 외부 호출) 픽스, 테스트 85건
 - **PR #12** (이슈 #2) — BE Farm 멀티테넌시. opus 2종 P1 1→0, IDOR 전수 통과, 테스트 70건
@@ -79,3 +81,4 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 | ai-server 질문 이력 | PRD §11-1 — smartfarm_ai#66 으로 등재(비활성/익명화/태깅 택일 결정 대기). 연동 개선 umbrella 포함 |
 | FE P004 반영 | ✅ PR #17에서 해소 |
 | cropType | 1차 TOMATO 전용(ai-server 모델 제약), enum 확장 대비 |
+| ⚠️ deploy.yml | 구 OCI(arm1) push 배포가 아직 활성 — main 머지마다 arm1 frontend 재기동(2026-08-21 PR #34 머지 시 실측, run 32461101202 success). OCI 정지 상태와 충돌 → push 트리거 제거/워크플로우 폐기 필요(사용자 결정 대기) |
