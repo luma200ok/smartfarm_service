@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-21 (FE UX 3건 머지 — PR #34 인증 가드 hydration 레이스 픽스(#33)·PR #35 /farms 목록/생성 분리+공용 Modal(#32)·PR #37 라이트/다크 토글(.dark 클래스 전환+farmTheme 저장, #36), deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
+> 마지막 갱신: **2026-08-21 (FE UX 개편 5건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭 개요/진단/처방/멤버(#43). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
@@ -32,6 +32,8 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
 
 ## 마지막 머지 PR
+- **PR #46** (이슈 #43) — FE 농장 상세 탭(개요·진단·처방·멤버, farms/[farmId]/layout). FarmDetail→Overview/Members 분리, 기존 URL 유지. P1 0 APPROVE
+- **PR #45** (이슈 #42) — FE 좌측 사이드바(내비+내 농장 스위처, farmsBus 갱신). P2 2건 픽스, 후속 #44
 - **PR #41** (이슈 #38) — FE 전역 헤더 통일(usePathname 활성 내비, 홈 포함) + 테마 토글 필 스위치화. P1 0 APPROVE
 - **PR #37** (이슈 #36) — FE 라이트/다크 토글. Tailwind 4 @custom-variant .dark 전환 + no-flash 스크립트(farmTheme) + ThemeToggle 3곳. P1 0·P2 1(인증화면 겹침) 픽스
 - **PR #35** (이슈 #32) — FE /farms 목록/생성 분리 + 공용 Modal(포커스 트랩·복귀·스크롤 잠금). reviewer P1 2라운드(트랩 부재→오픈 직후 Shift+Tab 이탈) 픽스 후 재검증 PASS
