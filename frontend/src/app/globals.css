@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* 명시적 라이트/다크 토글(이슈 #36) — 기존 dark: variant를 시스템 미디어쿼리 대신
+   .dark 클래스 기준으로 전환. 개별 컴포넌트의 dark: 클래스는 수정 불필요. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,11 +16,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
