@@ -73,6 +73,7 @@ export default function ProfileMenu() {
   }
 
   const initial = user?.nickname ? user.nickname.charAt(0).toUpperCase() : loadFailed ? "?" : "";
+  const triggerLabel = user ? `${user.nickname} 프로필 메뉴` : "프로필 메뉴";
 
   return (
     <div ref={containerRef} className="relative">
@@ -80,6 +81,7 @@ export default function ProfileMenu() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={triggerLabel}
         onClick={() => setOpen((prev) => !prev)}
         className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
       >
