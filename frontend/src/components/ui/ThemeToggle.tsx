@@ -33,18 +33,30 @@ function setDark(next: boolean) {
   listeners.forEach((listener) => listener());
 }
 
-// 라이트/다크 모드 토글(이슈 #36).
+// 라이트/다크 모드 토글(이슈 #36) — 필(pill) 스위치 UI(이슈 #38).
+// 트랙: 라이트=zinc-200, 다크=zinc-800. 노브는 현재 모드 아이콘을 담고 좌우로 슬라이딩한다.
 export default function ThemeToggle() {
   const isDark = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={isDark}
+      aria-label="다크 모드"
       onClick={() => setDark(!isDark)}
-      aria-label={isDark ? "라이트 모드로 전환" : "다크 모드로 전환"}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 ${
+        isDark ? "border-zinc-700 bg-zinc-800" : "border-zinc-300 bg-zinc-200"
+      }`}
     >
-      <span aria-hidden="true">{isDark ? "🌙" : "☀️"}</span>
+      <span
+        aria-hidden="true"
+        className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] leading-none shadow transition-transform duration-200 ease-in-out dark:bg-zinc-950 ${
+          isDark ? "translate-x-[22px]" : "translate-x-0.5"
+        }`}
+      >
+        {isDark ? "🌙" : "☀️"}
+      </span>
     </button>
   );
 }
