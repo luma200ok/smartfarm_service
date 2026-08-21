@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import LogoutButton from "@/components/auth/LogoutButton";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { listFarms } from "@/lib/api/farms";
 import { subscribeFarmsChanged } from "@/lib/farmsBus";
@@ -117,10 +116,9 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* 하단 고정: 테마 토글 + 로그아웃 */}
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
+      {/* 하단 고정: 테마 토글(프로필/로그아웃은 헤더 ProfileMenu로 일원화 — 이슈 #47) */}
+      <div className="flex flex-shrink-0 items-center border-t border-zinc-200 px-4 py-4 dark:border-zinc-800">
         <ThemeToggle />
-        <LogoutButton />
       </div>
     </aside>
   );
