@@ -1,5 +1,6 @@
 import Link from "next/link";
 import LogoutButton from "@/components/auth/LogoutButton";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 interface DashboardHeaderProps {
   title: string;
@@ -31,6 +32,7 @@ export default function DashboardHeader({ title, backHref }: DashboardHeaderProp
         <Link href="/invitations" className="text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50">
           초대코드 입력
         </Link>
+        <ThemeToggle />
         <LogoutButton />
       </nav>
     </header>

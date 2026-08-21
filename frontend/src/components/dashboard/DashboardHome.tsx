@@ -5,6 +5,7 @@ import { useState } from "react";
 import LogoutButton from "@/components/auth/LogoutButton";
 import EnvironmentWidget from "@/components/environment/EnvironmentWidget";
 import FarmSummaryList from "@/components/farms/FarmSummaryList";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import type { FarmSummaryResponse } from "@/types";
 
 // 대시보드 홈 — 내 농장 목록 요약 + 환경 위젯(이슈 #22). 환경 데이터는 전 농장 공용이라
@@ -20,7 +21,10 @@ export default function DashboardHome() {
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">스마트팜</h1>
-        <LogoutButton />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <LogoutButton />
+        </div>
       </header>
       <main className="flex flex-col gap-6 px-6 py-6">
         {firstFarmId !== null && <EnvironmentWidget farmId={firstFarmId} />}
