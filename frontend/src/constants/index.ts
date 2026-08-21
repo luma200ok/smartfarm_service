@@ -4,6 +4,7 @@ import type { ErrorCode } from "@/types";
 export const STORAGE_KEYS = {
   accessToken: "farmAccessToken",
   refreshToken: "farmRefreshToken",
+  theme: "farmTheme",
 } as const;
 
 // 간단한 형식 체크용(엄밀한 RFC 5322 검증 아님) — 최종 검증은 백엔드 Bean Validation.
