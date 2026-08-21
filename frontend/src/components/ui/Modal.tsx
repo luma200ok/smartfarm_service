@@ -63,7 +63,9 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
       const active = document.activeElement;
 
       if (e.shiftKey) {
-        if (active === first || !container.contains(active)) {
+        // active === container: 오픈 직후 컨테이너 자체에 포커스가 있는 상태 —
+        // 이때 Shift+Tab 기본 동작은 배경으로 빠져나가므로 트랩 대상에 포함한다.
+        if (active === first || active === container || !container.contains(active)) {
           e.preventDefault();
           last.focus();
         }
