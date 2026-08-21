@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-21 (🏁 홈서버 컷오버 완료 — farm.luma200ok.com이 홈서버 터널로 서비스 중. smartfarm_ai#68 이전·e2e·최종 데이터 동기·DNS 전환까지 완료. OCI는 무트래픽 병행 관찰 중)**
+> 마지막 갱신: **2026-08-21 (🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리(pension 스토리지 로컬화·외부 백업 cron·골든 덤프) 완료, OCI 전 서비스 정지·관찰 중(해지만 남음). 루트/www=포트폴리오·smartfarm-ai=Streamlit 데모·stats=ghstats 터널 공개. smartfarm_ai#73 UI 톤다운 머지(PR #74). 상세=`_local/oci-migration-plan.md`)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
