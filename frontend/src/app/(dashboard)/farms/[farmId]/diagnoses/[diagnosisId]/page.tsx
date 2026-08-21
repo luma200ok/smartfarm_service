@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import DashboardHeader from "@/components/layout/DashboardHeader";
+import Link from "next/link";
 import DiagnosisDetail from "@/components/diagnoses/DiagnosisDetail";
 
 export const metadata: Metadata = {
@@ -12,7 +12,14 @@ export default async function DiagnosisDetailPage(
   const { farmId, diagnosisId } = await props.params;
   return (
     <div className="flex flex-1 flex-col">
-      <DashboardHeader title="진단 상세" backHref={`/farms/${farmId}/diagnoses`} />
+      <div className="px-6 pt-6">
+        <Link
+          href={`/farms/${farmId}/diagnoses`}
+          className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+        >
+          ← 목록
+        </Link>
+      </div>
       <DiagnosisDetail farmId={farmId} diagnosisId={diagnosisId} />
     </div>
   );
