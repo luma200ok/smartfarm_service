@@ -9,6 +9,7 @@ import { VALIDATION } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
 import { getMe } from "@/lib/api/auth";
 import { createInvitation, deleteFarm, getFarm, listMembers, removeMember, updateFarm } from "@/lib/api/farms";
+import { notifyFarmsChanged } from "@/lib/farmsBus";
 import type { FarmResponse, InvitationResponse, MemberResponse } from "@/types";
 
 const CROP_LABELS: Record<string, string> = { TOMATO: "토마토" };
@@ -116,6 +117,7 @@ export default function FarmDetail({ farmId }: FarmDetailProps) {
     setActionBusy(true);
     try {
       await deleteFarm(farmId);
+      notifyFarmsChanged(); // Sidebar(#42) 농장 리스트 재조회(죽은 링크 잔존 방지)
       router.push("/farms");
       router.refresh();
     } catch (err) {

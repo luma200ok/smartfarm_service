@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import FormField from "@/components/ui/FormField";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { acceptInvitation } from "@/lib/api/farms";
+import { notifyFarmsChanged } from "@/lib/farmsBus";
 
 interface InvitationAcceptFormProps {
   // "card": 단독 페이지(/invitations)에서 카드 테두리+제목 포함(기존 동작, 기본값).
@@ -30,6 +31,7 @@ export default function InvitationAcceptForm({ variant = "card" }: InvitationAcc
     setSubmitting(true);
     try {
       const farm = await acceptInvitation({ code: code.trim() });
+      notifyFarmsChanged(); // Sidebar(#42) 농장 리스트 재조회
       router.push(`/farms/${farm.id}`);
       router.refresh();
     } catch (err) {

@@ -6,6 +6,7 @@ import FormField from "@/components/ui/FormField";
 import { VALIDATION } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { createFarm } from "@/lib/api/farms";
+import { notifyFarmsChanged } from "@/lib/farmsBus";
 import type { CropType } from "@/types";
 
 // 1차 범위: cropType은 TOMATO만(ai-server 모델 전용, contract §4). 확장 대비 select 유지.
@@ -41,6 +42,7 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
     setSubmitting(true);
     try {
       const farm = await createFarm({ name, cropType, location: location || undefined });
+      notifyFarmsChanged(); // Sidebar(#42) 농장 리스트 재조회
       router.push(`/farms/${farm.id}`);
       router.refresh();
     } catch (err) {
