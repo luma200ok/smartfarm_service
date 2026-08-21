@@ -18,7 +18,8 @@ export default function DashboardHome() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <DashboardHeader />
+      {/* 데스크톱은 Sidebar(이슈 #42)가 로고를 상시 노출하므로 헤더가 비어 보이지 않게 title을 전달 */}
+      <DashboardHeader title="대시보드" />
       <main className="flex flex-col gap-6 px-6 py-6">
         {firstFarmId !== null && <EnvironmentWidget farmId={firstFarmId} />}
 
