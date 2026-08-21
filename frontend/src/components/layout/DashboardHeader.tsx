@@ -38,7 +38,11 @@ export default function DashboardHeader({ title, backHref }: DashboardHeaderProp
   return (
     <header className="flex flex-col gap-2 border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Link href="/dashboard" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        {/* lg 이상은 Sidebar(이슈 #42)가 동일 로고를 상시 노출하므로 중복 방지 */}
+        <Link
+          href="/dashboard"
+          className="text-lg font-semibold text-zinc-900 lg:hidden dark:text-zinc-50"
+        >
           스마트팜
         </Link>
         <nav className="flex flex-wrap items-center gap-4 text-sm lg:hidden">
