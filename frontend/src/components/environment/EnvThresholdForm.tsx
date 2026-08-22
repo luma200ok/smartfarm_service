@@ -40,6 +40,20 @@ function parseField(v: string): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+// 상하한 역전 선검증(리뷰 픽스 #53 P2-1) — FarmOverview.handleEditSubmit과 동일하게
+// 클라이언트에서 먼저 막아 왕복을 줄인다. 둘 다 입력된 경우에만 비교하고, 값 범위(-50~80·0~100)
+// 등 나머지 검증은 여전히 서버 C001을 최종 방어선으로 둔다(레포 컨벤션 — 서버 검증 로직 중복 최소화).
+function findCrossFieldError(payload: EnvThresholdsRequest): string | null {
+  const { indoorTempMin, indoorTempMax, indoorHumidityMin, indoorHumidityMax } = payload;
+  if (indoorTempMin != null && indoorTempMax != null && indoorTempMin >= indoorTempMax) {
+    return "내부 온도 하한은 상한보다 작아야 합니다.";
+  }
+  if (indoorHumidityMin != null && indoorHumidityMax != null && indoorHumidityMin >= indoorHumidityMax) {
+    return "내부 습도 하한은 상한보다 작아야 합니다.";
+  }
+  return null;
+}
+
 // 임계치 알림 설정 폼(이슈 #53, 다함 벤치마킹 2) — 호출부(FarmOverview)가 myRole==='OWNER'일 때만 마운트.
 // 상하한 역전·범위 초과 등 값 검증은 서버가 C001로 판정 — 메시지 문자열 매칭 대신
 // resolveErrorMessage(ErrorCode 기준)로만 분기한다(레포 컨벤션).
@@ -95,7 +109,6 @@ export default function EnvThresholdForm({ farmId }: EnvThresholdFormProps) {
     e.preventDefault();
     setSaveError(null);
     setSaveSuccess(false);
-    setSaving(true);
 
     const payload: EnvThresholdsRequest = {
       enabled,
@@ -105,6 +118,13 @@ export default function EnvThresholdForm({ farmId }: EnvThresholdFormProps) {
       indoorHumidityMax: parseField(fields.indoorHumidityMax),
     };
 
+    const crossFieldError = findCrossFieldError(payload);
+    if (crossFieldError) {
+      setSaveError(crossFieldError);
+      return;
+    }
+
+    setSaving(true);
     try {
       const updated = await updateEnvThresholds(farmId, payload);
       setEnabled(updated.enabled);
