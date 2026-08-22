@@ -66,6 +66,22 @@ public class AuthService {
     }
 
     /**
+     * 데모 로그인(contract §4.5, 이슈 #49) — 자격증명 없이 데모 유저(is_demo=true)로
+     * 기존 토큰 발급 로직({@link #issueTokens})을 그대로 재사용한다(인증 필터·토큰 검증 무변경).
+     * 데모 유저 존재는 시드(DemoAccountInitializer, 트래픽 수신 전 실행)가 보장하는 전제 —
+     * 미존재는 서버 결함이므로 C002(500)로 처리한다(A00x 오용 금지).
+     */
+    @Transactional
+    public TokenResponse demoLogin() {
+        User demoUser = userRepository.findFirstByIsDemoTrueOrderByIdAsc()
+                .orElseThrow(() -> {
+                    log.error("데모 유저 미존재 — 시드(DemoAccountInitializer) 결함, contract §4.5 위반");
+                    return new CustomException(ErrorCode.C002);
+                });
+        return issueTokens(demoUser.getId());
+    }
+
+    /**
      * refresh 로테이션 — refresh 토큰의 만료/무효/재사용은 전부 A004 (A003은 access 만료 전용, contract §5).
      * - 미존재/변조 → A004
      * - 만료 → A004 (부작용 없이 조용히 종료 — 만료 토큰 반복 제시가 전 기기 세션을

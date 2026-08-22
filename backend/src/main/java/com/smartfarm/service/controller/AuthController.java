@@ -39,6 +39,14 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    @Operation(summary = "데모 로그인 (공개) — 자격증명 없이 공유 데모 계정 토큰 발급",
+            description = "포트폴리오 체험용. 데모 계정은 파괴적 작업(탈퇴·농장 생성/수정/삭제·웹훅·"
+                    + "초대·멤버 제거)이 403 A007로 차단된다(contract §4.5).")
+    @PostMapping("/demo-login")
+    public ResponseEntity<TokenResponse> demoLogin() {
+        return ResponseEntity.ok(authService.demoLogin());
+    }
+
     @Operation(summary = "토큰 재발급(로테이션)")
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponse> refresh(@Valid @RequestBody RefreshRequest request) {
