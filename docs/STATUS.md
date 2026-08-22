@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-21 (FE UX 개편 6건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭(#43)·#48 프로필 메뉴(#47). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
+> 마지막 갱신: **2026-08-22 (🎯 데모 계정 라이브 — PR #58 BE(is_demo 시드·demo-login·A007 가드, opus 이중리뷰 P1 3건 픽스)·PR #59 FE(체험 버튼). deploy-home push 트리거(#39, 타 세션)로 자동 배포됨 → 수동 dispatch 불필요. 실사이트 검증: demo-login 200·데모 농장·삭제 403 A007. 후속=#51 데모 하드닝. / 이전: FE UX 개편 6건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭(#43)·#48 프로필 메뉴(#47). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
@@ -32,6 +32,8 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 ⚠️ **backend는 단일 인스턴스 전제**(처방 워커 복구·픽업이 인스턴스 구분 없음 — 스케일아웃 시 owner/heartbeat 필요, #9 참조). 스케일아웃 금지.
 
 ## 마지막 머지 PR
+- **PR #58** (이슈 #49) — BE 데모 계정: is_demo 시드(선점 fail-fast)·demo-login·A007 가드 8곳·nginx limit_req·데모 refresh 전역 revoke 생략. opus 이중 리뷰 P1 3→0, 테스트 193건. 후속 #51
+- **PR #59** (이슈 #50) — FE 데모 체험 버튼(demoLogin API·A007 메시지). APPROVE
 - **PR #48** (이슈 #47) — FE 우측 상단 프로필 메뉴(getMe 아바타+드롭다운, 로그아웃 일원화·LogoutButton 삭제). P1 1(이중 마운트)→픽스, P2 3 픽스, 재검토 PASS
 - **PR #46** (이슈 #43) — FE 농장 상세 탭(개요·진단·처방·멤버, farms/[farmId]/layout). FarmDetail→Overview/Members 분리, 기존 URL 유지. P1 0 APPROVE
 - **PR #45** (이슈 #42) — FE 좌측 사이드바(내비+내 농장 스위처, farmsBus 갱신). P2 2건 픽스, 후속 #44
