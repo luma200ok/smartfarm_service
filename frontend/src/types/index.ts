@@ -203,6 +203,37 @@ export interface EnvironmentTodayResponse {
   alerts: string[];
 }
 
+// ── 환경 시계열·임계치 (contract §4.6, 이슈 #52·#53) ──────────────
+export type EnvironmentHistoryRange = "24h" | "7d" | "30d";
+
+// 다운샘플은 서버가 수행(24h=원본·7d=30분평균·30d=2시간평균), 빈 구간은 점 생략 —
+// FE는 받은 point만 그대로 그린다. 값 필드는 부분 응답 허용(전부 nullable).
+export interface EnvironmentHistoryPoint {
+  capturedAt: string;
+  outdoorTemp?: number | null;
+  outdoorHumidity?: number | null;
+  indoorTemp?: number | null;
+  indoorHumidity?: number | null;
+}
+
+export interface EnvironmentHistoryResponse {
+  range: EnvironmentHistoryRange;
+  points: EnvironmentHistoryPoint[];
+}
+
+export interface EnvThresholdsRequest {
+  enabled: boolean;
+  indoorTempMin?: number | null;
+  indoorTempMax?: number | null;
+  indoorHumidityMin?: number | null;
+  indoorHumidityMax?: number | null;
+}
+
+// 미설정 농장은 GET에서 enabled=false 기본값으로 온다(updatedAt 없음).
+export interface EnvThresholdsResponse extends EnvThresholdsRequest {
+  updatedAt?: string;
+}
+
 // ── 페이지네이션 ──────────────────────────────────
 // contract §4 확정 스키마.
 export interface PageResponse<T> {
