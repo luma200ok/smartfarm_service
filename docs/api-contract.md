@@ -107,6 +107,23 @@
 - **허용**: 전체 조회 + 진단 업로드 + 처방 생성(체험 핵심). 남용 대비 rate-limit은 후속 이슈.
 - **FE**: 데모 로그인 후에는 일반 계정과 동일 UI(차단 작업은 서버 403 A007 메시지 표기). 차단 버튼 사전 숨김은 후속 폴리시.
 
+## 4.6 환경 시계열·임계치 알림 (2026-08-22 확정, 이슈 #52·#53 — 다함 벤치마킹 1·2)
+
+- **원칙**: **ai-server 무변경**. backend `@Scheduled` 폴러(60s fixedDelay)가 기존 ai-server `GET /api/environment/today`를 조회해 `env_snapshots`에 적재(+`EnvironmentCache` 갱신). 기존 요청 경로(on-demand 60s 캐시)는 폴백으로 유지.
+- **적재 규칙**: ai-server 부분 응답 수용 — 가용 필드만 저장(전 필드 nullable). **직전 적재의 `updated_at`과 동일하면 skip**(ai-server 상태 파일 미갱신 시 중복 행 방지). 저장 필드: `captured_at(=updated_at)`, `outdoor_temp/humidity`, `indoor_temp/humidity`, `controlled`. devices·alerts는 시계열 미저장.
+- **보존**: 90일. 일 1회 purge 스케줄러(RefreshTokenPurgeService 패턴).
+
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/environment/history` | 멤버 | `?range=24h\|7d\|30d` (기본 24h, 그 외 C001) | 200 EnvironmentHistoryResponse |
+| GET | `/api/farms/{farmId}/env-thresholds` | 멤버 | — | 200 EnvThresholdsResponse (미설정 시 enabled=false 기본값) |
+| PUT | `/api/farms/{farmId}/env-thresholds` | OWNER | EnvThresholdsRequest | 200 EnvThresholdsResponse |
+
+- **EnvironmentHistoryResponse** `{range, points: [{capturedAt, outdoorTemp?, outdoorHumidity?, indoorTemp?, indoorHumidity?}]}` — 다운샘플: 24h=원본(60s), 7d=30분 평균, 30d=2시간 평균(DB 집계, 빈 구간은 점 생략).
+- **EnvThresholdsRequest/Response** `{enabled, indoorTempMin?, indoorTempMax?, indoorHumidityMin?, indoorHumidityMax?}`(+Response에 `updatedAt`) — 검증: min<max, 온도 -50~80, 습도 0~100(위반 C001). 저장=`farm_env_thresholds`(farm당 1행).
+- **임계치 알림**: 폴러가 적재 직후 `enabled=true`이고 `webhook_url` 설정된 농장 대상 **indoor 온·습도** 평가. **연속 2틱 이탈 시 발동**, 농장×항목×방향별 **쿨다운 30분**(단일 인스턴스 전제 — 메모리 상태 허용, 재시작 시 초기화 수용). 발송은 기존 디스코드 웹훅 노티파이어 컨벤션(타임아웃 5s·실패는 로그만·URL 마스킹) 준수. 신규 ErrorCode 없음(검증은 C001 재사용).
+- **마이그레이션**: V9 `env_snapshots`, V10 `farm_env_thresholds` (V8은 #49 데모 선점 — **#49 먼저 머지**, out-of-order=true 확인됨).
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.

@@ -71,6 +71,12 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 - [x] #21 웹훅 알림 (PR #25 — SSRF 차단·토큰 로그 유출 P1 픽스)
 - [x] #22 환경 대시보드 (PR #26 — 전역 60s 캐시·stale 폴백·FE 위젯, 라이브 스모크 통과): smartfarm_ai '오늘 운영'(KMA 외기·제어 후 내부값·장치 상태)을 서비스 대시보드에 노출 — ai-server 조회 엔드포인트 추가 필요 = **"1차 ai-server 무변경" 원칙 첫 해제 지점**, 범위 협의 필수
 
+### P1.5 — 다함 벤치마킹 (2026-08-22 등재 — 다함팜 플랫폼 DFX-APP·통합관제 DFX-SCADA 갭 분석 결과. 계약=api-contract §4.6)
+- **사이클 1 (준비 완료 — handoff `_local/handoff/backend-52-env.md`·`frontend-53-env.md`)**: [ ] #52 [BE] 환경 시계열 적재+임계치 웹훅(ai-server 무변경, V9·V10) · [ ] #53 [FE] 시계열 차트+임계치 설정 UI — **⚠️ #49(V8) 먼저 머지 후 착수**
+- **사이클 2**: [ ] #54 [BE] AI 챗봇 프록시+이력(착수 시 ai-server 질의 스펙 조사·계약 확정) · [ ] #55 [FE] 챗봇 UI
+- **사이클 3 (퀵윈)**: [ ] #56 [BE] 작업일지 CRUD+KMA 단기예보 프록시 · [ ] #57 [FE] 일지 화면+예보·VPD 위젯
+- 제외 결정: 원격제어·양액·타사장비·에너지(실기기 전제 — 벤치마킹 불가)
+
 ### P2 — 운영 안정화
 - [x] PG 백업 cron — 매일 04:10·14일 보관, 1회 실행+pg_restore 목록 검증 완료(8테이블) (2026-08-20)
 - [x] certbot 자동갱신 — /etc/cron.d/certbot-renew(3·15시, 전체 인증서 대상) farm 자동 포함 확인
