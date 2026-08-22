@@ -11,8 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 농장별 환경 임계치 설정 CRUD(contract §4.6) — 조회는 멤버, 수정은 OWNER. 데모 계정 차단
- * 목록(contract §4.5)에 env-thresholds가 없어 demoAccountGuard를 적용하지 않는다.
+ * 농장별 환경 임계치 설정 CRUD(contract §4.6) — 조회는 멤버, 수정은 OWNER. 수정(PUT)은 데모 계정
+ * 차단 목록(contract §4.5, 리뷰 P2로 목록에 추가됨)에 포함돼 demoAccountGuard를 적용한다.
+ * 조회(GET)는 차단 목록에 없어 데모 계정도 허용(체험 핵심 — 다른 조회 API와 동일 원칙).
  */
 @Service
 @RequiredArgsConstructor
@@ -21,6 +22,8 @@ public class EnvThresholdService {
 
     private final FarmAccessGuard farmAccessGuard;
     private final FarmEnvThresholdRepository farmEnvThresholdRepository;
+    private final DemoAccountGuard demoAccountGuard;
+    private final EnvThresholdAlertService envThresholdAlertService;
 
     public EnvThresholdsResponse findThresholds(Long farmId, Long userId) {
         farmAccessGuard.requireMember(farmId, userId);
@@ -31,6 +34,7 @@ public class EnvThresholdService {
 
     @Transactional
     public EnvThresholdsResponse updateThresholds(Long farmId, Long userId, EnvThresholdsRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireOwner(farmId, userId);
         validateCrossRange(request);
 
@@ -41,6 +45,8 @@ public class EnvThresholdService {
                         .build()));
         threshold.replace(request.enabled(), request.indoorTempMin(), request.indoorTempMax(),
                 request.indoorHumidityMin(), request.indoorHumidityMax());
+        // 설정이 바뀐 시점부터 "새로 2틱"부터 세도록 연속 이탈 상태를 리셋한다(리뷰 P3).
+        envThresholdAlertService.resetFarm(farmId);
         return EnvThresholdsResponse.from(threshold);
     }
 
