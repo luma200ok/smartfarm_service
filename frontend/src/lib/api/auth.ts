@@ -52,6 +52,13 @@ export async function login(payload: LoginRequest): Promise<TokenResponse> {
   return tokens;
 }
 
+// 데모 계정 로그인 — 자격증명 불필요(docs/api-contract.md §4.5). body 없이 POST.
+export async function demoLogin(): Promise<TokenResponse> {
+  const tokens = await api<TokenResponse>(ENDPOINTS.auth.demoLogin, { method: "POST" });
+  setTokens(tokens);
+  return tokens;
+}
+
 // 동시에 여러 authFetch가 401(A003)을 맞으면 각자 refresh를 호출하지 않도록
 // 모듈 스코프 in-flight Promise로 직렬화한다. 순차 호출 시 로테이션된 구
 // refreshToken으로 두 번째 요청이 나가면 백엔드가 재사용으로 감지(A004)해

@@ -20,6 +20,7 @@ export type ErrorCode =
   | "A003"
   | "A004"
   | "A005"
+  | "A007"
   | "F001"
   | "F002"
   | "F003"

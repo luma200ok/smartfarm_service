@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import FormField from "@/components/ui/FormField";
 import { DEFAULT_ERROR_MESSAGE, ERROR_MESSAGES, VALIDATION } from "@/constants";
-import { login } from "@/lib/api/auth";
+import { demoLogin, login } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 
 export default function LoginForm() {
@@ -15,6 +15,7 @@ export default function LoginForm() {
   const [emailError, setEmailError] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [demoSubmitting, setDemoSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,6 +39,24 @@ export default function LoginForm() {
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDemoLogin() {
+    setError(null);
+    setEmailError(undefined);
+    setDemoSubmitting(true);
+    try {
+      await demoLogin();
+      router.push("/dashboard");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError((err.code && ERROR_MESSAGES[err.code]) || err.message || DEFAULT_ERROR_MESSAGE);
+      } else {
+        setError(DEFAULT_ERROR_MESSAGE);
+      }
+    } finally {
+      setDemoSubmitting(false);
     }
   }
 
@@ -74,10 +93,19 @@ export default function LoginForm() {
 
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || demoSubmitting}
         className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
       >
         {submitting ? "로그인 중..." : "로그인"}
+      </button>
+
+      <button
+        type="button"
+        onClick={handleDemoLogin}
+        disabled={submitting || demoSubmitting}
+        className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      >
+        {demoSubmitting ? "데모 로그인 중..." : "데모 계정으로 체험하기"}
       </button>
 
       <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
