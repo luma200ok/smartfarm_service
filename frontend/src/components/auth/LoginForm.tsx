@@ -44,6 +44,7 @@ export default function LoginForm() {
 
   async function handleDemoLogin() {
     setError(null);
+    setEmailError(undefined);
     setDemoSubmitting(true);
     try {
       await demoLogin();
