@@ -31,6 +31,14 @@ spring:
       max-file-size: 15MB
       max-request-size: 15MB
 
+  task:
+    scheduling:
+      # @Scheduled 빈 4개(EnvironmentSnapshotPoller·EnvSnapshotPurgeScheduler·
+      # RefreshTokenPurgeScheduler·PrescriptionSweeper)가 기본 단일 스레드를 공유한다(리뷰 P3) —
+      # 60s 폴러가 임계치 웹훅을 동기 발송하는 동안(최대 5s 타임아웃) 다른 스케줄러 주기가 밀리지
+      # 않도록 풀을 2로 늘린다.
+      pool-size: 2
+
 server:
   port: 8085
   # 외부 직접 바인딩 차단 — nginx(127.0.0.1) 경유만 허용 (contract §0)
@@ -80,6 +88,19 @@ refresh-token:
   purge-initial-delay: P1D
   purge-fixed-delay: P1D
   # 배치 삭제 크기(리뷰 P2-1) — 대량 적체 시 단일 DELETE 장기 락 경합 방지, 반복 호출로 분할
+  purge-batch-size: 1000
+
+# 환경 시계열 폴러(EnvironmentSnapshotPoller, contract §4.6) — ai-server GET /environment/today를
+# 60s 주기로 조회해 env_snapshots 적재 + EnvironmentCache 갱신
+environment-snapshot:
+  poll-initial-delay: PT60S
+  poll-fixed-delay: PT60S
+
+# env_snapshots 90일 보존 퍼지(EnvSnapshotPurgeScheduler, contract §4.6) — RefreshTokenPurgeScheduler와
+# 동일 패턴(배치 삭제, 1일 1회)
+env-snapshot:
+  purge-initial-delay: P1D
+  purge-fixed-delay: P1D
   purge-batch-size: 1000
 
 springdoc:
