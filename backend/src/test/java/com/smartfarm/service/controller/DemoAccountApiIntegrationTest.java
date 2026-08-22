@@ -14,6 +14,7 @@ import com.smartfarm.service.dto.AcceptInvitationRequest;
 import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.FarmUpdateRequest;
 import com.smartfarm.service.dto.RefreshRequest;
+import com.smartfarm.service.dto.SignupRequest;
 import com.smartfarm.service.dto.WithdrawRequest;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.FarmRole;
@@ -112,6 +113,51 @@ class DemoAccountApiIntegrationTest extends FarmTestSupport {
             assertThat(rotated.get("accessToken").asText()).isNotBlank();
             assertThat(rotated.get("refreshToken").asText())
                     .isNotEqualTo(tokens.get("refreshToken").asText());
+        }
+
+        @Test
+        @DisplayName("데모 토큰 재사용 감지 시 전역 무효화를 생략한다 — 다른 데모 세션 생존(#49 리뷰 P1-C)")
+        void demoRefreshReuseDoesNotRevokeOtherSessions() throws Exception {
+            // 방문자 A·B 각각 데모 세션 발급(공유 계정)
+            String refreshA = demoLogin().get("refreshToken").asText();
+            String refreshB = demoLogin().get("refreshToken").asText();
+
+            // A 로테이션 성공 → 구 토큰 revoke
+            MvcResult rotated = mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(refreshA))))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            String rotatedA = readJson(rotated).get("refreshToken").asText();
+
+            // A 구 토큰 재사용(두 탭 race 재현) → A004, 단 전역 무효화는 생략
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(refreshA))))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("A004"));
+
+            // 다른 방문자 B의 세션과 A의 로테이션된 신 토큰은 생존해야 한다
+            // (일반 계정의 전역 무효화 동작은 AuthApiIntegrationTest#refreshReuseDetection이 회귀 검증)
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(refreshB))))
+                    .andExpect(status().isOk());
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new RefreshRequest(rotatedA))))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("예약 이메일(demo@smartfarm.local) 가입 시도는 409 A001로 차단된다(#49 리뷰 P1-A)")
+        void reservedEmailSignupBlocked() throws Exception {
+            mockMvc.perform(post("/api/auth/signup")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    new SignupRequest(DEMO_EMAIL, "password123", "선점시도"))))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("A001"));
         }
     }
 
