@@ -5,6 +5,7 @@ export const ENDPOINTS = {
     login: "/api/auth/login",
     refresh: "/api/auth/refresh",
     logout: "/api/auth/logout",
+    demoLogin: "/api/auth/demo-login",
   },
   users: {
     me: "/api/users/me",
