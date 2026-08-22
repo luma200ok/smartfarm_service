@@ -1,19 +1,43 @@
 package com.smartfarm.service.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.smartfarm.service.FarmTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * {@code GET/PUT /api/farms/{farmId}/env-thresholds} 통합 테스트(contract §4.6, 이슈 #52).
  */
 class EnvThresholdApiIntegrationTest extends FarmTestSupport {
+
+    // --- 데모 계정 헬퍼(DemoAccountApiIntegrationTest와 동일 패턴 — 이 테스트는 FarmTestSupport를
+    // 상속하고 있어 그 클래스의 private 헬퍼를 재사용할 수 없다) ---
+
+    private String demoAccessToken() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/demo-login"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return readJson(result).get("accessToken").asText();
+    }
+
+    private long demoFarmId(String demoToken) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/farms")
+                        .header("Authorization", "Bearer " + demoToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode farms = readJson(result);
+        assertThat(farms.size()).isGreaterThanOrEqualTo(1);
+        return farms.get(0).get("id").asLong();
+    }
 
     @Test
     @DisplayName("미설정 농장은 GET 시 enabled=false 기본값을 반환한다(404 아님)")
@@ -145,5 +169,23 @@ class EnvThresholdApiIntegrationTest extends FarmTestSupport {
                         .content("{\"enabled\":true,\"indoorTempMin\":18.0,\"indoorTempMax\":28.0}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("F002"));
+    }
+
+    @Test
+    @DisplayName("데모 계정은 OWNER여도 임계치 설정(PUT)이 403 A007로 차단된다(contract §4.5 갱신, 리뷰 P2) — GET 조회는 허용")
+    void demoAccountCannotUpdateThresholdsButCanRead() throws Exception {
+        String demoToken = demoAccessToken();
+        long farmId = demoFarmId(demoToken);
+
+        mockMvc.perform(put("/api/farms/" + farmId + "/env-thresholds")
+                        .header("Authorization", "Bearer " + demoToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true,\"indoorTempMin\":18.0,\"indoorTempMax\":28.0}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/env-thresholds")
+                        .header("Authorization", "Bearer " + demoToken))
+                .andExpect(status().isOk());
     }
 }

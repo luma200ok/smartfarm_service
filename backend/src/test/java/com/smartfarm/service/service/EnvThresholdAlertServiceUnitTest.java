@@ -96,6 +96,22 @@ class EnvThresholdAlertServiceUnitTest {
     }
 
     @Test
+    @DisplayName("resetFarm 호출 후에는 이전 연속 카운트가 사라져 다음 이탈이 다시 1틱부터 시작한다"
+            + "(리뷰 P3 — 설정 변경 직후 EnvThresholdService가 호출)")
+    void resetFarmClearsConsecutiveCount() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈
+        service.resetFarm(FARM_ID); // 설정 변경 — 상태 리셋
+        service.evaluate(new Indoor(36.0, 50.0, true)); // 리셋 후 다시 1틱째 — 아직 미발동
+
+        verify(notifier, never()).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
     @DisplayName("발동 후 30분 쿨다운 내 재이탈은 재발송하지 않는다")
     void cooldownSuppressesReNotification() {
         when(thresholdRepository.findEnabledWithWebhookConfigured())
