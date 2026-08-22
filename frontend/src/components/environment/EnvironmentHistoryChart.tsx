@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -44,28 +44,51 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const isDark = useIsDarkMode();
+  const tabRefs = useRef<Record<EnvironmentHistoryRange, HTMLButtonElement | null>>({
+    "24h": null,
+    "7d": null,
+    "30d": null,
+  });
 
   useEffect(() => {
-    let cancelled = false;
+    // range/farmId 전환마다 이전 요청을 취소한다(리뷰 픽스 #53 P2-2) — 탭을 빠르게 넘기면
+    // 늦게 도착하는 옛 응답이 최신 탭 화면을 덮어쓰는 걸 막는다.
+    const controller = new AbortController();
 
     async function load() {
       setLoading(true);
       setUnavailable(false);
       try {
-        const res = await getEnvironmentHistory(farmId, range);
-        if (!cancelled) setPoints(res.points);
+        const res = await getEnvironmentHistory(farmId, range, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setPoints(res.points);
+        setLoading(false);
       } catch {
-        if (!cancelled) setUnavailable(true);
-      } finally {
-        if (!cancelled) setLoading(false);
+        // client.ts의 api()는 fetch 실패(네트워크 오류·AbortError 포함)를 전부 ApiError(0, ...)로
+        // 감싸 원본 에러 타입을 잃으므로, 우리가 직접 abort()한 요청인지는 signal로만 판별 가능하다.
+        // 취소는 실패가 아니므로 unavailable 처리하지 않는다.
+        if (controller.signal.aborted) return;
+        setUnavailable(true);
+        setLoading(false);
       }
     }
 
     load();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [farmId, range]);
+
+  // 기간 탭 좌우 화살표 이동(리뷰 픽스 #53 P3) — WAI-ARIA tablist manual/automatic activation
+  // 관례대로 이동과 동시에 선택도 바뀐다(포커스+선택 동시 전환), 끝에서는 반대편으로 순환한다.
+  function handleTabKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const delta = e.key === "ArrowRight" ? 1 : -1;
+    const nextRange = RANGES[(index + delta + RANGES.length) % RANGES.length];
+    setRange(nextRange);
+    tabRefs.current[nextRange]?.focus();
+  }
 
   const gridColor = isDark ? "#3f3f46" : "#e4e4e7";
   const axisColor = isDark ? "#a1a1aa" : "#71717a";
@@ -84,13 +107,18 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
           aria-label="조회 기간"
           className="flex gap-1 rounded-md border border-zinc-200 p-0.5 dark:border-zinc-800"
         >
-          {RANGES.map((r) => (
+          {RANGES.map((r, i) => (
             <button
               key={r}
+              ref={(el) => {
+                tabRefs.current[r] = el;
+              }}
               type="button"
               role="tab"
               aria-selected={range === r}
+              tabIndex={range === r ? 0 : -1}
               onClick={() => setRange(r)}
+              onKeyDown={(e) => handleTabKeyDown(e, i)}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                 range === r
                   ? "bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900"
