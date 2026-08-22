@@ -91,6 +91,7 @@ public class AuthService {
      * - 만료 → A004 (부작용 없이 조용히 종료 — 만료 토큰 반복 제시가 전 기기 세션을
      *   무효화하는 DoS 프리미티브가 되지 않도록 재사용 검사보다 먼저 수행)
      * - 이미 revoke된 토큰 재사용(동시 요청 race 포함) → 해당 유저 전체 무효화 후 A004
+     *   (단, 데모 계정은 전역 무효화 생략 — 공유 계정 blast radius 차단, #49 리뷰 P1-C)
      * - 유저 미존재(soft delete 포함) → 잔여 토큰 일괄 무효화 후 A004
      *
      * noRollbackFor: A004를 던져도 무효화 UPDATE는 커밋돼야 한다.
@@ -107,7 +108,17 @@ public class AuthService {
 
         int revokedCount = refreshTokenRepository.revokeIfActive(refreshToken.getId());
         if (revokedCount == 0) {
-            // 재사용 감지 → 해당 유저의 모든 refresh token 무효화
+            // 재사용 감지 — 데모 계정(is_demo)은 전역 무효화를 건너뛴다(#49 리뷰 P1-C):
+            // 자격증명 없는 공유 계정이라 "탈취 세션 정리" 전제가 성립하지 않고, 두 탭이 같은
+            // refresh를 동시에 쓰는 race처럼 공격 없이도 발화해 전 방문자 로그아웃 blast radius만
+            // 생긴다. 제시된 토큰은 이미 revoke 상태(revokedCount==0의 정의)라 추가 무효화 없이
+            // A004만 응답한다. 일반 계정 동작(전역 무효화)은 무변경.
+            if (userRepository.existsByIdAndIsDemoTrue(refreshToken.getUserId())) {
+                log.warn("refresh token 재사용 감지(데모 계정) — 전역 무효화 생략, userId={}",
+                        refreshToken.getUserId());
+                throw new CustomException(ErrorCode.A004);
+            }
+            // 일반 계정 → 해당 유저의 모든 refresh token 무효화
             log.warn("refresh token 재사용 감지 — userId={} 전체 토큰 무효화", refreshToken.getUserId());
             refreshTokenRepository.revokeAllByUserId(refreshToken.getUserId());
             throw new CustomException(ErrorCode.A004);
