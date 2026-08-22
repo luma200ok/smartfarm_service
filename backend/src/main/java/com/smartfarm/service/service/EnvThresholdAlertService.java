@@ -109,6 +109,16 @@ public class EnvThresholdAlertService {
         states.clear();
     }
 
+    /**
+     * 특정 농장의 연속 이탈 상태를 리셋한다(리뷰 P3, 이슈 #52) — {@code EnvThresholdService}가
+     * 임계치 설정을 변경/비활성화한 직후 호출한다. 설정 변경 전 누적된 연속 카운트를 그대로
+     * 이어받으면 새 기준값으로는 아직 1틱째인 이탈이 곧바로 2틱 발동으로 오판정될 수 있어(예:
+     * 기준을 널널하게 바꿨다가 다시 좁힐 때), 설정이 바뀐 시점부터 "새로 2틱"부터 세도록 한다.
+     */
+    public void resetFarm(Long farmId) {
+        states.keySet().removeIf(key -> key.farmId().equals(farmId));
+    }
+
     private record AlertKey(Long farmId, EnvMetric metric, EnvDirection direction) {
     }
 

@@ -31,6 +31,14 @@ spring:
       max-file-size: 15MB
       max-request-size: 15MB
 
+  task:
+    scheduling:
+      # @Scheduled 빈 4개(EnvironmentSnapshotPoller·EnvSnapshotPurgeScheduler·
+      # RefreshTokenPurgeScheduler·PrescriptionSweeper)가 기본 단일 스레드를 공유한다(리뷰 P3) —
+      # 60s 폴러가 임계치 웹훅을 동기 발송하는 동안(최대 5s 타임아웃) 다른 스케줄러 주기가 밀리지
+      # 않도록 풀을 2로 늘린다.
+      pool-size: 2
+
 server:
   port: 8085
   # 외부 직접 바인딩 차단 — nginx(127.0.0.1) 경유만 허용 (contract §0)
