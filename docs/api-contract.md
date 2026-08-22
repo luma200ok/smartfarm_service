@@ -124,6 +124,45 @@
 - **임계치 알림**: 폴러가 적재 직후 `enabled=true`이고 `webhook_url` 설정된 농장 대상 **indoor 온·습도** 평가. **연속 2틱 이탈 시 발동**, 농장×항목×방향별 **쿨다운 30분**(단일 인스턴스 전제 — 메모리 상태 허용, 재시작 시 초기화 수용). 발송은 기존 디스코드 웹훅 노티파이어 컨벤션(타임아웃 5s·실패는 로그만·URL 마스킹) 준수. 신규 ErrorCode 없음(검증은 C001 재사용).
 - **마이그레이션**: V9 `env_snapshots`, V10 `farm_env_thresholds` (V8은 #49 데모 선점 — **#49 먼저 머지**, out-of-order=true 확인됨).
 
+## 4.7 AI 챗봇 (2026-08-23 확정, 이슈 #54·#55 — 다함 벤치마킹 3. ai-server 무변경 원칙 3번째 해제: smartfarm_ai 신규 챗 라우트)
+
+**ai-server 신규 `POST /api/chat`** (smartfarm_ai 레포, 루프백 전용 — 조사 결과 기존 챗 엔드포인트 없음):
+- 요청(Form, 기존 prescriptions 컨벤션 동일): `question: str(1~500, 필수)`, `caller_ref: str|None(≤64)`
+- 처리: 기존 `retrieve(question, disease=None, k=3)` → 농업 도우미 프롬프트(병해·재배 환경 중심, 스코프 밖 질문은 짧은 안내) → qwen2.5:7b. **동시성은 기존 `inference_slot()` 세마포어 공유**(진단+처방+챗 합계 2, 포화 시 429 `{"detail"}`).
+- 응답(신규 영문 스키마 — 기존 Prescription 한글 스키마 재사용 금지): `{answer: str, sources: [str], fallback: bool}` — LLM 실패 시 200+안내문+fallback=true(처방과 동일 트레이드오프).
+- **이력(#66 정책 = 태깅 채택, 2026-08-23)**: `chat_messages` 테이블(id, created_at, question, answer, sources JSONB, caller_ref) — 처방 이력과 동일한 best-effort 저장(DB 미설정 시 no-op, 저장 실패가 응답을 막지 않음).
+
+**backend (#54)**:
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| POST | `/api/farms/{farmId}/chat` | 멤버 | ChatRequest{question(1~500)} | 200 ChatMessageResponse (동기, 타임아웃 30s) |
+| GET | `/api/farms/{farmId}/chat` | 멤버 | `?page&size` | 200 Page\<ChatMessageResponse\> (최신순) |
+
+- **ChatMessageResponse** `{id, question, answer, sources[], fallback, createdBy, createdAt}` — backend `chat_messages`(V12, farm_id·user_id 포함)에 이력 저장 후 매핑.
+- caller_ref = `svc:farm:{farmId}` 전달. ai-server 429 → **CH002(429)**, 그 외 실패/타임아웃 → **CH001(502)**. 데모 계정 허용(체험 핵심 — 남용 쿼터는 #51에서 일괄).
+
+## 4.8 작업일지 · 날씨예보 (2026-08-23 확정, 이슈 #56·#57 — 다함 벤치마킹 4)
+
+**작업일지** — `farm_logs`(V11): farm_id, author(user_id), log_date(DATE), type(enum), memo(≤1000), created_at.
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| POST | `/api/farms/{farmId}/logs` | 멤버 | FarmLogRequest{logDate, type, memo?} | 201 FarmLogResponse |
+| GET | `/api/farms/{farmId}/logs` | 멤버 | `?page&size` | 200 Page\<FarmLogResponse\> (logDate 내림차순) |
+| PATCH | `/api/farms/{farmId}/logs/{logId}` | **작성자 본인만** | FarmLogRequest | 200 FarmLogResponse |
+| DELETE | `/api/farms/{farmId}/logs/{logId}` | **작성자 본인 또는 OWNER** | — | 204 |
+
+- type enum: `WATERING, FERTILIZING, PRUNING, HARVEST, PEST_CONTROL, ETC`(FE 라벨은 constants). 없음 **L001(404)**, 본인/OWNER 아님 **L002(403)**. 데모 계정 작성 허용(컨텐츠 생성 — 진단·처방과 동일 원칙), 수정·삭제는 본인 것만이라 자연 격리.
+- **FarmLogResponse** `{id, logDate, type, memo, createdBy, createdAt}`
+
+**날씨예보** — backend가 KMA 단기예보(공공데이터포털 getVilageFcst)를 직접 호출(ai-server 무관), **전역 고정 지점**(환경 대시보드와 동일 데모 온실 위치, env `KMA_GRID_NX/NY`).
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/environment/forecast` | 멤버 | — | 200 ForecastResponse (전역 60분 캐시+stale 폴백 — EnvironmentCache 패턴) |
+
+- **ForecastResponse** `{updatedAt, points: [{time, temp?, humidity?, sky?, pop?}]}` — 향후 24h, 1시간 간격. sky=`SUNNY|CLOUDY|OVERCAST`, pop=강수확률(%). 캐시·stale 모두 없고 KMA 실패 → **W001(502)**.
+- 신규 env: `KMA_SERVICE_KEY`(시크릿 — 배포 .env, 평문 커밋 금지), `KMA_GRID_NX`/`KMA_GRID_NY`. 타임아웃 5s.
+- VPD·이슬점·몰리에르 지표는 FE 순수 계산(BE 없음) — 현재 온습도(environment/today) 입력.
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -155,6 +194,11 @@
 | P002 | 500 | 처방 생성 실패(재시도 소진·응답 이상 포함) |
 | P003 | 429 | AI 서버 혼잡(잠시 후 재시도) |
 | P004 | 429 | 처방 대기 한도 초과(농장당 진행 중 상한 — 완료 후 재시도) |
+| CH001 | 502 | 챗 응답 실패(AI 서버 오류·타임아웃) |
+| CH002 | 429 | AI 서버 혼잡(잠시 후 재시도) |
+| L001 | 404 | 작업일지 없음 |
+| L002 | 403 | 작업일지 수정/삭제 권한 없음(작성자 본인·삭제는 OWNER 겸용) |
+| W001 | 502 | 날씨예보 조회 실패(KMA 오류·캐시 없음) |
 
 ## 6. 환경변수 · CORS
 
