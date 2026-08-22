@@ -28,6 +28,7 @@ public class FarmService {
     private final FarmMemberRepository farmMemberRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final UserRepository userRepository;
+    private final DemoAccountGuard demoAccountGuard;
 
     /**
      * 농장 생성은 FarmAccessGuard를 타지 않는 진입점이라 유저 생존을 직접 검증한다
@@ -35,6 +36,7 @@ public class FarmService {
      */
     @Transactional
     public FarmResponse createFarm(Long userId, FarmRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
         userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
         Farm farm = farmRepository.save(Farm.builder()
@@ -62,6 +64,7 @@ public class FarmService {
 
     @Transactional
     public FarmResponse updateFarm(Long farmId, Long userId, FarmUpdateRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
         FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
         access.farm().update(request.name(), request.cropType(), request.location());
         return FarmResponse.of(access.farm(), FarmRole.OWNER,
@@ -71,6 +74,7 @@ public class FarmService {
     /** 웹훅 설정/해제(OWNER) — URL 원문 검증은 요청 DTO(@DiscordWebhookUrl)에서 이미 끝났다. */
     @Transactional
     public FarmResponse updateWebhook(Long farmId, Long userId, WebhookRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
         FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
         access.farm().updateWebhookUrl(request.webhookUrl());
         return FarmResponse.of(access.farm(), FarmRole.OWNER,
@@ -79,6 +83,7 @@ public class FarmService {
 
     @Transactional
     public void deleteFarm(Long farmId, Long userId) {
+        demoAccountGuard.rejectDemoAccount(userId);
         FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
         // @SQLDelete → soft delete (deleted_at 갱신)
         farmRepository.delete(access.farm());
