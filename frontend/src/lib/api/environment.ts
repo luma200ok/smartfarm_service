@@ -7,19 +7,23 @@ import type {
   EnvThresholdsResponse,
 } from "@/types";
 import { authFetch } from "./auth";
+import type { ApiRequestOptions } from "./client";
 import { ENDPOINTS } from "./endpoints";
 
 export async function getTodayEnvironment(farmId: number | string): Promise<EnvironmentTodayResponse> {
   return authFetch<EnvironmentTodayResponse>(ENDPOINTS.farms.environmentToday(farmId));
 }
 
+// options.signal — 기간 탭 전환 시 이전 요청을 취소하기 위한 AbortSignal 관통(리뷰 픽스 #53 P2-2).
 export async function getEnvironmentHistory(
   farmId: number | string,
-  range: EnvironmentHistoryRange
+  range: EnvironmentHistoryRange,
+  options?: Pick<ApiRequestOptions, "signal">
 ): Promise<EnvironmentHistoryResponse> {
   const query = new URLSearchParams({ range });
   return authFetch<EnvironmentHistoryResponse>(
-    `${ENDPOINTS.farms.environmentHistory(farmId)}?${query.toString()}`
+    `${ENDPOINTS.farms.environmentHistory(farmId)}?${query.toString()}`,
+    options
   );
 }
 
