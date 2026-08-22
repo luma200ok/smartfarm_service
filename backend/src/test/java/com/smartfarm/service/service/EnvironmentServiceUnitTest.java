@@ -12,6 +12,7 @@ import com.smartfarm.service.dto.AiEnvironmentResponse;
 import com.smartfarm.service.dto.EnvironmentTodayResponse;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
+import com.smartfarm.service.repository.EnvSnapshotRepository;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,12 +38,13 @@ class EnvironmentServiceUnitTest {
 
     private final FarmAccessGuard farmAccessGuard = mock(FarmAccessGuard.class);
     private final AiEnvironmentClient aiEnvironmentClient = mock(AiEnvironmentClient.class);
+    private final EnvSnapshotRepository envSnapshotRepository = mock(EnvSnapshotRepository.class);
 
     @Test
     @DisplayName("가드를 먼저 통과시킨 뒤에만 캐시/ai-server 조회를 시도한다")
     void guardIsCheckedFirst() {
         EnvironmentCache cache = new EnvironmentCache(Duration.ofSeconds(60));
-        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache);
+        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache, envSnapshotRepository);
         when(farmAccessGuard.requireMember(anyLong(), anyLong()))
                 .thenThrow(new CustomException(ErrorCode.F002));
 
@@ -58,7 +60,7 @@ class EnvironmentServiceUnitTest {
     void freshCacheSkipsAiServerCall() {
         EnvironmentCache cache = new EnvironmentCache(Duration.ofSeconds(60));
         cache.put(EnvironmentTodayResponse.from(AI_RESPONSE));
-        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache);
+        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache, envSnapshotRepository);
 
         EnvironmentTodayResponse result = service.findTodayEnvironment(1L, 1L);
 
@@ -74,7 +76,7 @@ class EnvironmentServiceUnitTest {
         awaitCacheExpiry(cache);
 
         when(aiEnvironmentClient.fetchToday()).thenThrow(new CustomException(ErrorCode.D003));
-        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache);
+        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache, envSnapshotRepository);
 
         EnvironmentTodayResponse result = service.findTodayEnvironment(1L, 1L);
 
@@ -86,7 +88,7 @@ class EnvironmentServiceUnitTest {
     void noCacheAndAiServerFailureThrows() {
         EnvironmentCache cache = new EnvironmentCache(Duration.ofSeconds(60));
         when(aiEnvironmentClient.fetchToday()).thenThrow(new CustomException(ErrorCode.D003));
-        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache);
+        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache, envSnapshotRepository);
 
         assertThatThrownBy(() -> service.findTodayEnvironment(1L, 1L))
                 .isInstanceOf(CustomException.class)
@@ -98,7 +100,7 @@ class EnvironmentServiceUnitTest {
     void successResponseIsMappedAndCached() {
         EnvironmentCache cache = new EnvironmentCache(Duration.ofSeconds(60));
         when(aiEnvironmentClient.fetchToday()).thenReturn(AI_RESPONSE);
-        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache);
+        EnvironmentService service = new EnvironmentService(farmAccessGuard, aiEnvironmentClient, cache, envSnapshotRepository);
 
         EnvironmentTodayResponse result = service.findTodayEnvironment(1L, 1L);
 

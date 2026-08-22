@@ -41,3 +41,14 @@ refresh-token:
   purge-initial-delay: PT1H
   purge-fixed-delay: PT1H
   purge-batch-size: 2
+
+# 환경 스냅샷 폴러도 동일하게 자동 발화 차단(테스트는 poll() 직접 호출).
+environment-snapshot:
+  poll-initial-delay: PT1H
+  poll-fixed-delay: PT1H
+
+# env_snapshots 퍼지도 동일 원칙 — 자동 발화 차단 + 작은 배치 크기로 반복 검증.
+env-snapshot:
+  purge-initial-delay: PT1H
+  purge-fixed-delay: PT1H
+  purge-batch-size: 2
