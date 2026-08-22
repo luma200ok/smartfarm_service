@@ -25,6 +25,7 @@ public class UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final FarmMemberService farmMemberService;
     private final PasswordEncoder passwordEncoder;
+    private final DemoAccountGuard demoAccountGuard;
 
     public UserResponse findMe(Long userId) {
         User user = userRepository.findById(userId)
@@ -57,6 +58,8 @@ public class UserService {
      */
     @Transactional
     public void withdraw(Long userId, String rawPassword) {
+        // 데모 계정 차단(A007) — 비밀번호 검사보다 먼저(랜덤 해시라 A002가 선행되면 차단 의미가 가려짐)
+        demoAccountGuard.rejectDemoAccount(userId);
         User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {

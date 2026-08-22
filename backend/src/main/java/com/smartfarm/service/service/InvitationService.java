@@ -39,6 +39,7 @@ public class InvitationService {
     private final FarmMemberRepository farmMemberRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final UserRepository userRepository;
+    private final DemoAccountGuard demoAccountGuard;
 
     /**
      * 초대코드 발급 — 농장당 활성 코드 1건 (contract §2):
@@ -46,6 +47,7 @@ public class InvitationService {
      */
     @Transactional
     public InvitationResponse createInvitation(Long farmId, Long userId) {
+        demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireOwner(farmId, userId);
         invitationRepository.revokeAllActiveByFarmId(farmId, LocalDateTime.now());
         String rawCode = generateCode();
@@ -66,6 +68,7 @@ public class InvitationService {
      */
     @Transactional
     public FarmResponse acceptInvitation(Long userId, AcceptInvitationRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
         userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
         Invitation invitation = invitationRepository.findByCodeHash(TokenHasher.sha256(request.code()))

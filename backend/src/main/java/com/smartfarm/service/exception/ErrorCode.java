@@ -21,6 +21,7 @@ public enum ErrorCode {
     A004(HttpStatus.UNAUTHORIZED, "A004", "유효하지 않은 토큰입니다."),
     A005(HttpStatus.FORBIDDEN, "A005", "접근 권한이 없습니다."),
     A006(HttpStatus.CONFLICT, "A006", "소유한 농장이 있어 탈퇴할 수 없습니다. 농장을 삭제한 후 다시 시도해주세요."),
+    A007(HttpStatus.FORBIDDEN, "A007", "데모 계정에서는 이 작업을 수행할 수 없습니다."),
 
     // Farm
     F001(HttpStatus.NOT_FOUND, "F001", "농장을 찾을 수 없습니다."),

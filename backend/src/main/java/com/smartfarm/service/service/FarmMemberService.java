@@ -22,6 +22,7 @@ public class FarmMemberService {
     private final FarmMemberRepository farmMemberRepository;
     private final InvitationRepository invitationRepository;
     private final FarmAccessGuard farmAccessGuard;
+    private final DemoAccountGuard demoAccountGuard;
 
     public List<MemberResponse> findMembers(Long farmId, Long userId) {
         farmAccessGuard.requireMember(farmId, userId);
@@ -39,6 +40,8 @@ public class FarmMemberService {
      */
     @Transactional
     public void removeMember(Long farmId, Long userId, Long memberId) {
+        // 데모 계정 차단(A007) — 타 멤버 제거·본인 탈퇴(농장 나가기) 모두 해당(contract §4.5)
+        demoAccountGuard.rejectDemoAccount(userId);
         FarmMember requester = farmAccessGuard.requireMember(farmId, userId).membership();
         // farm 스코프 필수 조회 — cross-tenant memberId는 여기서 걸러짐
         Optional<FarmMember> target = farmMemberRepository.findByIdAndFarmId(memberId, farmId);

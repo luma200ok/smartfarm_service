@@ -39,7 +39,11 @@ public class AuthService {
     @Transactional
     public UserResponse signup(SignupRequest request) {
         // 이메일 정규화는 DTO compact constructor 단일 지점(EmailNormalizer)에서 수행됨
-        if (userRepository.existsByEmail(request.email())) {
+        // 예약 이메일 차단(#49 리뷰 P1-A) — 데모 이메일이 is_demo=false 계정에 선점되면 시드가
+        // is_demo=true 유저를 못 만들어(유니크 충돌) demo-login이 영구 C002가 된다. 배포 전
+        // 선점 가입을 여기서 봉쇄한다. 응답은 기존 중복과 동일한 A001(별도 코드로 구분하지 않음).
+        if (DemoAccountGuard.DEMO_EMAIL.equals(request.email())
+                || userRepository.existsByEmail(request.email())) {
             throw new CustomException(ErrorCode.A001);
         }
         User user = User.builder()
@@ -66,11 +70,28 @@ public class AuthService {
     }
 
     /**
+     * 데모 로그인(contract §4.5, 이슈 #49) — 자격증명 없이 데모 유저(is_demo=true)로
+     * 기존 토큰 발급 로직({@link #issueTokens})을 그대로 재사용한다(인증 필터·토큰 검증 무변경).
+     * 데모 유저 존재는 시드(DemoAccountInitializer, 트래픽 수신 전 실행)가 보장하는 전제 —
+     * 미존재는 서버 결함이므로 C002(500)로 처리한다(A00x 오용 금지).
+     */
+    @Transactional
+    public TokenResponse demoLogin() {
+        User demoUser = userRepository.findFirstByIsDemoTrueOrderByIdAsc()
+                .orElseThrow(() -> {
+                    log.error("데모 유저 미존재 — 시드(DemoAccountInitializer) 결함, contract §4.5 위반");
+                    return new CustomException(ErrorCode.C002);
+                });
+        return issueTokens(demoUser.getId());
+    }
+
+    /**
      * refresh 로테이션 — refresh 토큰의 만료/무효/재사용은 전부 A004 (A003은 access 만료 전용, contract §5).
      * - 미존재/변조 → A004
      * - 만료 → A004 (부작용 없이 조용히 종료 — 만료 토큰 반복 제시가 전 기기 세션을
      *   무효화하는 DoS 프리미티브가 되지 않도록 재사용 검사보다 먼저 수행)
      * - 이미 revoke된 토큰 재사용(동시 요청 race 포함) → 해당 유저 전체 무효화 후 A004
+     *   (단, 데모 계정은 전역 무효화 생략 — 공유 계정 blast radius 차단, #49 리뷰 P1-C)
      * - 유저 미존재(soft delete 포함) → 잔여 토큰 일괄 무효화 후 A004
      *
      * noRollbackFor: A004를 던져도 무효화 UPDATE는 커밋돼야 한다.
@@ -87,7 +108,17 @@ public class AuthService {
 
         int revokedCount = refreshTokenRepository.revokeIfActive(refreshToken.getId());
         if (revokedCount == 0) {
-            // 재사용 감지 → 해당 유저의 모든 refresh token 무효화
+            // 재사용 감지 — 데모 계정(is_demo)은 전역 무효화를 건너뛴다(#49 리뷰 P1-C):
+            // 자격증명 없는 공유 계정이라 "탈취 세션 정리" 전제가 성립하지 않고, 두 탭이 같은
+            // refresh를 동시에 쓰는 race처럼 공격 없이도 발화해 전 방문자 로그아웃 blast radius만
+            // 생긴다. 제시된 토큰은 이미 revoke 상태(revokedCount==0의 정의)라 추가 무효화 없이
+            // A004만 응답한다. 일반 계정 동작(전역 무효화)은 무변경.
+            if (userRepository.existsByIdAndIsDemoTrue(refreshToken.getUserId())) {
+                log.warn("refresh token 재사용 감지(데모 계정) — 전역 무효화 생략, userId={}",
+                        refreshToken.getUserId());
+                throw new CustomException(ErrorCode.A004);
+            }
+            // 일반 계정 → 해당 유저의 모든 refresh token 무효화
             log.warn("refresh token 재사용 감지 — userId={} 전체 토큰 무효화", refreshToken.getUserId());
             refreshTokenRepository.revokeAllByUserId(refreshToken.getUserId());
             throw new CustomException(ErrorCode.A004);
