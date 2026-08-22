@@ -20,6 +20,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     Optional<User> findFirstByIsDemoTrueOrderByIdAsc();
 
+    /** DemoAccountGuard 전용 경량 판정 — 엔티티 로드 없이 데모 계정 여부만 확인. */
+    boolean existsByIdAndIsDemoTrue(Long id);
+
     /**
      * 탈퇴 트랜잭션 직렬화용 users 행 잠금(SELECT ... FOR UPDATE — contract 탈퇴 봉쇄 ②).
      * 동시 탈퇴 2건은 승자 커밋 후 패자가 락 획득 시 @SQLRestriction 재평가로 빈 결과(A004)를

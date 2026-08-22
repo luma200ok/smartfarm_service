@@ -1,6 +1,5 @@
 package com.smartfarm.service.service;
 
-import com.smartfarm.service.entity.User;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.UserRepository;
@@ -24,14 +23,20 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DemoAccountGuard {
 
+    /**
+     * 데모 계정 예약 이메일(contract §4.5) — 시크릿 아님(비밀번호 자체가 존재하지 않는 계정).
+     * 시드(DemoAccountInitializer)와 가입 차단(AuthService#signup)이 공유하는 단일 진실.
+     */
+    public static final String DEMO_EMAIL = "demo@smartfarm.local";
+
     private final UserRepository userRepository;
 
     /** 데모 계정(is_demo=true)이면 {@link ErrorCode#A007}(403) — 아니면 no-op. */
     public void rejectDemoAccount(Long userId) {
-        userRepository.findById(userId)
-                .filter(User::isDemo)
-                .ifPresent(user -> {
-                    throw new CustomException(ErrorCode.A007);
-                });
+        // exists 경량 쿼리 — 엔티티 로드 없이 판정(#49 리뷰 재량 항목). @SQLRestriction이 derived
+        // 쿼리에도 적용되므로 soft delete 유저는 false → 기존 생존 검증(A004/F002)이 그대로 처리.
+        if (userRepository.existsByIdAndIsDemoTrue(userId)) {
+            throw new CustomException(ErrorCode.A007);
+        }
     }
 }

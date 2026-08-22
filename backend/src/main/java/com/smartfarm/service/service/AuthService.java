@@ -39,7 +39,11 @@ public class AuthService {
     @Transactional
     public UserResponse signup(SignupRequest request) {
         // 이메일 정규화는 DTO compact constructor 단일 지점(EmailNormalizer)에서 수행됨
-        if (userRepository.existsByEmail(request.email())) {
+        // 예약 이메일 차단(#49 리뷰 P1-A) — 데모 이메일이 is_demo=false 계정에 선점되면 시드가
+        // is_demo=true 유저를 못 만들어(유니크 충돌) demo-login이 영구 C002가 된다. 배포 전
+        // 선점 가입을 여기서 봉쇄한다. 응답은 기존 중복과 동일한 A001(별도 코드로 구분하지 않음).
+        if (DemoAccountGuard.DEMO_EMAIL.equals(request.email())
+                || userRepository.existsByEmail(request.email())) {
             throw new CustomException(ErrorCode.A001);
         }
         User user = User.builder()
