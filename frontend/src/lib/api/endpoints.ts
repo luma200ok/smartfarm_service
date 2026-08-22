@@ -27,6 +27,8 @@ export const ENDPOINTS = {
     prescriptionDetail: (farmId: number | string, prescriptionId: number | string) =>
       `/api/farms/${farmId}/prescriptions/${prescriptionId}`,
     environmentToday: (farmId: number | string) => `/api/farms/${farmId}/environment/today`,
+    environmentHistory: (farmId: number | string) => `/api/farms/${farmId}/environment/history`,
+    envThresholds: (farmId: number | string) => `/api/farms/${farmId}/env-thresholds`,
   },
   invitations: {
     accept: "/api/invitations/accept",

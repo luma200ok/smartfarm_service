@@ -1,4 +1,4 @@
-import type { ErrorCode } from "@/types";
+import type { ErrorCode, EnvironmentHistoryRange } from "@/types";
 
 // localStorage 키 — 앱 prefix = farm (docs/api-contract.md §1)
 export const STORAGE_KEYS = {
@@ -28,6 +28,19 @@ export const DEVICE_LABELS: Record<string, string> = {
   cooling_fan: "쿨링팬",
   heater: "히터",
 };
+
+// 환경 시계열 기간 탭 라벨 (docs/api-contract.md §4.6, 이슈 #53)
+export const ENV_HISTORY_RANGE_LABELS: Record<EnvironmentHistoryRange, string> = {
+  "24h": "24시간",
+  "7d": "7일",
+  "30d": "30일",
+};
+
+// 임계치 입력 범위(서버 Bean Validation과 동일 — docs/api-contract.md §4.6). 실제 검증은 서버 C001로 판정.
+export const ENV_THRESHOLD_RANGE = {
+  temp: { min: -50, max: 80 },
+  humidity: { min: 0, max: 100 },
+} as const;
 
 // ErrorCode -> 사용자 노출 메시지 (docs/api-contract.md §5)
 export const ERROR_MESSAGES: Record<ErrorCode, string> = {
