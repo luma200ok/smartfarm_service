@@ -1,14 +1,9 @@
 name: Deploy
 
-# main push 시 arm1(oci-arm1) 자동 배포 (docs/_local/handoff/infra-7-deploy-next.md).
+# [구 OCI 배포 — 2026-08-23 push 트리거 제거(#62)] 홈서버 이전(deploy-home.yml) 완료 후
+# 정지된 arm1에 이중 배포가 돌던 충돌 제거. OCI 해지 전까지 수동 롤백용 dispatch만 보존.
 # 시크릿(메타가 등록): OCI_HOST, OCI_USER(opc), OCI_SSH_KEY.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch: {}
 
 concurrency:
