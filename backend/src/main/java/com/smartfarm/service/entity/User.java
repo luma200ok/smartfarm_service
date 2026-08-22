@@ -37,6 +37,13 @@ public class User {
     @Column(nullable = false, length = 20)
     private String nickname;
 
+    /**
+     * 데모 계정 여부(contract §4.5, 이슈 #49) — true면 파괴적 작업이 서버측에서 A007로 차단된다
+     * (DemoAccountGuard). 시드(DemoAccountInitializer)만 true로 생성하고, 일반 가입 경로는 항상 false.
+     */
+    @Column(nullable = false)
+    private boolean isDemo;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -45,10 +52,11 @@ public class User {
     private LocalDateTime deletedAt;
 
     @Builder
-    private User(String email, String password, String nickname) {
+    private User(String email, String password, String nickname, boolean isDemo) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
+        this.isDemo = isDemo;
     }
 
     @PrePersist
