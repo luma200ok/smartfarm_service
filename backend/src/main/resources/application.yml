@@ -82,6 +82,19 @@ refresh-token:
   # 배치 삭제 크기(리뷰 P2-1) — 대량 적체 시 단일 DELETE 장기 락 경합 방지, 반복 호출로 분할
   purge-batch-size: 1000
 
+# 환경 시계열 폴러(EnvironmentSnapshotPoller, contract §4.6) — ai-server GET /environment/today를
+# 60s 주기로 조회해 env_snapshots 적재 + EnvironmentCache 갱신
+environment-snapshot:
+  poll-initial-delay: PT60S
+  poll-fixed-delay: PT60S
+
+# env_snapshots 90일 보존 퍼지(EnvSnapshotPurgeScheduler, contract §4.6) — RefreshTokenPurgeScheduler와
+# 동일 패턴(배치 삭제, 1일 1회)
+env-snapshot:
+  purge-initial-delay: P1D
+  purge-fixed-delay: P1D
+  purge-batch-size: 1000
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
