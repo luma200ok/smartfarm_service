@@ -41,6 +41,7 @@
 | POST | `/api/auth/login` | 공개 | LoginRequest | 200 TokenResponse |
 | POST | `/api/auth/refresh` | 공개 | RefreshRequest | 200 TokenResponse |
 | POST | `/api/auth/logout` | 인증 | RefreshRequest | 204 |
+| POST | `/api/auth/demo-login` | 공개 | — | 200 TokenResponse (데모 계정 토큰 발급 — 자격증명 불필요, §5-데모 참조) |
 | GET | `/api/users/me` | 인증 | — | 200 UserResponse |
 | POST | `/api/farms` | 인증 | FarmRequest | 201 FarmResponse (생성자=OWNER) |
 | GET | `/api/farms` | 인증 | — | 200 List\<FarmSummaryResponse\> (내 농장) |
@@ -97,6 +98,15 @@
 - **PageResponse\<T\>** `{content: T[], page, size, totalElements, totalPages}` — backend는 Spring `Page` 직접 노출 금지, 이 record로 매핑.
 - 이메일은 서버에서 `trim().toLowerCase()` 정규화 후 저장·비교(대소문자 무관 단일 계정).
 
+## 4.5 데모 계정 (2026-08-22 확정, 이슈 #49)
+
+- **목적**: 포트폴리오 방문자가 회원가입 없이 체험. 로그인 화면 "데모 계정으로 체험하기" 버튼 → `POST /api/auth/demo-login`.
+- **시드**: `users.is_demo`(boolean, Flyway 신규 마이그레이션) + 앱 기동 시 idempotent 시드(init/): 데모 유저(email `demo@smartfarm.local`, nickname `데모 계정`, 랜덤 비밀번호 해시 — 비밀번호 로그인 경로 미사용) + 데모 농장 1개(OWNER). 자격증명은 레포·문서 어디에도 평문 노출하지 않는다.
+- **demo-login**: 데모 유저 조회 후 기존 토큰 발급 로직 재사용(TokenResponse). 데모 유저 존재는 시드가 보장하는 전제 — 미존재는 서버 결함이므로 C002(500)로 처리(A00x 오용 금지).
+- **차단(전부 403 A007, 서버측 강제 — FE 숨김은 보조)**: 회원 탈퇴(DELETE /users/me) · 농장 생성(POST /farms) · 농장 수정/삭제(PATCH/DELETE /farms/{id}) · 웹훅 설정(PATCH /farms/{id}/webhook) · 초대코드 발급(POST /farms/{id}/invitations) · 초대코드 수락(POST /invitations/accept) · 멤버 제거/농장 나가기(DELETE 멤버 계열).
+- **허용**: 전체 조회 + 진단 업로드 + 처방 생성(체험 핵심). 남용 대비 rate-limit은 후속 이슈.
+- **FE**: 데모 로그인 후에는 일반 계정과 동일 UI(차단 작업은 서버 403 A007 메시지 표기). 차단 버튼 사전 숨김은 후속 폴리시.
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -113,6 +123,7 @@
 | A004 | 401 | 토큰 무효(변조·재사용·refresh 만료/미존재 포함 — 재로그인) |
 | A005 | 403 | 접근 권한 없음 |
 | A006 | 409 | OWNER 농장 보유 — 탈퇴 불가(농장 삭제 후 재시도) |
+| A007 | 403 | 데모 계정에서 허용되지 않는 작업 |
 | F001 | 404 | 농장 없음 |
 | F002 | 403 | 농장 멤버 아님 |
 | F003 | 403 | OWNER 권한 필요 |
