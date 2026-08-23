@@ -5,6 +5,7 @@ import type {
   EnvironmentTodayResponse,
   EnvThresholdsRequest,
   EnvThresholdsResponse,
+  ForecastResponse,
 } from "@/types";
 import { authFetch } from "./auth";
 import type { ApiRequestOptions } from "./client";
@@ -25,6 +26,12 @@ export async function getEnvironmentHistory(
     `${ENDPOINTS.farms.environmentHistory(farmId)}?${query.toString()}`,
     options
   );
+}
+
+// 날씨예보(contract §4.8, 이슈 #57) — 전역 60분 캐시+stale 폴백은 서버가 담당,
+// FE는 실패 시(W001 포함) 조용히 unavailable로 대체한다.
+export async function getForecast(farmId: number | string): Promise<ForecastResponse> {
+  return authFetch<ForecastResponse>(ENDPOINTS.farms.environmentForecast(farmId));
 }
 
 export async function getEnvThresholds(farmId: number | string): Promise<EnvThresholdsResponse> {

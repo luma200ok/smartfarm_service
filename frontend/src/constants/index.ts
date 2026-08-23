@@ -1,4 +1,4 @@
-import type { ErrorCode, EnvironmentHistoryRange } from "@/types";
+import type { ErrorCode, EnvironmentHistoryRange, FarmLogType, WeatherSky } from "@/types";
 
 // localStorage 키 — 앱 prefix = farm (docs/api-contract.md §1)
 export const STORAGE_KEYS = {
@@ -17,6 +17,7 @@ export const VALIDATION = {
   nickname: { minLength: 2, maxLength: 20 },
   farmName: { minLength: 2, maxLength: 50 },
   prescriptionQuestion: { minLength: 1, maxLength: 500 },
+  farmLogMemo: { maxLength: 1000 },
 } as const;
 
 export const DEFAULT_ERROR_MESSAGE = "요청 처리 중 오류가 발생했습니다.";
@@ -34,6 +35,23 @@ export const ENV_HISTORY_RANGE_LABELS: Record<EnvironmentHistoryRange, string> =
   "24h": "24시간",
   "7d": "7일",
   "30d": "30일",
+};
+
+// 작업일지 type 라벨 (docs/api-contract.md §4.8, 이슈 #56·#57)
+export const FARM_LOG_TYPE_LABELS: Record<FarmLogType, string> = {
+  WATERING: "물주기",
+  FERTILIZING: "시비",
+  PRUNING: "정지/적심",
+  HARVEST: "수확",
+  PEST_CONTROL: "방제",
+  ETC: "기타",
+};
+
+// 날씨예보 하늘상태 라벨 (docs/api-contract.md §4.8)
+export const WEATHER_SKY_LABELS: Record<WeatherSky, string> = {
+  SUNNY: "맑음",
+  CLOUDY: "구름많음",
+  OVERCAST: "흐림",
 };
 
 // 임계치 입력 범위(서버 Bean Validation과 동일 — docs/api-contract.md §4.6). 실제 검증은 서버 C001로 판정.
@@ -67,4 +85,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   P002: "처방 생성에 실패했습니다.",
   P003: "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요.",
   P004: "처방 대기 한도 초과 — 진행 중인 처방이 끝나면 다시 시도해 주세요.",
+  L001: "작업일지를 찾을 수 없습니다.",
+  L002: "작업일지를 수정/삭제할 권한이 없습니다.",
+  W001: "예보를 불러올 수 없습니다.",
 };

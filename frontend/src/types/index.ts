@@ -10,6 +10,12 @@ export type DiagnosisStatus = "ok" | "ood_blocked";
 
 export type PrescriptionStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 
+// 작업일지 type enum (contract §4.8, 이슈 #56·#57)
+export type FarmLogType = "WATERING" | "FERTILIZING" | "PRUNING" | "HARVEST" | "PEST_CONTROL" | "ETC";
+
+// 날씨예보 하늘상태 enum (contract §4.8)
+export type WeatherSky = "SUNNY" | "CLOUDY" | "OVERCAST";
+
 export type ErrorCode =
   | "C001"
   | "C002"
@@ -33,7 +39,10 @@ export type ErrorCode =
   | "P001"
   | "P002"
   | "P003"
-  | "P004";
+  | "P004"
+  | "L001"
+  | "L002"
+  | "W001";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
@@ -232,6 +241,38 @@ export interface EnvThresholdsRequest {
 // 미설정 농장은 GET에서 enabled=false 기본값으로 온다(updatedAt 없음).
 export interface EnvThresholdsResponse extends EnvThresholdsRequest {
   updatedAt?: string;
+}
+
+// ── 작업일지 (contract §4.8, 이슈 #56·#57) ──────────────
+export interface FarmLogRequest {
+  logDate: string; // "YYYY-MM-DD"
+  type: FarmLogType;
+  memo?: string;
+}
+
+export interface FarmLogResponse {
+  id: number;
+  logDate: string;
+  type: FarmLogType;
+  memo?: string;
+  createdBy: number;
+  createdAt: string;
+}
+
+// ── 날씨예보 (contract §4.8, 이슈 #57) ──────────────
+// backend가 KMA 단기예보를 조회해 향후 24h·1시간 간격으로 반환. 각 포인트 값 필드는
+// 부분 응답을 허용(전부 nullable) — environment/today와 동일한 관용.
+export interface ForecastPoint {
+  time: string;
+  temp?: number | null;
+  humidity?: number | null;
+  sky?: WeatherSky | null;
+  pop?: number | null;
+}
+
+export interface ForecastResponse {
+  updatedAt: string;
+  points: ForecastPoint[];
 }
 
 // ── 페이지네이션 ──────────────────────────────────
