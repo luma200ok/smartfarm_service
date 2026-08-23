@@ -7,6 +7,8 @@ import com.smartfarm.service.dto.AcceptInvitationRequest;
 import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.LoginRequest;
 import com.smartfarm.service.dto.SignupRequest;
+import com.smartfarm.service.dto.RackRequest;
+import com.smartfarm.service.dto.ZoneRequest;
 import com.smartfarm.service.entity.CropType;
 import java.util.UUID;
 import org.springframework.http.MediaType;
@@ -82,6 +84,30 @@ public abstract class FarmTestSupport extends IntegrationTestSupport {
         MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get("/api/users/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
+    /** 존 생성(contract §4.10) — 랙·장비 테스트의 공통 픽스처. */
+    protected long createZone(String ownerToken, long farmId, String name) throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/farms/" + farmId + "/zones")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ZoneRequest(name, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
+    /** 랙 생성(존 하위, contract §4.10) — 장비 테스트의 공통 픽스처. */
+    protected long createRack(String ownerToken, long farmId, long zoneId, String code, int levelCount)
+            throws Exception {
+        MvcResult result = mockMvc.perform(
+                        MockMvcRequestBuilders.post("/api/farms/" + farmId + "/zones/" + zoneId + "/racks")
+                                .header("Authorization", "Bearer " + ownerToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new RackRequest(code, levelCount, null))))
+                .andExpect(status().isCreated())
                 .andReturn();
         return readJson(result).get("id").asLong();
     }
