@@ -26,7 +26,8 @@ function formatTemp(temp: number | null | undefined): string {
 }
 
 function formatPop(pop: number | null | undefined): string {
-  return pop === null || pop === undefined ? "-" : `${pop}%`;
+  // pop이 소수로 올 수 있어(리뷰 픽스 #57 P3-3) 정수 퍼센트로 반올림해 표시한다.
+  return pop === null || pop === undefined ? "-" : `${Math.round(pop)}%`;
 }
 
 // 날씨예보 위젯(contract §4.8, 이슈 #57) — 향후 24h·1시간 간격 KMA 단기예보를

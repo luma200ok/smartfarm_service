@@ -91,6 +91,12 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
     try {
       await updateFarmLog(farmId, editTarget.id, payload);
       setEditTarget(null);
+      // logDate가 바뀌면 정렬(내림차순)상 다른 페이지로 옮겨갈 수 있어, 방금 수정한
+      // 항목을 바로 찾을 수 있도록 첫 페이지로 이동한다. 날짜가 그대로면 현재 페이지 유지
+      // (리뷰 픽스 #57 P3-2).
+      if (payload.logDate !== editTarget.logDate) {
+        setPage(0);
+      }
       setRefreshKey((k) => k + 1);
     } catch (err) {
       setFormError(resolveErrorMessage(err));
@@ -105,7 +111,14 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
     setBusyId(log.id);
     try {
       await deleteFarmLog(farmId, log.id);
-      setRefreshKey((k) => k + 1);
+      // 현재 페이지의 마지막 항목을 지우면 같은 page로 재조회 시 빈 화면이 되므로
+      // (마지막 페이지가 아니어도 서버가 그 page를 빈 배열로 반환) 한 페이지 되돌린다
+      // (리뷰 픽스 #57 P2-1).
+      if (data?.content.length === 1 && page > 0) {
+        setPage((p) => p - 1);
+      } else {
+        setRefreshKey((k) => k + 1);
+      }
     } catch (err) {
       setRowError(resolveErrorMessage(err));
     } finally {
