@@ -32,6 +32,7 @@ export const ENDPOINTS = {
     envThresholds: (farmId: number | string) => `/api/farms/${farmId}/env-thresholds`,
     logs: (farmId: number | string) => `/api/farms/${farmId}/logs`,
     logDetail: (farmId: number | string, logId: number | string) => `/api/farms/${farmId}/logs/${logId}`,
+    chat: (farmId: number | string) => `/api/farms/${farmId}/chat`,
   },
   invitations: {
     accept: "/api/invitations/accept",

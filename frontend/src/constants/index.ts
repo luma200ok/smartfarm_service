@@ -18,6 +18,7 @@ export const VALIDATION = {
   farmName: { minLength: 2, maxLength: 50 },
   prescriptionQuestion: { minLength: 1, maxLength: 500 },
   farmLogMemo: { maxLength: 1000 },
+  chatQuestion: { minLength: 1, maxLength: 500 },
 } as const;
 
 export const DEFAULT_ERROR_MESSAGE = "요청 처리 중 오류가 발생했습니다.";
@@ -88,4 +89,6 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   L001: "작업일지를 찾을 수 없습니다.",
   L002: "작업일지를 수정/삭제할 권한이 없습니다.",
   W001: "예보를 불러올 수 없습니다.",
+  CH001: "AI 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.",
+  CH002: "AI 상담이 혼잡합니다. 잠시 후 다시 시도해주세요.",
 };
