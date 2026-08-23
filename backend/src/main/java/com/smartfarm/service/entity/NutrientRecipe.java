@@ -56,34 +56,40 @@ public class NutrientRecipe {
     @Column(nullable = false, length = 20)
     private GrowthStage stage;
 
-    @Column(nullable = false)
+    // 원소 기호로 끝나는 필드(targetN 등)와 단일 대문자로 끝나는 필드(tankVolumeL)는 Hibernate 기본
+    // 카멜케이스→스네이크케이스 변환이 마지막 대문자 앞에 밑줄을 넣지 않는 경우가 있어(예:
+    // tankVolumeL → tank_volumel) 컬럼명을 명시적으로 고정한다(V13 마이그레이션과 반드시 일치).
+    @Column(name = "target_n", nullable = false)
     private double targetN;
 
-    @Column(nullable = false)
+    @Column(name = "target_p", nullable = false)
     private double targetP;
 
-    @Column(nullable = false)
+    @Column(name = "target_k", nullable = false)
     private double targetK;
 
-    @Column(nullable = false)
+    @Column(name = "target_ca", nullable = false)
     private double targetCa;
 
-    @Column(nullable = false)
+    @Column(name = "target_mg", nullable = false)
     private double targetMg;
 
-    @Column(nullable = false)
+    @Column(name = "target_s", nullable = false)
     private double targetS;
 
-    @Column(nullable = false)
+    @Column(name = "tank_volume_l", nullable = false)
     private double tankVolumeL;
 
     @Column(nullable = false)
     private double concentrationFactor;
 
+    @Column(name = "source_water_ca")
     private Double sourceWaterCa;
 
+    @Column(name = "source_water_mg")
     private Double sourceWaterMg;
 
+    @Column(name = "source_water_ec")
     private Double sourceWaterEc;
 
     /** 저장 시점 계산 결과 스냅샷(JSON) — {@link com.smartfarm.service.dto.NutrientCalculationResponse} 직렬화. */
