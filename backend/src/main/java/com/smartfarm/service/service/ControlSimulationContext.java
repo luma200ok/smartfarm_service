@@ -39,6 +39,17 @@ public record ControlSimulationContext(
         return targetsByZone.getOrDefault(zoneId, Map.of()).get(metric);
     }
 
+    /**
+     * 목표가 설정돼 있지만 그 존의 제어기가 꺼져 <b>수렴이 해제된</b> 상태인가(리뷰 P3). 이 경우
+     * 값은 자연 생성값으로 <b>같은 비율로 되돌아간다</b> — 즉시 자연값으로 점프시키면 제어기를 끄는
+     * 순간 그래프에 계단이 생긴다(계약이 목표 수렴에서 피하려던 것과 같은 문제가 반대 방향으로 난다).
+     */
+    public boolean isReleased(Long zoneId, SensorMetric metric) {
+        return zoneId != null
+                && uncontrolledZoneIds.contains(zoneId)
+                && targetsByZone.getOrDefault(zoneId, Map.of()).containsKey(metric);
+    }
+
     /** 장비×지표 직전 측정값 — 없으면 {@code null}(첫 tick이라 자연 생성값에서 출발한다). */
     public Double previousValueOf(Long deviceId, SensorMetric metric) {
         return previousValues.get(new DeviceMetricKey(deviceId, metric));

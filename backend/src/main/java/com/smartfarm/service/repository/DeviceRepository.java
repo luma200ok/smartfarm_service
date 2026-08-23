@@ -30,8 +30,17 @@ public interface DeviceRepository extends JpaRepository<Device, Long>, DeviceRep
     /** 시뮬레이터 연동(contract §4.12) — 꺼진 제어기가 있는 존 판정용(해당 존은 목표값으로 수렴시키지 않는다). */
     List<Device> findByFarmIdAndKindAndStatus(Long farmId, DeviceKind kind, DeviceStatus status);
 
-    /** 비상 정지(contract §4.12) — 이미 꺼졌거나 통신 두절인 장비를 제외한 농장 전체 장비. */
-    List<Device> findByFarmIdAndStatusNotInOrderByIdAsc(Long farmId, Collection<DeviceStatus> statuses);
+    /**
+     * 비상 정지 대상(contract §4.12 동시성 4 — 2026-08-24 리뷰 반영) — <b>{@code kind=CONTROLLER}만</b>,
+     * 그중 이미 꺼졌거나(OFF) 통신 두절(OFFLINE)인 장비는 제외한다.
+     *
+     * <p>초판은 kind 무관 전 장비였고 그게 P1이었다: 센서까지 OFF가 되면 시뮬레이터가 그 센서를 tick
+     * 대상에서 빼 <b>농장 전체 측정 스트림이 영구 정지</b>한다(벌크 복구 경로도 없다). 정지의 목적은
+     * 액추에이터를 멈추는 것이지 관측을 멈추는 것이 아니다 — 계약의 "OFF 제어기가 있는 존은 자연
+     * 표류"도 센서가 계속 측정해야 성립한다.
+     */
+    List<Device> findByFarmIdAndKindAndStatusNotInOrderByIdAsc(Long farmId, DeviceKind kind,
+                                                                Collection<DeviceStatus> statuses);
 
     /** 요약(DeviceSummaryResponse) 계산용 — 농장 규모상 전체 로드 후 서비스 계층에서 집계. */
     List<Device> findByFarmId(Long farmId);

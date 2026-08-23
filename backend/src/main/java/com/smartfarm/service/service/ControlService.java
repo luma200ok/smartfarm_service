@@ -17,6 +17,7 @@ import com.smartfarm.service.entity.ControlChangeStatus;
 import com.smartfarm.service.entity.ControlMode;
 import com.smartfarm.service.entity.ControlSetpoint;
 import com.smartfarm.service.entity.Device;
+import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
 import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.OperationMode;
@@ -36,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,12 +59,13 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li><b>존 단위 직렬화</b>: 모든 쓰기 경로는 {@link #lockZone}로 그 존의 {@code control_modes}
  *       행을 {@code PESSIMISTIC_WRITE} 잠근 <b>뒤에</b> 읽고 쓴다. #91에서 P2로 남은 TOCTOU(읽고-쓰기
  *       사이에 락이 없어 검사 결과가 무효가 되는 문제)를 여기서 반복하지 않기 위해, 큐 상한 판정·
- *       낙관적 검증·모드 판정 같은 "검사"가 전부 락 안쪽에 있다.</li>
+ *       낙관적 검증·모드 판정·<b>존 활성 확인</b>이 전부 락 안쪽에 있다({@link #lockZone}은 락
+ *       앞뒤로 존을 두 번 확인한다 — 이유는 그 메서드 주석 참고).</li>
  *   <li><b>낙관적 검증(CT005)</b>: {@code apply}는 {@code expectedChangeIds}를 필수로 받아 잠금 하에서
  *       읽은 현재 PENDING 집합과 대조하고, 다르면 최신 큐를 실어 거부한다.</li>
  *   <li><b>단일 트랜잭션</b>: PENDING→APPLIED 전이 · 목표값/장비 상태 갱신 · 적용 이력 기록이 한
  *       트랜잭션이다(부분 적용 상태를 남기지 않는다). 서비스 메서드 하나가 트랜잭션 경계다.</li>
- *   <li><b>비상 정지 우선</b>: 전 존 장비 OFF + MANUAL + 농장의 모든 PENDING 폐기. 정지 이전에 쌓인
+ *   <li><b>비상 정지 우선</b>: 전 존 제어기 OFF + MANUAL + 농장의 모든 PENDING 폐기. 정지 이전에 쌓인
  *       큐가 정지 이후에 적용될 경로가 없다(폐기는 정지와 같은 트랜잭션).</li>
  *   <li><b>상태 전이는 엔티티 메서드</b>({@code ControlChange#markApplied/markDiscarded}) —
  *       APPLIED/DISCARDED는 종료 상태이며 재전이는 엔티티가 막는다.</li>
@@ -81,7 +84,7 @@ public class ControlService {
     static final int MAX_PENDING_PER_ZONE = 50;
 
     /** 제어 가능한 지표(contract §4.12) — 응답에는 미설정 포함 항상 이 4종 전부를 싣는다. */
-    private static final List<SensorMetric> CONTROLLABLE_METRICS = Arrays.stream(SensorMetric.values())
+    static final List<SensorMetric> CONTROLLABLE_METRICS = Arrays.stream(SensorMetric.values())
             .filter(SensorMetric::isControllable)
             .toList();
 
@@ -90,14 +93,21 @@ public class ControlService {
      * 망가진다(§4.12 시뮬레이터 연동). 임계치 알림(§4.6)의 "정상 범위"가 아니라 <b>입력 sanity 범위</b>라
      * 넉넉하게 잡는다 — 좁히면 정상적인 실험값까지 막는다. 위반은 C001.
      */
-    private static final Map<SensorMetric, TargetRange> TARGET_RANGES = new EnumMap<>(Map.of(
+    static final Map<SensorMetric, TargetRange> TARGET_RANGES = new EnumMap<>(Map.of(
             SensorMetric.TEMPERATURE, new TargetRange(-20.0, 60.0),
             SensorMetric.HUMIDITY, new TargetRange(0.0, 100.0),
             SensorMetric.CO2, new TargetRange(0.0, 5000.0),
             SensorMetric.PPFD, new TargetRange(0.0, 2000.0)));
 
-    /** 장비 토글로 지정 가능한 상태 — 켜기(NORMAL)/끄기(OFF)만. 나머지는 관측 결과이지 조작 대상이 아니다. */
-    private static final Set<DeviceStatus> TOGGLEABLE_STATUSES = Set.of(DeviceStatus.NORMAL, DeviceStatus.OFF);
+    /**
+     * 장비 토글로 지정 가능한 상태 — 켜기(NORMAL)/끄기(OFF)만. 나머지는 관측 결과이지 조작 대상이 아니다.
+     *
+     * <p>{@code Set.of}가 아니라 {@link EnumSet}이다(리뷰 P3) — 불변 {@code Set.of}는
+     * {@code contains(null)}에서 NPE를 던져 널 안전이 호출부 단락 평가 순서에 의존하게 된다
+     * (사이클 2 {@code DeviceService#validateMetrics}에서 같은 함정을 겪고 채택된 관례).
+     */
+    private static final Set<DeviceStatus> TOGGLEABLE_STATUSES =
+            EnumSet.of(DeviceStatus.NORMAL, DeviceStatus.OFF);
 
     private final ZoneRepository zoneRepository;
     private final DeviceRepository deviceRepository;
@@ -108,7 +118,7 @@ public class ControlService {
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
 
-    private record TargetRange(double min, double max) {
+    record TargetRange(double min, double max) {
 
         boolean contains(double value) {
             return value >= min && value <= max;
@@ -140,8 +150,9 @@ public class ControlService {
     public ControlStateResponse changeMode(Long farmId, Long userId, Long zoneId, ControlModeRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireMember(farmId, userId);
-        Zone zone = findZoneOrThrow(farmId, zoneId);
-        ControlMode mode = lockZone(farmId, zoneId);
+        LockedZone locked = lockZone(farmId, zoneId);
+        Zone zone = locked.zone();
+        ControlMode mode = locked.mode();
 
         mode.changeMode(request.mode(), userId);
 
@@ -172,8 +183,7 @@ public class ControlService {
                                                 ControlChangeRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireMember(farmId, userId);
-        findZoneOrThrow(farmId, zoneId);
-        ControlMode mode = lockZone(farmId, zoneId);
+        ControlMode mode = lockZone(farmId, zoneId).mode();
 
         ControlChange change = switch (request.kind()) {
             case SETPOINT -> buildSetpointChange(farmId, zoneId, userId, mode.getMode(), request);
@@ -193,7 +203,6 @@ public class ControlService {
     public void cancelChange(Long farmId, Long userId, Long zoneId, Long changeId) {
         demoAccountGuard.rejectDemoAccount(userId);
         FarmAccessGuard.FarmAccess access = farmAccessGuard.requireMember(farmId, userId);
-        findZoneOrThrow(farmId, zoneId);
         lockZone(farmId, zoneId);
 
         ControlChange change = controlChangeRepository.findByIdAndFarmId(changeId, farmId)
@@ -214,7 +223,6 @@ public class ControlService {
     public void cancelAllChanges(Long farmId, Long userId, Long zoneId) {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireMember(farmId, userId);
-        findZoneOrThrow(farmId, zoneId);
         lockZone(farmId, zoneId);
 
         controlChangeRepository.findByZoneIdAndStatusOrderByIdAsc(zoneId, ControlChangeStatus.PENDING)
@@ -233,8 +241,9 @@ public class ControlService {
     public ControlApplyResponse apply(Long farmId, Long userId, Long zoneId, ControlApplyRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireMember(farmId, userId);
-        Zone zone = findZoneOrThrow(farmId, zoneId);
-        ControlMode mode = lockZone(farmId, zoneId);
+        LockedZone locked = lockZone(farmId, zoneId);
+        Zone zone = locked.zone();
+        ControlMode mode = locked.mode();
 
         List<ControlChange> pending =
                 controlChangeRepository.findByZoneIdAndStatusOrderByIdAsc(zoneId, ControlChangeStatus.PENDING);
@@ -278,8 +287,9 @@ public class ControlService {
     }
 
     /**
-     * 비상 정지(contract §4.12 동시성 4, 농장 전체) — 전 존 장비 OFF + 모드 MANUAL + <b>모든 PENDING
-     * 폐기</b>를 하나의 트랜잭션으로 수행한다. 정지 후 잔존 큐가 나중에 적용될 경로를 남기지 않는다.
+     * 비상 정지(contract §4.12 동시성 4, 농장 전체) — 전 존의 <b>제어기(kind=CONTROLLER)</b> OFF +
+     * 모드 MANUAL + <b>모든 PENDING 폐기</b>를 하나의 트랜잭션으로 수행한다. 정지 후 잔존 큐가 나중에
+     * 적용될 경로를 남기지 않는다. 센서·게이트웨이는 끄지 않는다 — 정지 중에도 관측은 계속돼야 한다.
      *
      * <p>잠금은 <b>zoneId 오름차순 고정</b>이고, "모든 존의 행 생성 → 모든 존 잠금 → 변경" 순서다
      * (행 생성 쿼리가 flush를 유발하므로, 변경을 시작하기 전에 생성을 모두 끝낸다).
@@ -300,10 +310,13 @@ public class ControlService {
         }
         modes.forEach(mode -> mode.changeMode(OperationMode.MANUAL, userId));
 
-        // 이미 꺼졌거나(OFF) 통신 두절(OFFLINE)인 장비는 대상에서 뺀다 — OFFLINE을 OFF로 덮으면
+        // ⚠️ 대상은 kind=CONTROLLER(액추에이터)뿐이다(contract §4.12 동시성 4 — 2026-08-24 리뷰 반영).
+        // 센서까지 끄면 §4.11 시뮬레이터가 OFF 센서를 tick에서 빼 농장 전체 측정이 영구 정지하고,
+        // 같은 절의 "OFF 제어기가 있는 존은 자연 표류"도 성립하지 않는다(표류하려면 센서가 측정해야
+        // 한다). 이미 꺼졌거나(OFF) 통신 두절(OFFLINE)인 제어기도 제외한다 — OFFLINE을 OFF로 덮으면
         // "장애로 응답 없음"이라는 사실이 조작 결과에 묻힌다.
-        List<Device> devices = deviceRepository.findByFarmIdAndStatusNotInOrderByIdAsc(
-                farmId, List.of(DeviceStatus.OFFLINE, DeviceStatus.OFF));
+        List<Device> devices = deviceRepository.findByFarmIdAndKindAndStatusNotInOrderByIdAsc(
+                farmId, DeviceKind.CONTROLLER, List.of(DeviceStatus.OFFLINE, DeviceStatus.OFF));
         devices.forEach(device -> device.changeStatus(DeviceStatus.OFF));
 
         List<ControlChange> pending =
@@ -313,7 +326,7 @@ public class ControlService {
         LocalDateTime stoppedAt = LocalDateTime.now();
         writeEmergencyStopLogs(farmId, userId, zoneIds, devices, pending, stoppedAt);
 
-        log.warn("비상 정지 — farmId={}, 존 {}개, 장비 {}대 OFF, 대기 항목 {}건 폐기, userId={}",
+        log.warn("비상 정지 — farmId={}, 존 {}개, 제어기 {}대 OFF, 대기 항목 {}건 폐기, userId={}",
                 farmId, zoneIds.size(), devices.size(), pending.size(), userId);
         return new EmergencyStopResponse(farmId, zoneIds.size(), devices.size(), pending.size(), stoppedAt, true);
     }
@@ -324,10 +337,28 @@ public class ControlService {
      * 존 단위 직렬화 잠금(contract §4.12 동시성 3) — 잠금 지점인 {@code control_modes} 행을 지연
      * 생성한 뒤 {@code SELECT ... FOR UPDATE}로 잠근다. 생성이 {@code ON CONFLICT DO NOTHING}이라
      * 동시 생성 경합에서도 예외 없이 한쪽만 삽입되고 양쪽 모두 같은 행을 잠근다.
+     *
+     * <p>존 확인을 <b>락 앞뒤로 두 번</b> 한다(리뷰 P2 — 계약이 요구하는 "검사는 락 안쪽"의 유일한
+     * 위반이었다):
+     * <ol>
+     *   <li><b>락 전</b>: 미존재·타 농장 존을 먼저 404로 끊는다. 이게 없으면 임의 zoneId로
+     *       {@code control_modes} 행을 만들려다 FK 위반 500이 나거나, 타 농장 존을 잠글 수 있다.</li>
+     *   <li><b>락 후</b>: 락을 기다리는 동안 {@code deleteZone}이 먼저 커밋했을 수 있다. 재확인이
+     *       없으면 <b>이미 삭제된 존에 PENDING을 INSERT</b>하게 되고(삭제 캐스케이드는 이미 지나갔다),
+     *       그 행은 모든 표면이 R001로 막아 조회·폐기가 불가능한 영구 잔존물이 된다.</li>
+     * </ol>
+     * {@code @SQLRestriction("deleted_at IS NULL")}이 조회 SQL에 붙으므로, 2단계 재확인은 영속성
+     * 컨텍스트 캐시와 무관하게 "행이 아직 활성인가"를 DB에 다시 묻는다.
      */
-    private ControlMode lockZone(Long farmId, Long zoneId) {
+    private LockedZone lockZone(Long farmId, Long zoneId) {
+        findZoneOrThrow(farmId, zoneId);
         controlModeRepository.insertDefaultIfAbsent(farmId, zoneId);
-        return lockExistingZone(farmId, zoneId);
+        ControlMode mode = lockExistingZone(farmId, zoneId);
+        return new LockedZone(findZoneOrThrow(farmId, zoneId), mode);
+    }
+
+    /** 잠금 하에서 확인된 존과 그 모드 행 — 잠금 이후 존 재확인을 강제하기 위한 반환 타입. */
+    private record LockedZone(Zone zone, ControlMode mode) {
     }
 
     private ControlMode lockExistingZone(Long farmId, Long zoneId) {
@@ -497,7 +528,7 @@ public class ControlService {
             controlApplyLogRepository.save(ControlApplyLog.builder()
                     .farmId(farmId)
                     .zoneId(zoneId)
-                    .summary("비상 정지 — 장비 " + stopped + "대 OFF, 대기 항목 " + dropped + "건 폐기")
+                    .summary("비상 정지 — 제어기 " + stopped + "대 OFF, 대기 항목 " + dropped + "건 폐기")
                     .itemCount((int) (stopped + dropped))
                     .appliedBy(userId)
                     .appliedAt(stoppedAt)

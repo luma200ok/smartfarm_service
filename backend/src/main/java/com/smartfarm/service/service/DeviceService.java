@@ -75,10 +75,11 @@ public class DeviceService {
         long faultOrOffline = devices.stream()
                 .filter(d -> d.getStatus() == DeviceStatus.FAULT || d.getStatus() == DeviceStatus.OFFLINE)
                 .count();
-        // ⚠️ 사이클 3(§4.12)에서 추가된 OFF(제어로 꺼진 장비)는 KPI 4종 어디에도 세지 않는다 —
-        // 장애가 아니라 조작 결과라 faultOrOffline에 넣으면 알림 성격의 지표가 오염되고, normal에
-        // 넣으면 "정상 가동 중"으로 읽힌다. 따라서 total >= normal + warning + faultOrOffline이며
-        // 차이가 OFF 대수다(계약 §4.10 DeviceSummaryResponse 필드는 그대로 유지 — 필드 추가는 계약 변경).
+        // 사이클 3(§4.12)에서 추가된 OFF(제어로 꺼진 장비)는 독립 KPI다(§4.10 리뷰 반영) — 장애가
+        // 아니라 조작 결과라 faultOrOffline에 넣으면 알림 지표가 오염되고, normal에 넣으면 "정상
+        // 가동 중"으로 읽히며, 아예 세지 않으면 비상 정지 직후 전 장비 정지가 "이상 없음"으로 보인다.
+        // 불변식: total = normal + warning + faultOrOffline + off.
+        long off = devices.stream().filter(d -> d.getStatus() == DeviceStatus.OFF).count();
 
         LocalDateTime dueSoonThreshold = LocalDateTime.now().plusDays(CALIBRATION_DUE_SOON_DAYS);
         long calibrationDueSoon = devices.stream()
@@ -87,7 +88,7 @@ public class DeviceService {
 
         List<ByModel> byModel = groupByModel(devices);
 
-        return new DeviceSummaryResponse(total, normal, warning, faultOrOffline, calibrationDueSoon, byModel);
+        return new DeviceSummaryResponse(total, normal, warning, faultOrOffline, off, calibrationDueSoon, byModel);
     }
 
     private List<ByModel> groupByModel(List<Device> devices) {
@@ -128,6 +129,7 @@ public class DeviceService {
         if (request.zoneId() == null && request.rackId() == null && request.rackLevelId() == null) {
             throw new CustomException(ErrorCode.C001, "위치(존·랙·층) 중 최소 하나는 필수입니다.");
         }
+        rejectControlOnlyStatus(request.status());
         ResolvedLocation location = resolveLocation(farmId, request.zoneId(), request.rackId(),
                 request.rackLevelId());
 
@@ -168,6 +170,7 @@ public class DeviceService {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireOwner(farmId, userId);
         Device device = findDeviceOrThrow(farmId, deviceId);
+        rejectControlOnlyStatus(request.status());
 
         // PATCH는 부분 수정(null=미변경)이라 위치 FK 하나만 바뀌어도 나머지 기존 값과 계층이
         // 어긋날 수 있다 — 요청값과 기존 엔티티를 병합한 "최종 상태"로 정합성을 검증한다
@@ -285,6 +288,24 @@ public class DeviceService {
             }
         } else if (!empty) {
             throw new CustomException(ErrorCode.C001, "SENSOR가 아닌 장비는 측정 지표를 선언할 수 없습니다.");
+        }
+    }
+
+    /**
+     * 레지스트리 편집으로는 {@code OFF}를 설정할 수 없다(contract §4.10 — 2026-08-24 사이클 3 리뷰
+     * 반영). {@code OFF}는 §4.12가 정의한 <b>제어 조작의 결과</b>이지 레지스트리 속성이 아니다:
+     * 이 경로에는 모드 게이트(CT003)·대기 큐 2단계·존 단위 락·감사 이력이 <b>전부 없어서</b>,
+     * 허용하면 비상 정지로 꺼둔 장비를 감사 없이 되살리거나(OFF→NORMAL PATCH) 제어를 거치지 않고
+     * 끄면서 §4.12 동시성 3(존 단위 직렬화)을 우회할 수 있다.
+     *
+     * <p>계약 문구는 PATCH를 지목하지만 생성 경로도 같은 이유로 막는다 — 어떤 제어 조작도 하지 않은
+     * 신규 장비를 "제어로 꺼둠" 상태로 등록하는 것은 의미가 없고, 등록 직후 PATCH 우회와 결과가 같다.
+     * 끄기/켜기는 제어 경로({@code POST /control/changes} → {@code apply})로만 한다.
+     */
+    private void rejectControlOnlyStatus(DeviceStatus status) {
+        if (status == DeviceStatus.OFF) {
+            throw new CustomException(ErrorCode.C001,
+                    "OFF는 제어 조작으로만 설정할 수 있습니다(장비 레지스트리에서 지정할 수 없습니다).");
         }
     }
 

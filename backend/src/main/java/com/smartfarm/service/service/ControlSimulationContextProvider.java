@@ -58,12 +58,12 @@ public class ControlSimulationContextProvider {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // 직전 값은 "목표가 실제로 걸리는 존"의 센서만 필요하다 — 그 외 장비까지 조회하면 농장 전체
-        // 최신값을 매 틱 끌어오게 된다.
+        // 직전 값은 "목표가 설정된 존"의 센서만 필요하다 — 그 외 장비까지 조회하면 농장 전체 최신값을
+        // 매 틱 끌어오게 된다. 제어기가 꺼진 존도 포함한다: 목표 수렴이 해제되면 자연값으로 되돌아가는
+        // 것도 직전 값에서 출발해야 계단이 생기지 않는다(ControlSimulationContext#isReleased).
         List<Long> deviceIds = sensorDevices.stream()
                 .filter(device -> device.getZoneId() != null)
                 .filter(device -> targetsByZone.containsKey(device.getZoneId()))
-                .filter(device -> !uncontrolledZoneIds.contains(device.getZoneId()))
                 .map(Device::getId)
                 .toList();
         Map<ControlSimulationContext.DeviceMetricKey, Double> previousValues = deviceIds.isEmpty()

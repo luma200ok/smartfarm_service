@@ -23,6 +23,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -37,6 +38,12 @@ import org.hibernate.annotations.SQLRestriction;
  * 사이클 2 — 저장되는 삼중조는 항상 완전하다). {@code serial}은 농장 스코프 partial unique(활성
  * 행)이며 null 허용(V14).
  *
+ * <p>⚠️ {@code @DynamicUpdate}(사이클 3 리뷰 P2) — 기본 동작인 전 컬럼 UPDATE는 writer가 둘 이상이
+ * 되는 순간 <b>읽은 적 없는 컬럼까지 되돌려 쓴다</b>: 제어 apply(멤버)가 장비를 SELECT한 뒤 OWNER가
+ * {@code PATCH /devices}로 이름을 바꿔 커밋하면, apply의 flush가 자기 스냅샷의 옛 이름으로 덮어쓴다.
+ * 변경된 컬럼만 UPDATE하면 이 컬럼 덮어쓰기가 사라진다(같은 컬럼에 대한 논리적 충돌은 남으며 그건
+ * 후속 이슈 — 낙관적 락 {@code @Version} 도입 대상).
+ *
  * <p>{@code metrics}(V16, 사이클 2) — {@code kind=SENSOR}는 측정 지표를 1개 이상 선언해야 하고
  * {@code CONTROLLER}/{@code GATEWAY}는 비워야 한다(서비스 계층이 C001로 강제). 시뮬레이터는 이
  * 선언분만 생성한다 — 초판이 센서 1대를 7종 복합 프로브로 가정해 적재량 추정이 7배 틀어졌던 계약
@@ -44,6 +51,7 @@ import org.hibernate.annotations.SQLRestriction;
  */
 @Entity
 @Table(name = "devices")
+@DynamicUpdate
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @SQLDelete(sql = "UPDATE devices SET deleted_at = NOW() WHERE id = ?")

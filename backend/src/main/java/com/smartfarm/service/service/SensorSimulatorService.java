@@ -167,19 +167,25 @@ public class SensorSimulatorService {
     /**
      * 한 장비·한 지표의 이번 tick 값(contract §4.12 시뮬레이터 연동) — 목표값이 설정된 존이면
      * <b>직전 값에서 목표로 tick당 일정 비율</b> 수렴시키고(첫 tick은 자연 생성값에서 출발),
-     * 목표가 없거나 그 존의 제어기가 꺼져 있으면 기존 자연 생성(일주기 sin + 층 오프셋 + 노이즈)
-     * 그대로다. ⚠️ 어느 경로든 {@code source}는 {@code SIMULATED}다 — 제어가 붙었다고 실측이 아니다.
+     * 목표가 있으나 그 존의 제어기가 꺼졌으면 <b>같은 비율로 자연값에 되돌아가며</b>(계단 방지),
+     * 목표 자체가 없으면 기존 자연 생성(일주기 sin + 층 오프셋 + 노이즈) 그대로다. ⚠️ 어느 경로든 {@code source}는 {@code SIMULATED}다 — 제어가 붙었다고 실측이 아니다.
      */
     private double valueOf(ControlSimulationContext control, Device device, SensorMetric metric, int levelNo,
                             LocalDateTime measuredAt) {
         double natural = SensorSimulationProfile.simulate(metric, levelNo, device.getId(), measuredAt);
-        Double target = control.targetFor(device.getZoneId(), metric);
-        if (target == null) {
-            return natural;
-        }
         Double previous = control.previousValueOf(device.getId(), metric);
-        return SensorSimulationProfile.converge(metric, previous != null ? previous : natural, target,
-                device.getId(), measuredAt);
+        Double target = control.targetFor(device.getZoneId(), metric);
+        if (target != null) {
+            return SensorSimulationProfile.converge(metric, previous != null ? previous : natural, target,
+                    device.getId(), measuredAt);
+        }
+        if (previous != null && control.isReleased(device.getZoneId(), metric)) {
+            // 목표는 남아 있지만 제어기가 꺼진 존 — 자연값으로 같은 비율로 되돌아간다(리뷰 P3).
+            // 즉시 자연값으로 떨어뜨리면 제어기를 끄는 순간 목표값에서 자연값까지 한 tick 만에
+            // 점프한다(예: 30°C → 22°C). 계약이 수렴을 비율로 정한 이유와 같은 이유로 해제도 비율이다.
+            return SensorSimulationProfile.converge(metric, previous, natural, device.getId(), measuredAt);
+        }
+        return natural;
     }
 
     /** N+1 방지 — 대상 장비들의 rackLevelId를 한 번에 배치 조회(층별 오프셋 계산용 levelNo). */
