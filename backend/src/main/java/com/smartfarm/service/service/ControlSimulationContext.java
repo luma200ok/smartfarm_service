@@ -10,8 +10,10 @@ import java.util.Set;
  * 결정적으로 답한다. 조회는 {@link ControlSimulationContextProvider}가 농장당 한 번에 끝낸다(N+1 방지).
  *
  * @param targetsByZone       존별 지표 목표값({@code ControlSetpoint})
- * @param uncontrolledZoneIds 꺼진 제어기({@code kind=CONTROLLER, status=OFF})가 있는 존 — 제어기가
- *                            꺼졌으니 목표로 수렴시키지 않고 자연 표류시킨다(contract §4.12)
+ * @param uncontrolledZoneIds 수렴이 해제된 존(contract §4.12) — ① 꺼진 제어기
+ *                            ({@code kind=CONTROLLER, status=OFF})가 있거나 ② 운전 모드가
+ *                            {@code MANUAL}인 존. ②가 없으면 제어기가 없는 존·제어기가 OFFLINE인 존이
+ *                            비상 정지 후에도 계속 목표로 끌려간다(2026-08-24 2차 리뷰)
  * @param previousValues      장비×지표 직전 측정값 — 수렴 시작점
  */
 public record ControlSimulationContext(
@@ -29,8 +31,8 @@ public record ControlSimulationContext(
     }
 
     /**
-     * 이 존·지표에 적용할 목표값 — 없거나(미설정) 그 존의 제어기가 꺼져 있으면 {@code null}
-     * (= 목표 수렴 없이 기존 상수 기저 유지, contract §4.12).
+     * 이 존·지표에 적용할 목표값 — 미설정이거나 그 존의 수렴이 해제됐으면(꺼진 제어기 또는 MANUAL
+     * 모드) {@code null}(= 목표로 끌지 않는다, contract §4.12).
      */
     public Double targetFor(Long zoneId, SensorMetric metric) {
         if (zoneId == null || uncontrolledZoneIds.contains(zoneId)) {
@@ -40,7 +42,7 @@ public record ControlSimulationContext(
     }
 
     /**
-     * 목표가 설정돼 있지만 그 존의 제어기가 꺼져 <b>수렴이 해제된</b> 상태인가(리뷰 P3). 이 경우
+     * 목표가 설정돼 있지만 그 존의 수렴이 <b>해제된</b> 상태인가(꺼진 제어기 또는 MANUAL 모드 — 리뷰 P3). 이 경우
      * 값은 자연 생성값으로 <b>같은 비율로 되돌아간다</b> — 즉시 자연값으로 점프시키면 제어기를 끄는
      * 순간 그래프에 계단이 생긴다(계약이 목표 수렴에서 피하려던 것과 같은 문제가 반대 방향으로 난다).
      */

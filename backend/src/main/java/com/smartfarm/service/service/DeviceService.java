@@ -170,7 +170,7 @@ public class DeviceService {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireOwner(farmId, userId);
         Device device = findDeviceOrThrow(farmId, deviceId);
-        rejectControlOnlyStatus(request.status());
+        rejectControlOnlyStatusChange(device.getStatus(), request.status());
 
         // PATCH는 부분 수정(null=미변경)이라 위치 FK 하나만 바뀌어도 나머지 기존 값과 계층이
         // 어긋날 수 있다 — 요청값과 기존 엔티티를 병합한 "최종 상태"로 정합성을 검증한다
@@ -294,18 +294,33 @@ public class DeviceService {
     /**
      * 레지스트리 편집으로는 {@code OFF}를 설정할 수 없다(contract §4.10 — 2026-08-24 사이클 3 리뷰
      * 반영). {@code OFF}는 §4.12가 정의한 <b>제어 조작의 결과</b>이지 레지스트리 속성이 아니다:
-     * 이 경로에는 모드 게이트(CT003)·대기 큐 2단계·존 단위 락·감사 이력이 <b>전부 없어서</b>,
-     * 허용하면 비상 정지로 꺼둔 장비를 감사 없이 되살리거나(OFF→NORMAL PATCH) 제어를 거치지 않고
-     * 끄면서 §4.12 동시성 3(존 단위 직렬화)을 우회할 수 있다.
+     * 이 경로에는 모드 게이트(CT003)·대기 큐 2단계·존 단위 락·감사 이력이 <b>전부 없다</b>.
      *
      * <p>계약 문구는 PATCH를 지목하지만 생성 경로도 같은 이유로 막는다 — 어떤 제어 조작도 하지 않은
      * 신규 장비를 "제어로 꺼둠" 상태로 등록하는 것은 의미가 없고, 등록 직후 PATCH 우회와 결과가 같다.
-     * 끄기/켜기는 제어 경로({@code POST /control/changes} → {@code apply})로만 한다.
+     * 끄기는 제어 경로({@code POST /control/changes} → {@code apply})로만 한다.
      */
-    private void rejectControlOnlyStatus(DeviceStatus status) {
-        if (status == DeviceStatus.OFF) {
+    private void rejectControlOnlyStatus(DeviceStatus requestedStatus) {
+        if (requestedStatus == DeviceStatus.OFF) {
             throw new CustomException(ErrorCode.C001,
                     "OFF는 제어 조작으로만 설정할 수 있습니다(장비 레지스트리에서 지정할 수 없습니다).");
+        }
+    }
+
+    /**
+     * PATCH의 상태 변경 게이트 — <b>끄기(→OFF)뿐 아니라 되살리기(OFF→다른 상태)도 막는다</b>
+     * (2026-08-24 2차 리뷰). 끄기만 막으면 차단 근거("비상 정지로 꺼둔 장비를 감사 없이 되살리는
+     * 것")와 실제 효과가 어긋난다 — 현재 OFF인 장비에 {@code PATCH {status:"NORMAL"}}이 그대로
+     * 통과해 <b>요청 1건으로 비상 정지가 무력화</b>되고, 문서만 읽으면 이미 막힌 것처럼 보인다.
+     *
+     * <p>즉 규칙은 "<b>OFF 장비의 상태는 제어 경로로만 바꾼다</b>"이다. OFF가 아닌 장비의 정상적인
+     * 관측 상태 갱신(NORMAL↔WARNING↔FAULT↔OFFLINE)은 그대로 허용된다.
+     */
+    private void rejectControlOnlyStatusChange(DeviceStatus currentStatus, DeviceStatus requestedStatus) {
+        rejectControlOnlyStatus(requestedStatus);
+        if (currentStatus == DeviceStatus.OFF && requestedStatus != null) {
+            throw new CustomException(ErrorCode.C001,
+                    "제어로 꺼진(OFF) 장비의 상태는 제어 조작으로만 변경할 수 있습니다.");
         }
     }
 

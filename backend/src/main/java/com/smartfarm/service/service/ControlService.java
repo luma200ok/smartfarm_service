@@ -36,6 +36,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -93,11 +94,11 @@ public class ControlService {
      * 망가진다(§4.12 시뮬레이터 연동). 임계치 알림(§4.6)의 "정상 범위"가 아니라 <b>입력 sanity 범위</b>라
      * 넉넉하게 잡는다 — 좁히면 정상적인 실험값까지 막는다. 위반은 C001.
      */
-    static final Map<SensorMetric, TargetRange> TARGET_RANGES = new EnumMap<>(Map.of(
+    static final Map<SensorMetric, TargetRange> TARGET_RANGES = Collections.unmodifiableMap(new EnumMap<>(Map.of(
             SensorMetric.TEMPERATURE, new TargetRange(-20.0, 60.0),
             SensorMetric.HUMIDITY, new TargetRange(0.0, 100.0),
             SensorMetric.CO2, new TargetRange(0.0, 5000.0),
-            SensorMetric.PPFD, new TargetRange(0.0, 2000.0)));
+            SensorMetric.PPFD, new TargetRange(0.0, 2000.0))));
 
     /**
      * 장비 토글로 지정 가능한 상태 — 켜기(NORMAL)/끄기(OFF)만. 나머지는 관측 결과이지 조작 대상이 아니다.
@@ -105,9 +106,11 @@ public class ControlService {
      * <p>{@code Set.of}가 아니라 {@link EnumSet}이다(리뷰 P3) — 불변 {@code Set.of}는
      * {@code contains(null)}에서 NPE를 던져 널 안전이 호출부 단락 평가 순서에 의존하게 된다
      * (사이클 2 {@code DeviceService#validateMetrics}에서 같은 함정을 겪고 채택된 관례).
+     * {@code EnumSet} 자체는 <b>가변</b>이라 {@code unmodifiableSet}으로 감싼다(2차 리뷰) — 널 안전은
+     * 위임된 {@code contains}로 그대로 유지된다. {@code TARGET_RANGES}도 같은 이유로 불변화했다.
      */
     private static final Set<DeviceStatus> TOGGLEABLE_STATUSES =
-            EnumSet.of(DeviceStatus.NORMAL, DeviceStatus.OFF);
+            Collections.unmodifiableSet(EnumSet.of(DeviceStatus.NORMAL, DeviceStatus.OFF));
 
     private final ZoneRepository zoneRepository;
     private final DeviceRepository deviceRepository;
@@ -361,6 +364,14 @@ public class ControlService {
     private record LockedZone(Zone zone, ControlMode mode) {
     }
 
+    /**
+     * 잠금 지점 행을 잠그기만 한다 — <b>존 소속·활성 검증을 하지 않는다</b>. 따라서 호출 전에 그 검증이
+     * 끝난 경로에서만 쓴다(2차 리뷰 N5): {@link #lockZone}(앞뒤로 검증) · {@link #emergencyStop}
+     * (농장 활성 존만 순회) · {@code ControlCascadeService}(삭제 대상 존/장비를 이미 로드한 상태).
+     *
+     * <p>새 호출자를 추가할 때 이 전제를 건너뛰면 #100의 원본 결함("검사가 락 밖")이 그대로 재발한다 —
+     * 검증이 선행되지 않는 경로라면 {@link #lockZone}을 쓸 것.
+     */
     private ControlMode lockExistingZone(Long farmId, Long zoneId) {
         return controlModeRepository.findByZoneIdForUpdate(zoneId, farmId)
                 // 직전에 존재를 보장했으므로 여기 도달하면 서버 결함이다(존은 이미 R001로 검증됨).
@@ -511,6 +522,17 @@ public class ControlService {
         return true;
     }
 
+    /**
+     * 비상 정지 감사 이력 — 영향이 있었던 존마다 1행. 영향이 <b>하나도 없어도 최소 1행</b>을 남긴다
+     * (2026-08-24 2차 리뷰): 정지 대상이 제어기로 좁혀지면서 "영향 0"이 흔해졌고(제어기 미등록 농장,
+     * 이미 정지된 농장 재호출), 그때 {@code control_apply_logs}에 아무것도 안 남으면 <b>안전 조작이
+     * 호출된 사실 자체가 사라진다</b> — 사후에 "정지를 눌렀는가"를 확인할 방법이 없다.
+     *
+     * <p>영향 0일 때의 기록 대상 존은 <b>zoneId 최솟값</b>(잠금 순서의 첫 존)으로 고정한다 — 이력은
+     * 존 스코프 테이블이라 농장 단위 행을 만들 수 없고, 임의 선택이면 재현이 안 된다. 존이 하나도
+     * 없는 농장은 참조할 존 자체가 없어(FK NOT NULL) 기록하지 않는다 — 이 경우 정지 대상도 구조적으로
+     * 존재할 수 없고, 호출 사실은 WARN 로그에 남는다.
+     */
     private void writeEmergencyStopLogs(Long farmId, Long userId, List<Long> zoneIds, List<Device> devices,
                                          List<ControlChange> discarded, LocalDateTime stoppedAt) {
         Map<Long, Long> stoppedByZone = devices.stream()
@@ -519,21 +541,34 @@ public class ControlService {
         Map<Long, Long> discardedByZone = discarded.stream()
                 .collect(Collectors.groupingBy(ControlChange::getZoneId, Collectors.counting()));
 
+        boolean anyLogged = false;
         for (Long zoneId : zoneIds) {
             long stopped = stoppedByZone.getOrDefault(zoneId, 0L);
             long dropped = discardedByZone.getOrDefault(zoneId, 0L);
             if (stopped == 0 && dropped == 0) {
-                continue; // 영향이 없던 존까지 이력을 남기면 "최근 적용"이 빈 이벤트로 채워진다
+                continue; // 영향이 없던 존까지 매번 남기면 "최근 적용"이 빈 이벤트로 채워진다
             }
-            controlApplyLogRepository.save(ControlApplyLog.builder()
-                    .farmId(farmId)
-                    .zoneId(zoneId)
-                    .summary("비상 정지 — 제어기 " + stopped + "대 OFF, 대기 항목 " + dropped + "건 폐기")
-                    .itemCount((int) (stopped + dropped))
-                    .appliedBy(userId)
-                    .appliedAt(stoppedAt)
-                    .build());
+            saveEmergencyStopLog(farmId, userId, zoneId, stoppedAt,
+                    "비상 정지 — 제어기 " + stopped + "대 OFF, 대기 항목 " + dropped + "건 폐기",
+                    (int) (stopped + dropped));
+            anyLogged = true;
         }
+        if (!anyLogged && !zoneIds.isEmpty()) {
+            saveEmergencyStopLog(farmId, userId, zoneIds.get(0), stoppedAt,
+                    "비상 정지 — 정지 대상 없음(제어기 0대, 대기 항목 0건)", 0);
+        }
+    }
+
+    private void saveEmergencyStopLog(Long farmId, Long userId, Long zoneId, LocalDateTime stoppedAt,
+                                       String summary, int itemCount) {
+        controlApplyLogRepository.save(ControlApplyLog.builder()
+                .farmId(farmId)
+                .zoneId(zoneId)
+                .summary(summary)
+                .itemCount(itemCount)
+                .appliedBy(userId)
+                .appliedAt(stoppedAt)
+                .build());
     }
 
     private String summaryOf(int setpointCount, int deviceCount) {

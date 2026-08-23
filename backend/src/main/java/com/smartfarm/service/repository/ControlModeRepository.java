@@ -15,7 +15,15 @@ public interface ControlModeRepository extends JpaRepository<ControlMode, Long> 
     /** farm 스코프 필수 — zoneId 단독 조회 금지(cross-tenant IDOR 차단). 조회 전용(락 없음). */
     Optional<ControlMode> findByZoneIdAndFarmId(Long zoneId, Long farmId);
 
-    /** 비상 정지 — 농장 전 존의 모드 행(존 순서는 호출측이 잠금 순서와 맞춘다). */
+    /**
+     * 시뮬레이터 해제 판정(contract §4.12 시뮬레이터 연동, 2026-08-24 2차 리뷰) — 농장 전 존의 모드
+     * 행을 1틱에 한 번 배치 조회한다({@code ControlSimulationContextProvider}). {@code MANUAL} 존은
+     * 목표 수렴 대상에서 빠진다: 해제 판정이 "꺼진 제어기의 존재"에만 의존하면 <b>제어기가 없는 존과
+     * 제어기가 OFFLINE인 존은 비상 정지 후에도 계속 목표로 끌려간다</b>.
+     *
+     * <p>비상 정지는 이 메서드를 쓰지 않는다 — 존을 zoneId 오름차순으로 <b>하나씩 잠그며</b> 순회해야
+     * 하므로 잠금 없는 일괄 조회로는 대체할 수 없다.
+     */
     List<ControlMode> findByFarmId(Long farmId);
 
     /**
