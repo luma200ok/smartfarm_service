@@ -26,17 +26,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 가상 장비 시뮬레이터 본체(contract §4.11, 이슈 #90) — {@code kind=SENSOR}이고
- * {@code status != OFFLINE}인 장비마다 1틱(호출 1회)에 7종 지표 전부를 생성한다. Device 엔티티에는
- * "이 장비가 어떤 지표를 재는지"를 나타내는 필드가 없어(§4.10에 그런 컬럼이 없음), 센서 1대 = 복합
- * 프로브(온습도·CO2 등을 동시에 재는 통합 센서)로 간주해 SENSOR 장비마다 {@link SensorMetric}
- * 7종을 전부 생성한다 — contract의 "N × 129,600행" 예시는 지표 1종 기준 근사치이므로 실제 적재량은
- * 이보다 7배 크다(90일 보존 + 상한 200개는 그대로도 안전한 상한이라 문제는 아니나, 데이터량 추정
- * 시 참고할 것 — A 보고 사항).
+ * {@code status != OFFLINE}인 장비마다 1틱(호출 1회)에 <b>그 장비가 선언한 {@code metrics}
+ * (§4.10 V16 사이클 2)만</b> 생성한다. 초판은 Device에 지표 선언 필드가 없어 센서 1대를 7종 복합
+ * 프로브로 가정했으나(적재량 추정이 7배 틀어짐), 사이클 2에서 {@code device_metrics}가 추가되며
+ * 그 선언분만 생성하도록 정정됐다.
  *
  * <p>⚠️ 위치 3종은 device의 값을 <b>그대로 복사</b>한다(zoneId/rackId/rackLevelId 유도·조합 금지 —
- * contract §4.11 필수 요건 2). rackLevelId가 없는 장비(게이트웨이 등)는애초에 kind=SENSOR가 아니므로
- * 대상에서 제외되지만, 데이터 무결성상 rackLevelId가 없는 SENSOR 장비는 층별 오프셋을 0으로 두고
- * 그대로 생성한다(§4.10이 SENSOR의 rackLevelId를 강제하지 않으므로 방어적으로 처리).
+ * contract §4.11 필수 요건 2). device 저장 시점에 이미 {@code DeviceService}가 부모 FK를 자동
+ * 채워 완전한 삼중조로 저장하므로(§4.10 사이클 2), 여기서는 그 값을 다시 유도하지 않고 복사만 한다.
  */
 @Slf4j
 @Service
@@ -47,8 +44,9 @@ public class SensorSimulatorService {
     private final RackLevelRepository rackLevelRepository;
     private final SensorReadingRepository sensorReadingRepository;
 
-    @Value("${sensor-simulator.max-per-farm:200}")
-    private int maxPerFarm;
+    /** 농장당 1틱 최대 생성 행 수(contract §4.11 사이클 2 정정 — 센서 대수가 아니라 행 수 기준). */
+    @Value("${sensor-simulator.max-rows-per-farm:300}")
+    private int maxRowsPerFarm;
 
     @Transactional
     public void tick() {
@@ -74,21 +72,27 @@ public class SensorSimulatorService {
         }
     }
 
+    /**
+     * 상한(농장당 1틱 최대 {@code maxRowsPerFarm}행)은 <b>id 오름차순으로 누적 행 수를 채우다가</b>
+     * 다음 장비를 더하면 상한을 넘는 시점에서 멈춘다(조용히 자르지 않고 WARN 로그 — contract
+     * §4.11). 장비마다 생성 행 수가 {@code metrics.size()}로 다르므로 장비 개수가 아니라 누적 행
+     * 수로 판단해야 한다(사이클 2 정정 — 초판은 장비 개수 기준이라 지표 수만큼 곱해져 추정이 틀어졌다).
+     */
     private List<SensorReading> generateForFarm(Long farmId, List<Device> devices,
                                                  Map<Long, RackLevel> levelsById, LocalDateTime measuredAt) {
-        List<Device> targets = devices;
-        if (devices.size() > maxPerFarm) {
-            // 상한 초과분은 생성하지 않고 WARN 로그만 남긴다(조용히 자르지 않는다 — contract §4.11).
-            log.warn("농장 {} 센서 시뮬레이터 대상 {}개가 상한({}개)을 초과 — 초과분 {}개는 이번 틱에서 생성하지 않음",
-                    farmId, devices.size(), maxPerFarm, devices.size() - maxPerFarm);
-            targets = devices.subList(0, maxPerFarm);
-        }
-
         List<SensorReading> readings = new ArrayList<>();
-        for (Device device : targets) {
+        int generatedRows = 0;
+        int processedDevices = 0;
+
+        for (Device device : devices) {
+            int rowsForDevice = device.getMetrics().size();
+            if (generatedRows + rowsForDevice > maxRowsPerFarm) {
+                break;
+            }
+
             RackLevel level = device.getRackLevelId() != null ? levelsById.get(device.getRackLevelId()) : null;
             int levelNo = level != null ? level.getLevelNo() : 1;
-            for (SensorMetric metric : SensorMetric.values()) {
+            for (SensorMetric metric : device.getMetrics()) {
                 double value = SensorSimulationProfile.simulate(metric, levelNo, device.getId(), measuredAt);
                 readings.add(SensorReading.builder()
                         .farmId(farmId)
@@ -102,6 +106,15 @@ public class SensorSimulatorService {
                         .source(SensorSource.SIMULATED)
                         .build());
             }
+            generatedRows += rowsForDevice;
+            processedDevices++;
+        }
+
+        int skippedDevices = devices.size() - processedDevices;
+        if (skippedDevices > 0) {
+            log.warn("농장 {} 센서 시뮬레이터 — 1틱 생성 행 수 상한({}행) 초과, 장비 {}개 중 {}개만 생성하고 "
+                            + "{}개는 이번 틱에서 생성하지 않음(누적 {}행)",
+                    farmId, maxRowsPerFarm, devices.size(), processedDevices, skippedDevices, generatedRows);
         }
         return readings;
     }

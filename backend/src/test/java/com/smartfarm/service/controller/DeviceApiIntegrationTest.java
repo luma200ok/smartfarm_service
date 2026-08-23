@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -11,12 +12,22 @@ import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
+import com.smartfarm.service.entity.SensorMetric;
+import com.smartfarm.service.entity.SensorReading;
+import com.smartfarm.service.entity.SensorSource;
+import com.smartfarm.service.repository.SensorReadingRepository;
+import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
 class DeviceApiIntegrationTest extends FarmTestSupport {
+
+    @Autowired
+    private SensorReadingRepository sensorReadingRepository;
 
     // ── 생성 ──────────────────────────────────────────────
 
@@ -32,7 +43,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, null, null, "게이트웨이1호", DeviceKind.GATEWAY,
-                                "GW-100", "SN-0001", DeviceStatus.NORMAL, null, null))))
+                                "GW-100", "SN-0001", DeviceStatus.NORMAL, null, null, null))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.zoneId").value(zoneId))
@@ -52,7 +63,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 null, null, null, "장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -69,7 +80,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, null, null, null, DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -88,7 +99,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneIdInFarmA, null, null, "탈취장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("R001"));
     }
@@ -108,7 +119,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 null, rackIdInFarmA, null, "탈취장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("R002"));
     }
@@ -129,7 +140,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 null, null, rackLevelIdInFarmA, "탈취장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("R003"));
     }
@@ -148,7 +159,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneA, rackInZoneB, null, "모순장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -168,7 +179,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 null, rackA, levelInRackB, "모순장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -189,7 +200,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneA, null, levelInRackOfZoneB, "모순장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -211,7 +222,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, null, levelInRackOfZoneB, null, null, null, null, null, null, null))))
+                                null, null, levelInRackOfZoneB, null, null, null, null, null, null, null, null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -229,7 +240,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, null, null, "센서2", DeviceKind.SENSOR,
-                                null, "SN-DUP", null, null, null))))
+                                null, "SN-DUP", null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("E002"));
     }
@@ -247,7 +258,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, null, null, "침입장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("F002"));
     }
@@ -266,7 +277,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, null, null, "침입장비", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("F003"));
     }
@@ -368,7 +379,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, null, null, null, null, null, null, DeviceStatus.WARNING, null, null))))
+                                null, null, null, null, null, null, null, DeviceStatus.WARNING, null, null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("센서")) // 미변경
                 .andExpect(jsonPath("$.serial").value("SN-U1")) // 미변경
@@ -388,7 +399,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, null, null, null, null, null, "SN-A", null, null, null))))
+                                null, null, null, null, null, null, "SN-A", null, null, null, null))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("E002"));
     }
@@ -407,7 +418,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + ownerBToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, null, null, "탈취", null, null, null, null, null, null))))
+                                null, null, null, "탈취", null, null, null, null, null, null, null))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("E001"));
     }
@@ -426,7 +437,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + memberToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, null, null, "침입", null, null, null, null, null, null))))
+                                null, null, null, "침입", null, null, null, null, null, null, null))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("F003"));
     }
@@ -441,7 +452,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + demoToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, null, null, "침입", null, null, null, null, null, null))))
+                                null, null, null, "침입", null, null, null, null, null, null, null))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("A007"));
     }
@@ -462,7 +473,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                null, rackB, null, null, null, null, null, null, null, null))))
+                                null, rackB, null, null, null, null, null, null, null, null, null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("C001"));
     }
@@ -483,7 +494,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + ownerAToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                zoneIdBInFarmB, null, null, null, null, null, null, null, null, null))))
+                                zoneIdBInFarmB, null, null, null, null, null, null, null, null, null, null))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("R001"));
     }
@@ -505,7 +516,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + demoToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                1L, null, null, "데모장비", DeviceKind.SENSOR, null, null, null, null, null))))
+                                1L, null, null, "데모장비", DeviceKind.SENSOR, null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("A007"));
     }
@@ -600,13 +611,183 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.code").value("A007"));
     }
 
+    // ── metrics 선언(§4.10 사이클 2, 이슈 #90) ──────────────
+
+    @Test
+    @DisplayName("SENSOR 장비는 metrics를 1개 이상 선언해야 하고, 저장된 metrics를 정렬된 순서로 응답한다")
+    void createSensorDeviceRequiresMetricsAndReturnsSorted() throws Exception {
+        String token = signupAndLogin("농장주-센서지표");
+        long farmId = createFarm(token, "센서지표 농장");
+        long zoneId = createZone(token, farmId, "A동");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "온습도센서", DeviceKind.SENSOR,
+                                null, null, null, null, null,
+                                List.of(SensorMetric.HUMIDITY, SensorMetric.TEMPERATURE)))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.metrics[0]").value("TEMPERATURE"))
+                .andExpect(jsonPath("$.metrics[1]").value("HUMIDITY"))
+                .andExpect(jsonPath("$.metrics.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("SENSOR 장비인데 metrics가 비어있으면 400 C001을 반환한다")
+    void createSensorDeviceWithoutMetricsFails() throws Exception {
+        String token = signupAndLogin("농장주-센서지표없음");
+        long farmId = createFarm(token, "센서지표없음 농장");
+        long zoneId = createZone(token, farmId, "A동");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "센서", DeviceKind.SENSOR,
+                                null, null, null, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("CONTROLLER 장비인데 metrics가 채워져 있으면 400 C001을 반환한다")
+    void createControllerDeviceWithMetricsFails() throws Exception {
+        String token = signupAndLogin("농장주-제어기지표");
+        long farmId = createFarm(token, "제어기지표 농장");
+        long zoneId = createZone(token, farmId, "A동");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "제어기", DeviceKind.CONTROLLER,
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("PATCH로 metrics를 비우면(SENSOR 유지) 400 C001을 반환하고 기존 metrics가 유지된다")
+    void patchClearingMetricsOnSensorFails() throws Exception {
+        String token = signupAndLogin("농장주-지표비우기");
+        long farmId = createFarm(token, "지표비우기 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long deviceId = createDevice(token, farmId, zoneId, "센서", DeviceKind.SENSOR, "SN-M1",
+                DeviceStatus.NORMAL);
+
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, null, null, null, null, null, null, null, List.of()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.devices[0].metrics.length()").value(1));
+    }
+
+    // ── 부모 FK 자동 채움(§4.10 사이클 2, 이슈 #90) ──────────
+
+    @Test
+    @DisplayName("rackLevelId만 주면 zoneId·rackId가 자동으로 채워져 저장된다")
+    void createDeviceWithOnlyRackLevelIdAutoFillsParentIds() throws Exception {
+        String token = signupAndLogin("농장주-자동채움1");
+        long farmId = createFarm(token, "자동채움1 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+        long rackLevelId = firstLevelId(token, farmId);
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, rackLevelId, "센서", DeviceKind.SENSOR,
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.zoneId").value(zoneId))
+                .andExpect(jsonPath("$.rackId").value(rackId))
+                .andExpect(jsonPath("$.rackLevelId").value(rackLevelId));
+    }
+
+    @Test
+    @DisplayName("rackId만 주면 zoneId가 자동으로 채워져 저장된다")
+    void createDeviceWithOnlyRackIdAutoFillsZoneId() throws Exception {
+        String token = signupAndLogin("농장주-자동채움2");
+        long farmId = createFarm(token, "자동채움2 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, rackId, null, "게이트웨이", DeviceKind.GATEWAY,
+                                null, null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.zoneId").value(zoneId))
+                .andExpect(jsonPath("$.rackId").value(rackId));
+    }
+
+    @Test
+    @DisplayName("자동 채움된 센서의 측정값은 scope=zone·rack 조회에서도 조회된다(회고 반영 — 부수 발견이 실제 구멍이었음)")
+    void autoFilledDeviceReadingsAreVisibleInZoneAndRackScope() throws Exception {
+        String token = signupAndLogin("농장주-자동채움3");
+        long farmId = createFarm(token, "자동채움3 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+        long rackLevelId = firstLevelId(token, farmId);
+
+        MvcResult created = mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, rackLevelId, "센서", DeviceKind.SENSOR,
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long deviceId = readJson(created).get("id").asLong();
+
+        // 시뮬레이터 개입 없이 직접 이력을 하나 심어 스코프 조회 가능 여부만 확인한다.
+        SensorReading reading = sensorReadingRepository.save(SensorReading.builder()
+                .farmId(farmId)
+                .deviceId(deviceId)
+                .zoneId(zoneId)
+                .rackId(rackId)
+                .rackLevelId(rackLevelId)
+                .metric(SensorMetric.TEMPERATURE)
+                .value(21.0)
+                .measuredAt(LocalDateTime.now())
+                .source(SensorSource.SIMULATED)
+                .build());
+        assertThat(reading.getZoneId()).isNotNull();
+        assertThat(reading.getRackId()).isNotNull();
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/readings/series")
+                        .param("metrics", "TEMPERATURE")
+                        .param("scope", "zone:" + zoneId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.series[0].points.length()").value(1));
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/readings/series")
+                        .param("metrics", "TEMPERATURE")
+                        .param("scope", "rack:" + rackId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.series[0].points.length()").value(1));
+    }
+
     private long createDevice(String token, long farmId, long zoneId, String name, DeviceKind kind, String serial,
                                DeviceStatus status) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/farms/" + farmId + "/devices")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
-                                zoneId, null, null, name, kind, null, serial, status, null, null))))
+                                zoneId, null, null, name, kind, null, serial, status, null, null, (kind == DeviceKind.SENSOR ? List.of(SensorMetric.TEMPERATURE) : null)))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return readJson(result).get("id").asLong();

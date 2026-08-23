@@ -123,12 +123,13 @@ smartfarm:
   simulator:
     enabled: ${SMARTFARM_SIMULATOR_ENABLED:true}
 
-# 가상 장비 시뮬레이터 tick 주기 + 농장당 상한(contract §4.11) — 상한 초과분은 생성하지 않고
-# WARN 로그만 남긴다(조용히 자르지 않는다).
+# 가상 장비 시뮬레이터 tick 주기 + 농장당 1틱 최대 생성 행 수(contract §4.11 사이클 2 정정) —
+# 상한은 센서 대수가 아니라 행 수 기준(장비당 지표 수만큼 곱해지므로 대수 기준은 추정을 왜곡한다).
+# 초과분은 생성하지 않고 WARN 로그만 남긴다(조용히 자르지 않는다).
 sensor-simulator:
   tick-initial-delay: PT60S
   tick-fixed-delay: PT60S
-  max-per-farm: 200
+  max-rows-per-farm: 300
 
 # sensor_readings 90일 보존 퍼지(SensorReadingPurgeScheduler, contract §4.11) —
 # EnvSnapshotPurgeScheduler와 동일 패턴(배치 삭제, 1일 1회)

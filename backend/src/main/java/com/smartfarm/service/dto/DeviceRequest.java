@@ -2,22 +2,29 @@ package com.smartfarm.service.dto;
 
 import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
+import com.smartfarm.service.entity.SensorMetric;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 장비 등록/수정 공용 요청(contract §4.10 — POST·PATCH 모두 {@code DeviceRequest}). PATCH는
  * "(부분)"이라 {@code name}·{@code kind} 같은 필수 필드도 여기서는 Bean Validation으로 강제하지
  * 않는다 — 생성 시 필수값 검증(공백/미지정 거부)과 위치 FK 3종 전부 null 거부(C001)는
  * {@code DeviceService#createDevice}가 담당한다(FarmUpdateRequest가 @NotNull 없이 null=미변경을
- * 표현하는 것과 동일 원칙). 수정 시 위치 FK 3종도 null=미변경이며 전체 해제는 1차 미지원.
+ * 표현하는 것과 동일 원칙). 수정 시 위치 FK 3종도 null=미변경이며 전체 해제는 1차 미지원(단, 명시된
+ * 값이 있으면 서비스가 부모 FK를 자동 채움 — Device 클래스 주석 참고).
  *
  * <p>name·model·serial엔 {@code ZoneUpdateRequest}/{@code RackUpdateRequest}와 동일한
  * {@code @Pattern}을 걸어둔다(리뷰 P3 #89) — trim 후 공백만 남은 값("   " → "")이 @Size만으로는
  * 통과해버려, PATCH로 이름을 빈 문자열로 만들거나(생성 시 C001 검사를 우회) serial=""가 NULL과
  * 달리 unique index 실값이 되어 두 번째 장비에서 409 E002가 나는 문제를 막는다.
+ *
+ * <p>{@code metrics}(V16, 사이클 2) — null=미변경(PATCH), non-null(빈 리스트 포함)=전체 교체.
+ * {@code kind=SENSOR}는 최종(병합 후) 상태 기준 1개 이상 필수, 그 외 kind는 비어야 한다 —
+ * 위반 시 C001({@code DeviceService}가 검증).
  */
 public record DeviceRequest(
         Long zoneId,
@@ -42,7 +49,9 @@ public record DeviceRequest(
 
         LocalDateTime calibrationDueAt,
 
-        LocalDate installedOn
+        LocalDate installedOn,
+
+        List<SensorMetric> metrics
 ) {
 
     public DeviceRequest {
