@@ -4,8 +4,12 @@
 // 실제 API 스펙에 맞춰 교체해야 한다. 현 백엔드에 대응 도메인이 없는 영역
 // (랙·층 도면, 장비 제어, 알람 규칙, 장비 레지스트리)이라 이 파일이 유일한 소스다.
 
-export type Severity = "critical" | "warning" | "done";
-export type CellState = "ok" | "ok-soft" | "warning" | "critical" | "idle";
+// Severity·CellState 정의는 types/index.ts로 옮겼다(이슈 #99 리뷰 — 운영 화면이 프리뷰
+// 모듈에 의존하는 걸 막기 위해 방향을 뒤집음). 이 파일은 원래 이름으로 재수출만 한다.
+import type { PreviewCellState, PreviewSeverity } from "@/types";
+
+export type Severity = PreviewSeverity;
+export type CellState = PreviewCellState;
 
 /* ── 대분류 / 서브 내비 (핸드오프 Global Structure) ─────────────────────── */
 

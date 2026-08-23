@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, StatusBadge } from "@/components/design-preview/ui";
-import type { Severity } from "@/components/design-preview/mock";
+import type { PreviewSeverity as Severity } from "@/types";
 import { getDeviceSummary } from "@/lib/api/devices";
 import { getZoneTree } from "@/lib/api/zones";
 import type { DeviceSummaryResponse, FarmSummaryResponse, ZoneTreeResponse } from "@/types";

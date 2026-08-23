@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { CellState } from "@/components/design-preview/mock";
+import type { PreviewCellState as CellState } from "@/types";
 import { Card, CardTitle, Chip, RackGrid, RackLegend } from "@/components/design-preview/ui";
 import SimulatedBadge from "@/components/monitoring/SimulatedBadge";
 import { toCellState } from "@/components/monitoring/cellState";

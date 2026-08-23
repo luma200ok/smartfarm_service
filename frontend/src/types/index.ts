@@ -29,6 +29,13 @@ export type SensorMetric = "TEMPERATURE" | "HUMIDITY" | "CO2" | "EC" | "PH" | "P
 // 랙 도면·층별 비교표 상태 enum (contract §4.11)
 export type ReadingCellState = "OK" | "WARNING" | "CRITICAL" | "IDLE";
 
+// design-preview/ui.tsx RackGrid·StatusBadge가 쓰는 팔레트 타입 — 원래 mock.ts에 있었으나
+// 운영 화면(FarmRackPanel·FarmStatusCard 등)도 함께 쓰면서 운영 코드가 프리뷰 모듈에 의존하게
+// 됐다(이슈 #99 리뷰 반영). 공용 타입 모듈로 옮기고 mock.ts가 여기서 재수출하도록 방향을
+// 뒤집는다 — /design-preview 정리 시 운영 화면이 깨지지 않게.
+export type PreviewSeverity = "critical" | "warning" | "done";
+export type PreviewCellState = "ok" | "ok-soft" | "warning" | "critical" | "idle";
+
 export type ErrorCode =
   | "C001"
   | "C002"
