@@ -130,16 +130,13 @@ services:
     # 터널은 독립 스택(luma200ok/home-infra 의 tunnel)으로 분리되어 이 스택의 default 네트워크에 없다.
     # 따라서 터널이 nginx에 도달하는 경로는 shared-net 하나뿐이다. 다른 도메인은 각 컨테이너로 직행하므로
     # 이 조인이 빠져도 멀쩡하고, smartfarm만 죽는다 — 원인을 찾기 어려운 형태의 장애다.
+    # 서비스 키(smartfarm-nginx)가 그대로 별칭으로 게시되므로 aliases 지정이 필요 없다.
+    # 터널 인그레스도 http://smartfarm-nginx:80 을 가리킨다(2026-08-23 전환 완료, config v16).
+    # ⚠️ 여기에 `nginx` 같은 일반명을 다시 게시하지 말 것 — 공유망을 쓰는 다른 스택과 충돌해
+    #    요청마다 라운드로빈되고, 그게 이 스택이 502 를 맞은 원인이었다(#97).
     networks:
-      default:
-      shared-net:
-        aliases:
-          # ⚠️ 한시적 호환 별칭 — 터널 인그레스가 아직 `http://nginx:80` 을 가리킨다.
-          #    서비스 키를 바꾸면 그 이름이 사라져 대시보드를 손대기 전까지 farm 이 502 가 된다.
-          #    인그레스를 http://smartfarm-nginx:80 으로 옮긴 뒤 이 줄을 지운다(#97).
-          #    그때까지는 공유망에 `nginx` 일반명이 남아 있으므로, 다른 스택이 nginx 를
-          #    올리지 않도록 주의할 것.
-          - nginx
+      - default
+      - shared-net
     depends_on:
       smartfarm-backend:
         condition: service_healthy
