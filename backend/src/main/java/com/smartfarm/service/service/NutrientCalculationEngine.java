@@ -43,10 +43,11 @@ import org.springframework.stereotype.Component;
  * <p>투입량(tanks)은 전부 전기적으로 중성인 염(예: Ca(NO3)2, KNO3)만 조합해 만들기 때문에, 실제
  * 투입 결과 기준으로 양이온·음이온 me/L 합을 계산하면 항상 거의 정확히 일치한다(전하 보존 —
  * 중성 염을 더하는 한 이는 수학적으로 항상 성립하며, 어떤 target을 넣어도 마찬가지다). 그래서
- * "투입 결과 기준" 이온 밸런스는 정보성이 없다 — 항상 0%에 수렴해 계약이 요구하는 "10% 초과 시
+ * "투입 결과 기준" 이온 밸런스는 정보성이 없다 — 항상 0%에 수렴해 계약이 요구하는 "편차 초과 시
  * 경고"가 실질적으로 절대 발동하지 못한다. 대신 이온 밸런스·EC는 <b>목표(target, 원수 보정 후)
  * ppm 자체</b>가 화학적으로 이온 밸런스가 맞는 조합인지를 검증하는 데 쓴다 — 이쪽이 실제로
- * "이 목표 처방 자체가 무리한 조합은 아닌가"를 드러내는 유의미한 신호다.
+ * "이 목표 처방 자체가 무리한 조합은 아닌가"를 드러내는 유의미한 신호다. 임계값은 30%다
+ * ({@link #ION_BALANCE_WARNING_THRESHOLD_PERCENT} 주석 참고 — contract §4.9 2026-08-23 정정).
  */
 @Component
 public class NutrientCalculationEngine {
@@ -68,7 +69,17 @@ public class NutrientCalculationEngine {
     private static final double P_VALENCE = 1;
     private static final double S_VALENCE = 2;
 
+    /** 목표 대비 실제 투입 결과(N/K/S 부산물) 편차 경고 임계값 — 계약 §4.9 그대로 10%. */
     private static final double DEVIATION_WARNING_THRESHOLD_PERCENT = 10.0;
+
+    /**
+     * 이온 밸런스 편차 경고 임계값 — contract §4.9 2026-08-23 정정으로 10%→30%. N을 전량 NO3-N으로
+     * 가정(NH4-N 미반영, {@link NutrientPresets} 클래스 주석 "가정" 참고)해 편차가 구조적으로 과대
+     * 산출되고, TOMATO 프리셋 4단계 실측 편차가 17.59~25.33%로 전부 10%를 넘어 정상 프리셋에서도
+     * 경고가 상시 발동하는 alarm fatigue가 있었다. 참조 프리셋 최댓값(25.33%)보다 위로 잡아 "정상
+     * 범위를 넘어선 목표"만 걸리도록 30%로 재조정했다 — 임의 조정이 아니라 실측값 기반 재보정이다.
+     */
+    private static final double ION_BALANCE_WARNING_THRESHOLD_PERCENT = 30.0;
 
     private record TankItemComputation(Fertilizer fertilizer, double massG) {
     }
@@ -177,10 +188,12 @@ public class NutrientCalculationEngine {
         double deviationPercent = (cationMeL + anionMeL) == 0
                 ? 0.0
                 : Math.abs(cationMeL - anionMeL) / ((cationMeL + anionMeL) / 2) * 100.0;
-        if (deviationPercent > DEVIATION_WARNING_THRESHOLD_PERCENT) {
+        if (deviationPercent > ION_BALANCE_WARNING_THRESHOLD_PERCENT) {
             warnings.add(String.format(
-                    "이온 밸런스 편차가 %.1f%%로 %.0f%%를 초과합니다(양이온 %.2f me/L, 음이온 %.2f me/L).",
-                    deviationPercent, DEVIATION_WARNING_THRESHOLD_PERCENT, cationMeL, anionMeL));
+                    "이온 밸런스 편차가 %.1f%%로 %.0f%%를 초과합니다(양이온 %.2f me/L, 음이온 %.2f me/L). "
+                            + "이 계산은 N을 전량 NO3-N으로 가정(NH4-N 미반영)해 편차가 실제보다 과대"
+                            + " 산출될 수 있으니 참고값으로만 보고 현장 EC·pH로 최종 확인하세요.",
+                    deviationPercent, ION_BALANCE_WARNING_THRESHOLD_PERCENT, cationMeL, anionMeL));
         }
 
         // EC(dS/m) ≈ Σ(me/L)/10(contract §4.9 근사식). 전기적 중성 조건에서 양이온 합≈음이온 합이라
@@ -220,10 +233,21 @@ public class NutrientCalculationEngine {
         }
     }
 
-    /** 목표 대비 실제 투입 결과(ppm 환산)가 10%를 초과해 벗어나면 경고를 추가한다. target이 0이면 비율 계산이 무의미해 건너뛴다. */
+    /**
+     * 목표 대비 실제 투입 결과(ppm 환산)가 10%를 초과해 벗어나면 경고를 추가한다. target이 0이면
+     * 비율(%) 계산이 무의미해(0으로 나누기) 건너뛰던 것을, target=0인데도 다른 성분을 채우는
+     * 비료염의 부산물로 실제로는 0이 아닌 양이 공급되는 경우(예: N 목표 0인데 Ca(NO3)2가 Ca를
+     * 채우며 N을 딸려 보내는 경우)를 놓치지 않도록 절대 ppm 기준 경고로 보완한다.
+     */
     private void addDeliveryDeviationWarning(List<String> warnings, String element, double targetPpm,
                                               double deliveredPpm) {
         if (targetPpm <= 0) {
+            if (deliveredPpm > 0.01) {
+                warnings.add(String.format(
+                        "%s 목표는 0ppm이지만 다른 성분(Ca/P/Mg/K)을 채우는 비료염의 부산물로 실제 %.1fppm이"
+                                + " 공급됩니다.",
+                        element, deliveredPpm));
+            }
             return;
         }
         double deviationPercent = Math.abs(deliveredPpm - targetPpm) / targetPpm * 100.0;
