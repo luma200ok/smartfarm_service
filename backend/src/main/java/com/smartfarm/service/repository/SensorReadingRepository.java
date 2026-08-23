@@ -1,6 +1,8 @@
 package com.smartfarm.service.repository;
 
+import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.entity.SensorReading;
+import com.smartfarm.service.entity.SensorSource;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -104,27 +106,24 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
                                                                     @Param("rackId") Long rackId,
                                                                     @Param("since") LocalDateTime since);
 
-    /**
-     * 응답 {@code simulated} 플래그(contract §4.11 "조회 범위 내 source의 집계 결과") — 스코프 내에
-     * SIMULATED 출처 행이 하나라도 있으면 true. 존재만 확인하면 되므로 LIMIT 1 인덱스 스캔으로 저렴.
-     */
-    @Query(value = """
-            SELECT EXISTS(
-                SELECT 1 FROM sensor_readings
-                WHERE farm_id = :farmId
-                  AND metric = :metric
-                  AND source = :source
-                  AND measured_at >= :since
-                  AND (CAST(:zoneId AS BIGINT) IS NULL OR zone_id = :zoneId)
-                  AND (CAST(:rackId AS BIGINT) IS NULL OR rack_id = :rackId)
-                  AND (CAST(:rackLevelId AS BIGINT) IS NULL OR rack_level_id = :rackLevelId)
-                LIMIT 1
-            )
-            """, nativeQuery = true)
-    boolean existsInScope(@Param("farmId") Long farmId, @Param("metric") String metric,
-                           @Param("source") String source, @Param("since") LocalDateTime since,
-                           @Param("zoneId") Long zoneId, @Param("rackId") Long rackId,
-                           @Param("rackLevelId") Long rackLevelId);
+    // 응답 simulated 플래그(contract §4.11 "조회 범위 내 source의 집계 결과") 판정용 — scope가
+    // zone/rack/level/farm 중 정확히 하나로 이미 해석된 뒤 호출되므로(ReadingService), nullable
+    // CAST 트릭 대신 스코프별 파생 쿼리 4종을 둔다(이 레포 다른 파생 쿼리와 동일한 평이한 형태).
+    boolean existsByFarmIdAndMetricAndSourceAndMeasuredAtGreaterThanEqual(
+            Long farmId, SensorMetric metric, SensorSource source, LocalDateTime since);
+
+    boolean existsByZoneIdAndMetricAndSourceAndMeasuredAtGreaterThanEqual(
+            Long zoneId, SensorMetric metric, SensorSource source, LocalDateTime since);
+
+    boolean existsByRackIdAndMetricAndSourceAndMeasuredAtGreaterThanEqual(
+            Long rackId, SensorMetric metric, SensorSource source, LocalDateTime since);
+
+    boolean existsByRackLevelIdAndMetricAndSourceAndMeasuredAtGreaterThanEqual(
+            Long rackLevelId, SensorMetric metric, SensorSource source, LocalDateTime since);
+
+    /** level-summary(metric 없이 rackId 전체) simulated 판정용. */
+    boolean existsByFarmIdAndRackIdAndSourceAndMeasuredAtGreaterThanEqual(
+            Long farmId, Long rackId, SensorSource source, LocalDateTime since);
 
     /**
      * 90일 보존 purge 배치 삭제(contract §4.11) — EnvSnapshotRepository#deleteBeforeBatch와 동일한
