@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import DeviceForm from "@/components/monitoring/DeviceForm";
+import ZoneRackManager from "@/components/monitoring/ZoneRackManager";
 import Modal from "@/components/ui/Modal";
 import { DEVICE_KIND_LABELS, DEVICE_STATUS_LABELS } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
@@ -186,6 +187,10 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
           <KpiCard label="고장/통신두절" value={summary.faultOrOffline} tone="critical" />
           <KpiCard label="보정 임박(30일)" value={summary.calibrationDueSoon} />
         </div>
+      )}
+
+      {tree && (
+        <ZoneRackManager farmId={farmId} tree={tree} isOwner={isOwner} onChanged={() => setRefreshKey((k) => k + 1)} />
       )}
 
       <div className="flex flex-wrap items-center gap-2">

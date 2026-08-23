@@ -37,8 +37,14 @@ export const ENDPOINTS = {
     nutrientRecipes: (farmId: number | string) => `/api/farms/${farmId}/nutrient-recipes`,
     nutrientRecipeDetail: (farmId: number | string, recipeId: number | string) =>
       `/api/farms/${farmId}/nutrient-recipes/${recipeId}`,
-    // 존·랙 구조 (contract §4.10, 이슈 #89) — 조회만 사용(존·랙 CRUD는 이번 사이클 범위 밖)
+    // 존·랙 구조 (contract §4.10, 이슈 #89)
     zones: (farmId: number | string) => `/api/farms/${farmId}/zones`,
+    zoneDetail: (farmId: number | string, zoneId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}`,
+    racksUnderZone: (farmId: number | string, zoneId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}/racks`,
+    rackDetail: (farmId: number | string, rackId: number | string) =>
+      `/api/farms/${farmId}/racks/${rackId}`,
     // 장비/센서 레지스트리 (contract §4.10, 이슈 #89)
     devices: (farmId: number | string) => `/api/farms/${farmId}/devices`,
     deviceSummary: (farmId: number | string) => `/api/farms/${farmId}/devices/summary`,

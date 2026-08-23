@@ -446,10 +446,44 @@ export interface ZoneTreeZoneNode {
   racks: ZoneTreeRackNode[];
 }
 
-// 존+랙+층 트리 — 랙 도면 렌더용 1회 조회(GET /zones). 이번 사이클은 조회만 쓴다(존·랙 CRUD
-// 화면은 handoff #99 범위 밖 — "농장·랙 구성" 관리 화면은 별도 이슈).
+// 존+랙+층 트리 — 랙 도면 렌더용 1회 조회(GET /zones).
 export interface ZoneTreeResponse {
   zones: ZoneTreeZoneNode[];
+}
+
+// 존 생성 요청 — displayOrder 미지정 시 서버가 0으로 채운다.
+export interface ZoneRequest {
+  name: string;
+  displayOrder?: number;
+}
+
+// PATCH 부분 수정 — 필드 생략(undefined)은 미변경(서버 ZoneUpdateRequest와 동일 관용).
+export type ZoneUpdateRequest = Partial<ZoneRequest>;
+
+export interface ZoneResponse {
+  id: number;
+  name: string;
+  displayOrder: number;
+  createdAt: string;
+}
+
+// 랙 생성 요청 — levelCount(1~50)만큼 층이 서버에서 자동 생성된다.
+export interface RackRequest {
+  code: string;
+  levelCount: number;
+  displayOrder?: number;
+}
+
+// PATCH 부분 수정 — levelCount 축소는 하위에 활성 장비가 있으면 서버가 409 R004로 거부한다.
+export type RackUpdateRequest = Partial<RackRequest>;
+
+export interface RackResponse {
+  id: number;
+  zoneId: number;
+  code: string;
+  levelCount: number;
+  displayOrder: number;
+  createdAt: string;
 }
 
 // ── 장비/센서 레지스트리 (contract §4.10, 이슈 #89) ──────────────
