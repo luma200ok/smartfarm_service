@@ -277,6 +277,10 @@
 ### SensorReading
 `{id, farmId, deviceId(FK), zoneId?, rackId?, rackLevelId?, metric, value, measuredAt}`
 - 위치 3종은 `device`에서 유도 가능하지만 **조회 성능을 위해 비정규화**(멀티테넌트 룰의 `farmId` 비정규화 컨벤션과 동일)
+- ⚠️ **비정규화의 진실 소스 = 적재 시점 스냅샷**(사이클 1 회고 반영 — 파생값 규칙 누락이 P1 2건의 근인이었다): 위치 3종은 **적재 순간 device의 값을 복사해 고정**한다. 이후 device가 다른 층으로 옮겨가도 **과거 readings는 소급 갱신하지 않는다** — "그 측정이 어디서 이뤄졌는가"가 사실이고, 현재 위치로 덮으면 이력이 거짓이 된다. 조회 시 device와 join해 위치를 다시 유도해서도 안 된다
+- ⚠️ **§4.10 계층 정합성의 상속**: 적재 시 복사하는 삼중조는 §4.10의 규칙 ①②③을 이미 만족한 값이다. 시뮬레이터·수집기는 device의 값을 **그대로 복사만** 하고 임의로 조합하지 않는다(조합하는 순간 §4.10이 막은 모순 삼중조가 여기서 재생산된다)
+- ⚠️ **부모 soft delete와의 관계**: §4.10은 "장비 잔존 시 삭제 거부(R004), 측정 이력만 있으면 층을 soft delete하고 이력 보존"으로 정했다. 따라서 **soft delete된 존·랙·층을 참조하는 readings가 정상적으로 존재한다**. 조회 API는 **활성 구조만 렌더**하되(`ReadingMatrixResponse`는 살아있는 랙·층만), 이력 자체는 지우지 않는다. device soft delete도 동일 — readings는 보존되고 시뮬레이터 대상에서만 빠진다
+- **`source` 컬럼**(`SIMULATED | DEVICE`): 시뮬레이터를 끄고 실기기를 붙이면 한 테이블에 두 출처가 섞인다. **행 단위로 출처를 남기지 않으면 사후 구분이 불가능**하므로 컬럼으로 둔다. 응답의 `simulated`는 조회 범위 내 `source`의 집계 결과이지 전역 플래그가 아니다
 - `metric` enum: `TEMPERATURE | HUMIDITY | CO2 | EC | PH | PPFD | POWER` (프리뷰 데이터 화면 항목 7종)
 - 인덱스: `(farm_id, metric, measured_at desc)`, `(rack_level_id, metric, measured_at desc)`
 - **보존 90일** + 일 1회 purge 스케줄러 (`EnvSnapshotPurgeScheduler` 패턴 재사용)
@@ -287,6 +291,7 @@
 - `@Scheduled(fixedDelay=60s)` — `kind=SENSOR`이고 `status != OFFLINE`인 장비마다 1틱 생성
 - 값 = **일주기 기저(sin) + 층별 오프셋 + 결정적 노이즈**. 노이즈 시드는 `(deviceId, measuredAt 분)` 해시 — 재기동해도 파형이 튀지 않고, 테스트에서 재현 가능
 - `smartfarm.simulator.enabled` 플래그(기본 true, 운영에서 실기기 연동 시 false). **비활성 시 폴러 자체가 뜨지 않는다**
+- ⚠️ **적재량 상한**(#91 교훈 선반영 — 사이클 1에서 무상한 조회를 놓쳐 후속으로 뺐다): 센서 N개 × 60s × 90일 = **N × 129,600행**이고 장비 생성 상한은 아직 없다(#91). 시뮬레이터에 **1틱당 생성 행 수 상한**(예: 농장당 센서 200개)을 두고, 초과분은 생성하지 않고 **WARN 로그로 남긴다**(조용히 잘라내지 않는다)
 - 응답 DTO에 `simulated: true` 를 실어 프론트가 화면에 시뮬레이션임을 표기할 수 있게 한다 — 실데이터인 척하지 않는다
 
 ### 엔드포인트
@@ -299,8 +304,12 @@
 - **다운샘플**: 24h=원본(60s) / 7d=30분 평균 / 30d=2시간 평균 — **§4.6 규칙 그대로 재사용**(DB 집계, 빈 구간은 점 생략)
 - **ReadingSeriesResponse** `{range, scope, simulated, series: [{metric, unit, points: [{at, value}]}]}`
 - **ReadingMatrixResponse** `{metric, unit, simulated, racks: [{rackId, code, levels: [{levelNo, value?, state}]}]}` — `state`: `OK | WARNING | CRITICAL | IDLE`(프리뷰 `CellState`와 1:1). 판정 기준은 `farm_env_thresholds`가 아직 온·습도만 다루므로 **1차는 지표별 상수 기본범위**를 쓰고, 임계치 확장은 사이클 3(알람)으로 미룬다
+- ⚠️ **스코프 파라미터도 리소스 소속을 검증한다**(사이클 1 P3 반복 방지): `scope=zone:{id}`·`rack:{id}`·`level:{id}`의 id와 `?zoneId=`·`?rackId=`는 **query 파라미터라도 path와 동일하게 취급**한다 — 농장 소속을 확인하고 미소속은 **404(R001~R003)**. 빈 배열로 뭉개지 않는다(사이클 1의 `listDevices` `zoneId`가 정확히 이 불일치로 지적됐다). `scope` 문자열 형식 위반은 C001
+- ⚠️ **집계의 이중성 정의**: 한 층에 같은 metric 센서가 여러 대 있을 수 있다. 집계는 **① 같은 시각 버킷 내 device 간 평균 → ② 시간 버킷 평균** 순서로 한다(순서를 안 정하면 센서 대수가 많은 층에 가중치가 붙는다). `level-summary`의 "층별 평균"도 동일
+- ⚠️ **응답 크기 상한**: `series`는 24h 원본이 metric당 최대 1440점 × 4 metric = 5760점이다. **metric 4개 상한은 이미 있으나 스코프 상한이 없다** — `scope=farm`이면 전 층이 섞인다. `scope=farm`은 **층 간 평균 1계열로 축약**하고, 층별 개별 계열이 필요하면 `level-summary`를 쓴다. `level-summary`는 `rackId` **필수**(생략 시 C001 — 농장 전체 층을 한 번에 반환하지 않는다)
+- **unit 매핑**(상수, 서버가 내려준다): `TEMPERATURE=°C · HUMIDITY=% · CO2=ppm · EC=dS/m · PH=pH · PPFD=µmol/m²/s · POWER=kW`
 - **신규 ErrorCode 없음** — 검증 실패는 C001, 스코프 리소스 부재는 §4.10의 R001~R003 재사용. 데이터 없음은 오류가 아니라 빈 배열
-- **마이그레이션**: V15 `sensor_readings`
+- **마이그레이션**: V15 `sensor_readings`(`source` 컬럼 포함)
 
 ## 5. ErrorCode 체계
 
