@@ -16,12 +16,15 @@ import com.smartfarm.service.repository.ReadingLevelLatestProjection;
 import com.smartfarm.service.repository.ReadingSeriesBucketProjection;
 import com.smartfarm.service.repository.SensorReadingRepository;
 import com.smartfarm.service.repository.ZoneRepository;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +49,18 @@ public class ReadingService {
     private final RackLevelRepository rackLevelRepository;
     private final SensorReadingRepository sensorReadingRepository;
 
+    /**
+     * 신선도 상한 산정용 tick 주기(contract §4.11 사이클 2 리뷰 P2-2) — {@code /readings/latest}
+     * 최신값이 이 주기의 5배보다 오래됐으면 IDLE로 떨어뜨린다. 시뮬레이터의 실제 tick 주기
+     * ({@code sensor-simulator.tick-fixed-delay})와 같은 값을 참조해야 "정상 운영 중 몇 틱을
+     * 놓치면 신선도 상한을 넘는가"가 시뮬레이터 설정과 항상 일치한다.
+     */
+    @Value("${sensor-simulator.tick-fixed-delay:PT60S}")
+    private Duration tickInterval;
+
+    /** 신선도 상한 배수 — tick 주기 × 5(contract §4.11). */
+    private static final int FRESHNESS_TICK_MULTIPLIER = 5;
+
     /** scope 해석 결과 — zoneId/rackId/rackLevelId 중 하나만 값이 있거나 셋 다 null(farm 스코프). */
     private record ScopeFilter(Long zoneId, Long rackId, Long rackLevelId) {
     }
@@ -57,7 +72,11 @@ public class ReadingService {
         if (metrics == null || metrics.isEmpty()) {
             throw new CustomException(ErrorCode.C001, "metrics는 최소 1개 이상이어야 합니다.");
         }
-        if (metrics.size() > MAX_SERIES_METRICS) {
+        // 중복 제거(사이클 2 리뷰 P2-5) — size 검사 전에 걸어야 "TEMPERATURE,TEMPERATURE,TEMPERATURE,
+        // TEMPERATURE"처럼 중복으로 4개를 채워 상한을 우회하면서 동일 최고비용 쿼리를 반복 실행시키는
+        // 걸 막는다. LinkedHashSet으로 순서는 보존.
+        List<SensorMetric> distinctMetrics = new ArrayList<>(new LinkedHashSet<>(metrics));
+        if (distinctMetrics.size() > MAX_SERIES_METRICS) {
             throw new CustomException(ErrorCode.C001, "metrics는 최대 " + MAX_SERIES_METRICS + "개까지 지정할 수 있습니다.");
         }
 
@@ -73,7 +92,7 @@ public class ReadingService {
 
         List<ReadingSeriesResponse.Series> series = new ArrayList<>();
         boolean simulated = false;
-        for (SensorMetric metric : metrics) {
+        for (SensorMetric metric : distinctMetrics) {
             List<ReadingSeriesBucketProjection> rows = sensorReadingRepository.findSeriesAggregated(
                     farmId, metric.name(), since, bucketSeconds,
                     filter.zoneId(), filter.rackId(), filter.rackLevelId());
@@ -114,9 +133,10 @@ public class ReadingService {
             }
         }
 
+        LocalDateTime staleThreshold = LocalDateTime.now().minus(tickInterval.multipliedBy(FRESHNESS_TICK_MULTIPLIER));
         List<ReadingMatrixResponse.RackRow> rackRows = racks.stream()
                 .map(rack -> toRackRow(rack, levelsByRackId.getOrDefault(rack.getId(), List.of()),
-                        latestByLevelId, metric))
+                        latestByLevelId, metric, staleThreshold))
                 .toList();
 
         boolean simulated = zoneId != null
@@ -177,15 +197,21 @@ public class ReadingService {
 
     private ReadingMatrixResponse.RackRow toRackRow(Rack rack, List<RackLevel> levels,
                                                      Map<Long, ReadingLevelLatestProjection> latestByLevelId,
-                                                     SensorMetric metric) {
+                                                     SensorMetric metric, LocalDateTime staleThreshold) {
         List<ReadingMatrixResponse.LevelCell> cells = levels.stream()
                 .map(level -> {
                     ReadingLevelLatestProjection latest = latestByLevelId.get(level.getId());
-                    Double value = latest != null ? latest.getValue() : null;
+                    LocalDateTime measuredAt = latest != null ? latest.getMeasuredAt() : null;
+                    // 신선도 상한(사이클 2 리뷰 P2-2) — 값이 있어도 tick 주기 × 5보다 오래됐으면
+                    // 현재값으로 렌더하지 않는다(장비 철거 후에도 readings는 보존되므로§4.10, 상한이
+                    // 없으면 두 달 전 값이 "지금 정상"으로 표시된다). measuredAt은 그대로 실어 프론트가
+                    // "언제 마지막으로 측정됐는지"는 판단할 수 있게 한다.
+                    boolean stale = measuredAt == null || measuredAt.isBefore(staleThreshold);
+                    Double value = (latest != null && !stale) ? latest.getValue() : null;
                     String state = value != null
                             ? SensorThresholds.stateOf(metric, value).name()
                             : SensorThresholds.State.IDLE.name();
-                    return new ReadingMatrixResponse.LevelCell(level.getLevelNo(), value, state);
+                    return new ReadingMatrixResponse.LevelCell(level.getLevelNo(), value, measuredAt, state);
                 })
                 .toList();
         return new ReadingMatrixResponse.RackRow(rack.getId(), rack.getCode(), cells);

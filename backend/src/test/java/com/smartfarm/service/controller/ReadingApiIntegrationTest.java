@@ -173,6 +173,98 @@ class ReadingApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("latest: 최신값이라도 신선도 상한(tick 주기×5, 테스트 설정 PT1H → 5시간)을 넘으면 "
+            + "IDLE로 떨어지고 value는 null이지만 measuredAt은 실제 측정 시각을 그대로 싣는다"
+            + "(사이클 2 리뷰 P2-2 — 장비 철거 후에도 readings는 보존되므로 신선도 상한 없이는 "
+            + "두 달 전 값이 '지금 정상'으로 표시된다)")
+    void latestFallsBackToIdleWhenStale() throws Exception {
+        String token = signupAndLogin("latest농부4");
+        long farmId = createFarm(token, "레이턴트농장4");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOfByNo(token, farmId, zoneId, rackId, 1);
+        long deviceId = createDevice(token, farmId, zoneId, rackId, levelId, "센서1");
+        LocalDateTime staleMeasuredAt = LocalDateTime.now().minusHours(6).withSecond(0).withNano(0);
+        save(farmId, deviceId, zoneId, rackId, levelId, SensorMetric.TEMPERATURE, 22.0, staleMeasuredAt);
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/readings/latest")
+                        .param("metric", "TEMPERATURE")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.racks[0].levels[0].value").doesNotExist())
+                .andExpect(jsonPath("$.racks[0].levels[0].state").value("IDLE"))
+                .andExpect(jsonPath("$.racks[0].levels[0].measuredAt").exists());
+    }
+
+    @Test
+    @DisplayName("latest: 신선도 상한 이내 값은 measuredAt도 함께 응답에 실린다")
+    void latestIncludesMeasuredAtWhenFresh() throws Exception {
+        String token = signupAndLogin("latest농부5");
+        long farmId = createFarm(token, "레이턴트농장5");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOfByNo(token, farmId, zoneId, rackId, 1);
+        long deviceId = createDevice(token, farmId, zoneId, rackId, levelId, "센서1");
+        save(farmId, deviceId, zoneId, rackId, levelId, SensorMetric.TEMPERATURE, 22.0, LocalDateTime.now());
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/readings/latest")
+                        .param("metric", "TEMPERATURE")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.racks[0].levels[0].value").value(22.0))
+                .andExpect(jsonPath("$.racks[0].levels[0].state").value("OK"))
+                .andExpect(jsonPath("$.racks[0].levels[0].measuredAt").exists());
+    }
+
+    @Test
+    @DisplayName("series: metrics 중복은 제거되고 지정 지표 1개만큼만 결과가 반환된다"
+            + "(사이클 2 리뷰 P2-5 — 중복으로 동일 최고비용 쿼리를 반복 실행시키는 것 방지)")
+    void seriesDeduplicatesRepeatedMetrics() throws Exception {
+        String token = signupAndLogin("series농부7");
+        long farmId = createFarm(token, "시리즈농장7");
+        long zoneId = createZone(token, farmId, "A동");
+        long deviceId = createDevice(token, farmId, zoneId, null, null, "센서1");
+        save(farmId, deviceId, zoneId, null, null, SensorMetric.TEMPERATURE, 22.0, LocalDateTime.now().minusHours(1));
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/readings/series")
+                        .param("metrics", "TEMPERATURE,TEMPERATURE,TEMPERATURE,TEMPERATURE")
+                        .param("scope", "farm")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.series.length()").value(1))
+                .andExpect(jsonPath("$.series[0].metric").value("TEMPERATURE"));
+    }
+
+    @Test
+    @DisplayName("soft delete된 랙의 이력은 scope=farm 집계에서도 제외된다(P2-3 — series API 레벨 회귀)")
+    void seriesExcludesSoftDeletedRackHistoryInFarmScope() throws Exception {
+        String token = signupAndLogin("series농부8");
+        long farmId = createFarm(token, "시리즈농장8");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOfByNo(token, farmId, zoneId, rackId, 1);
+        long deviceId = createDevice(token, farmId, zoneId, rackId, levelId, "센서1");
+        save(farmId, deviceId, zoneId, rackId, levelId, SensorMetric.TEMPERATURE, 99.0,
+                LocalDateTime.now().minusHours(1));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/farms/" + farmId + "/racks/" + rackId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/readings/series")
+                        .param("metrics", "TEMPERATURE")
+                        .param("scope", "farm")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.series[0].points.length()").value(0));
+    }
+
+    @Test
     @DisplayName("latest: soft delete된 랙은 응답에서 제외된다(활성 구조만 렌더)")
     void latestExcludesSoftDeletedRack() throws Exception {
         String token = signupAndLogin("latest농부2");
