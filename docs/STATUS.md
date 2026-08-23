@@ -117,6 +117,12 @@ Spring Boot backend + Next.js frontend 신규(이 레포), ai-server는 기존 `
 - **인프라**: [x] #62 구 deploy.yml OCI push 트리거 제거(PR #63) · [x] #67 backend KMA env 전달+cloudflared shared-net(PR #68) · ai#88 streamlit shared-net(ai PR #89)
 - **후속 이슈**: #70 [SEC] 농장 개수 상한·/api 일반 레이트리밋·가입 남용 방어(#54 P1의 챗 범위 밖 근본 원인) · #51 데모 하드닝(데모 공유 농장이 사실상 전역 챗 쿼터가 되는 UX 트레이드오프 포함)
 - **핫픽스**: [x] #73 KMA env 기본값 누락으로 backend 기동 실패(사이트 502) — **PR #74 머지**: `${KMA_*:기본값}` 부여 + `ApplicationYmlPlaceholderTest`(기본값 없는 placeholder는 필수 시크릿만 허용, 핫픽스 역적용 시 FAILED 실측). 기존 테스트가 못 잡은 이유=application-test.yml이 kma 값을 채워 미설정 경로 미실행
+- **핫픽스 2건 추가 (2026-08-23 오후, 라이브 검증 중 발견)**:
+  - [x] #80 외부 호출 타임아웃이 `CancellationException`으로 새어 500 (**PR #81**) — JDK HttpClient가 읽기 타임아웃을 `RestClientException`이 아닌 `CancellationException`으로 표면화. AI 클라이언트 4종이 못 잡아 챗은 CH001 대신 500, **환경 대시보드는 stale 폴백 없이 500**이 될 잠재 경로였음. 챗 타임아웃 30s→120s(콜드스타트 초과), **nginx `proxy_read_timeout` 미설정=기본 60s** 도 함께 상향(125s), KMA DEBUG 로그의 서비스키 유출 마스킹
+  - [x] #84 KMA base-url 오타(`VilageFcstInfoService2.0` → `_2.0`) (**PR #85**) — 언더스코어 누락으로 **키와 무관하게 존재하지 않는 엔드포인트 호출**. 공개 API 더미키 대조로 확정. 회귀 가드 테스트 동반(오타 시 FAILED 실측)
+- **🧪 라이브 실동작 검증 완료 (2026-08-23 08:2x)**: environment today/history/forecast·env-thresholds·logs·chat·nutrient-recipes/presets **전부 200**, 프론트 4개 라우트 200. 챗은 실제 한국어 답변 28.9초(웜), 예보는 실제 KMA 데이터 2.2초
+- **⚠️ 배포 함정 발견**: `deploy/home/nginx.conf`처럼 **바인드 마운트되는 설정 파일은 배포해도 컨테이너가 재생성되지 않아 조용히 무시된다**(이번에 nginx 수동 재시작으로 확인). 헬퍼가 nginx 리로드하도록 보완 필요 — 후속
+- **📐 예정**: 새 디자인(목업 데이터 준비됨) 반영 — 사용자가 전달 예정, FE 전면 업데이트 사이클
 - **⚠️ 사용자 조치 대기**: ① `KMA_SERVICE_KEY`를 smartfarm-ai 스택 .env에서 service 스택 .env로 복사(값 출력 없이) + 재배포 → 예보 라이브 ② Cloudflare Zero Trust Public Hostname `smartfarm-ai.luma200ok.com` → `http://smartfarm-ai-streamlit:8501` 등록 → 502 해소(⚠️Streamlit 무인증 — CF Access 권고)
 - **사이클 2·3 계약 확정(2026-08-23)**: §4.7 챗봇(ai-server 신규 POST /api/chat — 무변경 원칙 3번째 해제, 이력 정책=태깅 확정)·§4.8 작업일지(V11)·KMA 예보. smartfarm_ai#84 등재. ⚠️ V12는 #54(챗) 예약
 - **사이클 2**: [x] **smartfarm_ai#84 챗 라우트 `POST /api/chat` 머지·홈서버 배포 완료**(PR #85 — RAG·세마포어 재사용, 챗 전용 상한 1로 진단/처방 기아 차단, JSONB 라운드트립 실측. 부수: ai 레포 OCI 배포 트리거 정리 #86/PR #87) · [x] #54 [BE] 챗 프록시+이력 (**PR #71 머지 2026-08-23** — V12 chat_messages, CH001/CH002. **보안 P1 수용·픽스**: 농장 곱하기 우회 → 3중 방어(농장+사용자 레이트리밋+전역 Semaphore(2) 즉시 429). ArchUnit 수동 목록 폐기(2회 재발 구조적 차단). 테스트 290) · [x] #55 [FE] 챗봇 UI (**PR #72 머지** — answer/sources를 JSX 텍스트 노드로만 렌더, 메타 grep+리뷰어 전수 이중 검증) → **사이클 2 완료**
