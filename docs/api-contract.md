@@ -205,6 +205,100 @@
 - **S(황) 목표**: 출처가 범위(10~200 mg/L)만 제시하므로 고정값이 없다. Mg 목표를 MgSO4 단일 공급원으로 충족할 때 따라오는 S량을 화학양론으로 역산해 목표로 삼는다(임의 추정 아님).
 - 데모 계정: 계산·저장 허용(체험 핵심), 수정·삭제는 본인 것만이라 자연 격리(§4.5 차단 목록 미추가).
 
+## 4.10 랙·층 구조 · 장비/센서 레지스트리 (2026-08-23 확정, 이슈 #89 — 디자인 프리뷰 갭 대응 사이클 1)
+
+**배경**: `/design-preview`(PR #86 머지)가 전제하는 도메인 중 백엔드 미보유분. 프리뷰의 `components/design-preview/mock.ts`가 유일한 스펙 소스이며, 이 절이 그것을 계약으로 승격한다.
+
+### 계층 모델
+`Farm(테넌트) > Zone(동·구역) > Rack > RackLevel(층)` 3단 계층. 프리뷰 근거: 홈 랙 배치도가 5층 × 12랙 매트릭스이고 농장 카드 메타가 "12랙 60층"(=12×5) — 일치 확인. 제어·데이터 화면의 존 필터("A동/B동/전체")가 Zone 스코프.
+
+- **Zone** `{id, farmId, name, displayOrder}` — soft delete(`@SQLDelete`+`@SQLRestriction`, Farm 컨벤션 동일)
+- **Rack** `{id, zoneId, farmId(비정규화 — 테넌트 스코프 쿼리용), code, levelCount, displayOrder}` — soft delete. `unique(zone_id, code)` (활성 행 대상 partial unique)
+- **RackLevel** `{id, rackId, farmId(비정규화), levelNo, label}` — 랙 생성 시 `levelCount`만큼 자동 생성. `unique(rack_id, level_no)`. 측정값·장비가 FK로 매달리므로 별도 테이블로 둔다(정수 컬럼만 두면 `levelNo > levelCount`를 DB가 못 막음)
+- **Farm 확장**: `farms ADD planted_on DATE NULL` — 프리뷰 농장 카드의 "정식 18일" 표기용. ⚠️ 작물명은 확장하지 않는다 — `CropType`은 ai-server 진단 모델 제약으로 TOMATO 전용이며, 프리뷰의 엽채류(로메인 등)는 표시 갭으로 남긴다
+
+### 장비·센서 레지스트리
+**개별 장비 단위로 저장한다.** 프리뷰 관리 화면은 제품군 집계("순환팬 A · 24 EA")로 보이지만 보정주기·최종수신·통신상태는 개체 속성이므로, 저장은 개체 단위·집계는 서버가 수행한다.
+
+- **Device** `{id, farmId, zoneId?, rackId?, rackLevelId?, name, kind, model?, serial?, status, lastSeenAt?, calibrationDueAt?, installedOn?}` — soft delete
+  - `kind`: `SENSOR | CONTROLLER | GATEWAY` (프리뷰 "센서/제어기/통신 장치")
+  - `status`: `NORMAL | WARNING | FAULT | OFFLINE` (프리뷰 statusTone ok/warning/critical + 통신두절)
+  - 위치는 3개 FK 모두 nullable — 게이트웨이는 존 단위, 센서는 층 단위로 달리 매달린다. **최소 하나는 필수**(전부 null이면 C001)
+  - `serial`은 농장 스코프 partial unique(활성 행), null 허용
+
+### 엔드포인트
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/zones` | 멤버 | — | 200 `ZoneTreeResponse` (존+랙+층 트리 — 랙 도면 렌더용 1회 조회) |
+| POST | `/api/farms/{farmId}/zones` | OWNER(데모 차단) | `{name, displayOrder?}` | 201 `ZoneResponse` |
+| PATCH | `/api/farms/{farmId}/zones/{zoneId}` | OWNER(데모 차단) | `{name?, displayOrder?}` | 200 `ZoneResponse` |
+| DELETE | `/api/farms/{farmId}/zones/{zoneId}` | OWNER(데모 차단) | — | 204 (하위 랙·층 함께 soft delete) |
+| POST | `/api/farms/{farmId}/zones/{zoneId}/racks` | OWNER(데모 차단) | `{code, levelCount(1~50), displayOrder?}` | 201 `RackResponse` (층 자동 생성) |
+| PATCH | `/api/farms/{farmId}/racks/{rackId}` | OWNER(데모 차단) | `{code?, levelCount?, displayOrder?}` | 200 `RackResponse` |
+| DELETE | `/api/farms/{farmId}/racks/{rackId}` | OWNER(데모 차단) | — | 204 (하위 층 함께 soft delete) |
+| GET | `/api/farms/{farmId}/devices` | 멤버 | `?kind=&status=&q=&zoneId=` (q=장비명 부분일치) | 200 `DeviceListResponse` |
+| GET | `/api/farms/{farmId}/devices/summary` | 멤버 | — | 200 `DeviceSummaryResponse` (KPI 4종 + 제품군별 집계) |
+| POST | `/api/farms/{farmId}/devices` | OWNER(데모 차단) | `DeviceRequest` | 201 `DeviceResponse` |
+| PATCH | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | `DeviceRequest`(부분) | 200 `DeviceResponse` |
+| DELETE | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | — | 204 |
+
+- **ZoneTreeResponse** `{zones: [{id, name, displayOrder, racks: [{id, code, levelCount, displayOrder, levels: [{id, levelNo, label}]}]}]}`
+- **DeviceSummaryResponse** `{total, normal, warning, faultOrOffline, calibrationDueSoon, byModel: [{name, kind, count, status}]}` — `calibrationDueSoon`=30일 이내
+- **`levelCount` 축소 시**: 잘려나가는 층에 장비가 매달려 있으면 **R004로 거부**(조용한 데이터 유실 방지). 측정 이력만 있는 경우는 층을 soft delete하고 이력은 보존
+
+### ⚠️ 테넌트 격리 (필수)
+`zoneId`·`rackId`·`deviceId`는 전부 **path 입력값 취급**. `FarmAccessGuard.requireMember/requireOwner`로 농장 멤버십을 재검증한 뒤, **해당 리소스가 그 농장 소속인지 반드시 재확인**한다(다른 농장의 rackId를 자기 farmId 경로에 끼워 넣는 cross-tenant IDOR 차단). 미소속 리소스는 존재를 유추당하지 않도록 **404(R00x/E001)** 로 응답한다. 격리 테스트 동반 필수.
+
+### ErrorCode (신규)
+| 코드 | HTTP | 의미 |
+|---|---|---|
+| R001 | 404 | 존 없음(타 농장 소속 포함) |
+| R002 | 404 | 랙 없음(타 농장 소속 포함) |
+| R003 | 404 | 층 없음(타 농장 소속 포함) |
+| R004 | 409 | 랙 구조 변경 불가(층 축소 시 하위 장비 잔존·랙 코드 중복) |
+| E001 | 404 | 장비 없음(타 농장 소속 포함) |
+| E002 | 409 | 장비 시리얼 중복(농장 내) |
+
+- **마이그레이션**: V14 `zones`·`racks`·`rack_levels`·`devices` + `farms.planted_on`
+
+## 4.11 센서 측정값 (2026-08-23 확정, 이슈 #90 — 디자인 프리뷰 갭 대응 사이클 2)
+
+### 기존 `env_snapshots`와의 관계 — 대체가 아니라 공존
+`env_snapshots`(V9)는 **농장 구분이 없는 ai-server 단일 하우스 실측**(외기 KMA + 내부 제어값)이다. 여기에 farmId를 소급 부여하면 데이터 의미가 왜곡되고 라이브인 환경 대시보드(#22)·시계열 차트(#53)가 깨진다. 따라서 **기존 테이블·API·폴러는 무변경**으로 두고, 층·장비 스코프의 신규 스트림을 별도로 세운다.
+
+| 스트림 | 출처 | 스코프 | 지표 | 용도 |
+|---|---|---|---|---|
+| `env_snapshots` (기존) | ai-server 실측 | 전역 단일 | 실내외 온·습도 | 환경 대시보드, 임계치 알림 |
+| `sensor_readings` (신규) | **가상 장비 시뮬레이터** | 농장>존>랙>층 | 7종 | 랙 도면, 층별 비교, 다지표 그래프 |
+
+### SensorReading
+`{id, farmId, deviceId(FK), zoneId?, rackId?, rackLevelId?, metric, value, measuredAt}`
+- 위치 3종은 `device`에서 유도 가능하지만 **조회 성능을 위해 비정규화**(멀티테넌트 룰의 `farmId` 비정규화 컨벤션과 동일)
+- `metric` enum: `TEMPERATURE | HUMIDITY | CO2 | EC | PH | PPFD | POWER` (프리뷰 데이터 화면 항목 7종)
+- 인덱스: `(farm_id, metric, measured_at desc)`, `(rack_level_id, metric, measured_at desc)`
+- **보존 90일** + 일 1회 purge 스케줄러 (`EnvSnapshotPurgeScheduler` 패턴 재사용)
+
+### ⚠️ 가상 장비 시뮬레이터 (실기기 부재)
+실기기·실센서가 없으므로 측정값은 **백엔드가 생성한다**. `docs/STATUS.md`의 기존 "원격제어·EC/pH 실시간 제외(실기기 부재)" 결정을 **시뮬레이션 전제로 한정 해제**한다.
+
+- `@Scheduled(fixedDelay=60s)` — `kind=SENSOR`이고 `status != OFFLINE`인 장비마다 1틱 생성
+- 값 = **일주기 기저(sin) + 층별 오프셋 + 결정적 노이즈**. 노이즈 시드는 `(deviceId, measuredAt 분)` 해시 — 재기동해도 파형이 튀지 않고, 테스트에서 재현 가능
+- `smartfarm.simulator.enabled` 플래그(기본 true, 운영에서 실기기 연동 시 false). **비활성 시 폴러 자체가 뜨지 않는다**
+- 응답 DTO에 `simulated: true` 를 실어 프론트가 화면에 시뮬레이션임을 표기할 수 있게 한다 — 실데이터인 척하지 않는다
+
+### 엔드포인트
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/readings/series` | 멤버 | `?metrics=TEMPERATURE,EC`(최대 4, 초과 C001) `&range=24h\|7d\|30d` `&scope=farm\|zone:{id}\|rack:{id}\|level:{id}` | 200 `ReadingSeriesResponse` |
+| GET | `/api/farms/{farmId}/readings/latest` | 멤버 | `?metric=&zoneId=` | 200 `ReadingMatrixResponse` (랙×층 최신값 — 랙 도면 셀 상태) |
+| GET | `/api/farms/{farmId}/readings/level-summary` | 멤버 | `?rackId=&range=24h\|7d\|30d` | 200 `LevelSummaryResponse` (층별 평균 + 목표 대비 편차 — 데이터 화면 비교표) |
+
+- **다운샘플**: 24h=원본(60s) / 7d=30분 평균 / 30d=2시간 평균 — **§4.6 규칙 그대로 재사용**(DB 집계, 빈 구간은 점 생략)
+- **ReadingSeriesResponse** `{range, scope, simulated, series: [{metric, unit, points: [{at, value}]}]}`
+- **ReadingMatrixResponse** `{metric, unit, simulated, racks: [{rackId, code, levels: [{levelNo, value?, state}]}]}` — `state`: `OK | WARNING | CRITICAL | IDLE`(프리뷰 `CellState`와 1:1). 판정 기준은 `farm_env_thresholds`가 아직 온·습도만 다루므로 **1차는 지표별 상수 기본범위**를 쓰고, 임계치 확장은 사이클 3(알람)으로 미룬다
+- **신규 ErrorCode 없음** — 검증 실패는 C001, 스코프 리소스 부재는 §4.10의 R001~R003 재사용. 데이터 없음은 오류가 아니라 빈 배열
+- **마이그레이션**: V15 `sensor_readings`
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -244,6 +338,12 @@
 | N001 | 404 | 양액 레시피 없음 |
 | N002 | 403 | 양액 레시피 수정/삭제 권한 없음(작성자 본인·삭제는 OWNER 겸용) |
 | N003 | 400 | 배합 불가(탱크 침전 위험·원수 보정 과다로 투입량 음수 등) |
+| R001 | 404 | 존 없음(타 농장 소속 포함 — 존재 유추 차단) |
+| R002 | 404 | 랙 없음(타 농장 소속 포함) |
+| R003 | 404 | 층 없음(타 농장 소속 포함) |
+| R004 | 409 | 랙 구조 변경 불가(층 축소 시 하위 장비 잔존·랙 코드 중복) |
+| E001 | 404 | 장비 없음(타 농장 소속 포함) |
+| E002 | 409 | 장비 시리얼 중복(농장 내) |
 
 ## 6. 환경변수 · CORS
 
