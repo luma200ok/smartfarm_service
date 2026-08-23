@@ -57,7 +57,17 @@ public enum ErrorCode {
     // Nutrient
     N001(HttpStatus.NOT_FOUND, "N001", "양액 레시피를 찾을 수 없습니다."),
     N002(HttpStatus.FORBIDDEN, "N002", "양액 레시피 수정/삭제 권한이 없습니다."),
-    N003(HttpStatus.BAD_REQUEST, "N003", "배합할 수 없는 조합입니다.");
+    N003(HttpStatus.BAD_REQUEST, "N003", "배합할 수 없는 조합입니다."),
+
+    // Rack (Zone·Rack·RackLevel 계층 — contract §4.10)
+    R001(HttpStatus.NOT_FOUND, "R001", "존을 찾을 수 없습니다."),
+    R002(HttpStatus.NOT_FOUND, "R002", "랙을 찾을 수 없습니다."),
+    R003(HttpStatus.NOT_FOUND, "R003", "층을 찾을 수 없습니다."),
+    R004(HttpStatus.CONFLICT, "R004", "랙 구조를 변경할 수 없습니다."),
+
+    // Device (contract §4.10)
+    E001(HttpStatus.NOT_FOUND, "E001", "장비를 찾을 수 없습니다."),
+    E002(HttpStatus.CONFLICT, "E002", "이미 등록된 장비 시리얼입니다.");
 
     private final HttpStatus status;
     private final String code;

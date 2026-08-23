@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -43,6 +44,11 @@ public class Farm {
     /** 처방 완료/실패 디스코드 웹훅 URL(contract §3 Phase 3) — null=미설정. API 응답엔 원문 노출 금지. */
     @Column(name = "webhook_url", length = 512)
     private String webhookUrl;
+
+    /** 정식일(contract §4.10, V14) — 프리뷰 농장 카드의 "정식 N일" 표기용. 이번 사이클은 컬럼만
+     * 추가하고 API 노출은 하지 않는다(§4.10 엔드포인트 표에 farm 엔드포인트 변경 없음 — 후속 사이클). */
+    @Column(name = "planted_on")
+    private LocalDate plantedOn;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
