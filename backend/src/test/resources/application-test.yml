@@ -65,6 +65,10 @@ sensor-simulator:
   tick-initial-delay: PT1H
   tick-fixed-delay: PT1H
   max-rows-per-farm: 5
+  # 전역 상한(사이클 2 리뷰 P2-4)은 기본 컨텍스트에서 여유 있게 둬(기존 테스트 최대 6행) 농장당
+  # 상한만 걸리게 하고, 전역 상한 자체는 SensorSimulatorGlobalCapIntegrationTest가 별도
+  # 프로퍼티(@TestPropertySource)로 낮춰 전용 컨텍스트에서 검증한다.
+  max-rows-per-tick: 100
 
 # sensor_readings 퍼지도 동일 원칙 — 자동 발화 차단 + 작은 배치 크기로 반복 검증.
 sensor-reading:
