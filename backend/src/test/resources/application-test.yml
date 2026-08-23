@@ -53,6 +53,30 @@ env-snapshot:
   purge-fixed-delay: PT1H
   purge-batch-size: 2
 
+# 가상 장비 시뮬레이터(이슈 #90) — 기본은 활성(matchIfMissing과 동일하게 켜 두고, 비활성 시 빈
+# 자체가 안 뜨는지는 SensorSimulatorConditionalTest가 별도 프로퍼티 오버라이드로 검증).
+# tick 자동 발화는 차단(테스트는 tick() 직접 호출), 상한(행 수 기준)은 작게 둬 초과 케이스도
+# 소수 장비로 검증(장비당 지표 2개 × 3대 = 6행이 5행 상한을 넘는 식).
+smartfarm:
+  simulator:
+    enabled: true
+
+sensor-simulator:
+  tick-initial-delay: PT1H
+  tick-fixed-delay: PT1H
+  max-rows-per-farm: 5
+  # 전역 상한(사이클 2 리뷰 P2-4)은 이 공유 컨텍스트에서 여유 있게 둬(기존 테스트 최대 6행) 농장당
+  # 상한만 걸리게 한다. 전역 상한 로직 자체는 SensorSimulatorServiceTest(Mockito 순수 단위 테스트)가
+  # 검증한다 — deviceRepository 조회가 전 농장 대상이라 통합 테스트로는 다른(비-트랜잭션) 테스트가
+  # 남긴 실 데이터에 예산이 먼저 소진돼 순서 의존적으로 깨지는 문제가 있었다.
+  max-rows-per-tick: 100
+
+# sensor_readings 퍼지도 동일 원칙 — 자동 발화 차단 + 작은 배치 크기로 반복 검증.
+sensor-reading:
+  purge-initial-delay: PT1H
+  purge-fixed-delay: PT1H
+  purge-batch-size: 2
+
 # KMA 단기예보(이슈 #56) — 실키 취급 금지(핸드오프), 테스트 전용 더미값. base-url은 KmaApiTestSupport가
 # MockWebServer 포트로 동적 오버라이드한다. grid 좌표(60,127)는 임의 테스트값(도메인 결정 아님 — 실제
 # 배포 좌표는 운영 .env로 별도 등록).

@@ -10,6 +10,7 @@ import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
 import com.smartfarm.service.entity.Rack;
 import com.smartfarm.service.entity.RackLevel;
+import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DeviceRepository;
@@ -20,8 +21,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
@@ -120,7 +123,15 @@ public class DeviceService {
         if (request.zoneId() == null && request.rackId() == null && request.rackLevelId() == null) {
             throw new CustomException(ErrorCode.C001, "위치(존·랙·층) 중 최소 하나는 필수입니다.");
         }
-        validateLocation(farmId, request.zoneId(), request.rackId(), request.rackLevelId());
+        ResolvedLocation location = resolveLocation(farmId, request.zoneId(), request.rackId(),
+                request.rackLevelId());
+
+        // Set.of()(불변)는 안 쓴다 — validateMetrics의 metrics.contains(null) 널 안전 검사가
+        // Set.of().contains(null)에서 NPE를 던진다(사이클 2 리뷰 P3-1 회귀 — 빈 LinkedHashSet은
+        // null 원소가 없어도 contains(null)이 안전하게 false를 반환한다).
+        Set<SensorMetric> metrics =
+                request.metrics() != null ? new LinkedHashSet<>(request.metrics()) : new LinkedHashSet<>();
+        validateMetrics(request.kind(), metrics);
 
         if (request.serial() != null && deviceRepository.existsByFarmIdAndSerial(farmId, request.serial())) {
             throw new CustomException(ErrorCode.E002);
@@ -129,9 +140,9 @@ public class DeviceService {
         try {
             Device device = deviceRepository.save(Device.builder()
                     .farmId(farmId)
-                    .zoneId(request.zoneId())
-                    .rackId(request.rackId())
-                    .rackLevelId(request.rackLevelId())
+                    .zoneId(location.zoneId())
+                    .rackId(location.rackId())
+                    .rackLevelId(location.rackLevelId())
                     .name(request.name())
                     .kind(request.kind())
                     .model(request.model())
@@ -139,6 +150,7 @@ public class DeviceService {
                     .status(request.status())
                     .calibrationDueAt(request.calibrationDueAt())
                     .installedOn(request.installedOn())
+                    .metrics(metrics)
                     .build());
             return DeviceResponse.from(device);
         } catch (DataIntegrityViolationException e) {
@@ -154,11 +166,17 @@ public class DeviceService {
 
         // PATCH는 부분 수정(null=미변경)이라 위치 FK 하나만 바뀌어도 나머지 기존 값과 계층이
         // 어긋날 수 있다 — 요청값과 기존 엔티티를 병합한 "최종 상태"로 정합성을 검증한다
-        // (contract §4.10 리뷰 반영 — 요청값만 보면 새지 않은 것처럼 통과해버린다).
+        // (contract §4.10 리뷰 반영 — 요청값만 보면 새지 않은 것처럼 통과해버린다). resolveLocation이
+        // 병합된 최종 상태에도 부모 FK 자동 채움을 동일하게 적용한다(사이클 2).
         Long effectiveZoneId = request.zoneId() != null ? request.zoneId() : device.getZoneId();
         Long effectiveRackId = request.rackId() != null ? request.rackId() : device.getRackId();
         Long effectiveRackLevelId = request.rackLevelId() != null ? request.rackLevelId() : device.getRackLevelId();
-        validateLocation(farmId, effectiveZoneId, effectiveRackId, effectiveRackLevelId);
+        ResolvedLocation location = resolveLocation(farmId, effectiveZoneId, effectiveRackId, effectiveRackLevelId);
+
+        DeviceKind effectiveKind = request.kind() != null ? request.kind() : device.getKind();
+        Set<SensorMetric> effectiveMetrics =
+                request.metrics() != null ? new LinkedHashSet<>(request.metrics()) : device.getMetrics();
+        validateMetrics(effectiveKind, effectiveMetrics);
 
         if (request.serial() != null
                 && deviceRepository.existsByFarmIdAndSerialAndIdNot(farmId, request.serial(), device.getId())) {
@@ -166,9 +184,10 @@ public class DeviceService {
         }
 
         try {
-            device.update(request.zoneId(), request.rackId(), request.rackLevelId(), request.name(),
+            device.update(location.zoneId(), location.rackId(), location.rackLevelId(), request.name(),
                     request.kind(), request.model(), request.serial(), request.status(),
-                    request.calibrationDueAt(), request.installedOn());
+                    request.calibrationDueAt(), request.installedOn(), request.metrics() != null
+                            ? new LinkedHashSet<>(request.metrics()) : null);
             // update()는 dirty checking이라 flush 전엔 UPDATE SQL이 나가지 않는다 — race 감지를
             // 위해 명시적으로 즉시 flush(RackService#updateRack과 동일 패턴).
             deviceRepository.flush();
@@ -186,44 +205,79 @@ public class DeviceService {
         deviceRepository.delete(device);
     }
 
+    /** {@link #resolveLocation} 반환값 — 부모 FK 자동 채움까지 반영된 최종 삼중조(사이클 2). */
+    private record ResolvedLocation(Long zoneId, Long rackId, Long rackLevelId) {
+    }
+
     /**
-     * 위치 FK 3종이 제공된 경우 (1) 그 리소스가 이 농장 소속인지 재확인(cross-tenant IDOR 차단),
-     * (2) 서로의 계층 관계가 일치하는지 확인한다 — 쌍 2개(① rack.zoneId==zoneId ② level.rackId==
-     * rackId)만으로는 부족하다(2차 리뷰 반영, contract §4.10): {@code rackId}를 생략하면 두 쌍
-     * 검사가 전부 skip돼 {@code {zoneId: A동, rackId: null, rackLevelId: B동 랙의 층}}이 통과해
-     * 버린다. ③ **전이** 검사로 {@code rackId}가 없어도 level → rack → zone을 따라가 zoneId와
-     * 대조한다. 불일치 시 C001 — §4.11 SensorReading이 이 3종을 device에서 유도해 비정규화하므로,
-     * 모순된 삼중조를 여기서 막지 않으면 측정값 테이블까지 오염된다.
+     * 위치 FK 3종을 해석한다(contract §4.10, 사이클 2 — 부모 FK 자동 채움). 규칙:
+     * <ol>
+     *   <li>주어진 값은 전부 이 농장 소속인지 재확인한다(cross-tenant IDOR 차단).</li>
+     *   <li>깊은 쪽(rackLevelId → rackId → zoneId 순)이 주어지고 그 상위가 <b>주어지지 않았으면</b>
+     *       상위를 유도해 함께 채운다 — 예전에는 null로 남아 §4.11 SensorReading 적재 시
+     *       zoneId/rackId가 비어 존·랙 스코프 조회에서 조용히 누락됐다(사이클 2 회고).</li>
+     *   <li>상위가 <b>명시적으로 함께 주어지면</b> 자동 채움 대신 계층 정합성을 검증한다(기존
+     *       ①②③ 규칙 그대로 — 서로 다른 계층을 가리키면 C001). rackId 생략 시의 전이(level→rack→
+     *       zone) 검사는 이제 "rackId가 없으면 항상 rack을 유도해 채운다"는 자동 채움 분기가
+     *       그대로 흡수한다 — 유도된 rack의 zoneId를 명시된 zoneId와 대조하면 전이 검사와 동치다.</li>
+     * </ol>
      */
-    private void validateLocation(Long farmId, Long zoneId, Long rackId, Long rackLevelId) {
-        if (zoneId != null) {
-            zoneRepository.findByIdAndFarmId(zoneId, farmId).orElseThrow(() -> new CustomException(ErrorCode.R001));
+    private ResolvedLocation resolveLocation(Long farmId, Long zoneId, Long rackId, Long rackLevelId) {
+        RackLevel level = null;
+        if (rackLevelId != null) {
+            level = rackLevelRepository.findByIdAndFarmId(rackLevelId, farmId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.R003));
         }
 
         Rack rack = null;
         if (rackId != null) {
             rack = rackRepository.findByIdAndFarmId(rackId, farmId)
                     .orElseThrow(() -> new CustomException(ErrorCode.R002));
-            if (zoneId != null && !rack.getZoneId().equals(zoneId)) {
-                throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 랙이 지정한 존 소속이 아닙니다.");
-            }
-        }
-
-        if (rackLevelId != null) {
-            RackLevel level = rackLevelRepository.findByIdAndFarmId(rackLevelId, farmId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.R003));
-            if (rackId != null && !level.getRackId().equals(rackId)) {
+            if (level != null && !level.getRackId().equals(rack.getId())) {
                 throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 층이 지정한 랙 소속이 아닙니다.");
             }
-            // 전이 검사(③) — rackId가 생략된 경우만 추가 조회(rackId가 있었으면 위 ①에서 이미
-            // rack.zoneId==zoneId를 확인했으므로 중복 조회하지 않는다).
-            if (zoneId != null && rackId == null) {
-                Rack levelRack = rackRepository.findByIdAndFarmId(level.getRackId(), farmId)
-                        .orElseThrow(() -> new CustomException(ErrorCode.R002));
-                if (!levelRack.getZoneId().equals(zoneId)) {
-                    throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 층이 지정한 존 소속이 아닙니다.");
-                }
+        } else if (level != null) {
+            // 부모 FK 자동 채움 — rackId 생략, rackLevelId만 주어짐.
+            rack = rackRepository.findByIdAndFarmId(level.getRackId(), farmId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.R002));
+            rackId = rack.getId();
+        }
+
+        if (zoneId != null) {
+            zoneRepository.findByIdAndFarmId(zoneId, farmId).orElseThrow(() -> new CustomException(ErrorCode.R001));
+            if (rack != null && !rack.getZoneId().equals(zoneId)) {
+                throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 랙이 지정한 존 소속이 아닙니다.");
             }
+        } else if (rack != null) {
+            // 부모 FK 자동 채움 — zoneId 생략, rackId(또는 그로부터 유도된 값)가 있음.
+            zoneId = rack.getZoneId();
+        }
+
+        return new ResolvedLocation(zoneId, rackId, rackLevelId);
+    }
+
+    /**
+     * 장비 측정 지표 선언 검증(contract §4.10 사이클 2, V16) — {@code kind=SENSOR}는 1개 이상,
+     * 그 외(CONTROLLER·GATEWAY)는 비어야 한다. 위반 시 C001. kind가 null(PATCH에서 미변경)이면
+     * 호출측이 이미 기존 kind로 병합한 값을 넘기므로 이 메서드는 kind가 항상 확정된 상태로 받는다.
+     *
+     * <p>⚠️ {@code null} 원소 거부(사이클 2 리뷰 P3-1) — {@code metrics:["TEMPERATURE", null]}처럼
+     * Jackson이 배열 안에 null을 그대로 담아 역직렬화하면 이 검사 없이는 "비었는가"만 보고
+     * 통과시켜, 이후 {@code DeviceResponse.from}의 {@code .sorted()}가 null Comparable에서
+     * NPE를 던지거나 DB NOT NULL 위반으로 500이 난다. 잘못된 입력에 5xx는 실패 안전 위반이므로
+     * 여기서 명시적으로 C001 처리한다.
+     */
+    private void validateMetrics(DeviceKind kind, Set<SensorMetric> metrics) {
+        if (metrics != null && metrics.contains(null)) {
+            throw new CustomException(ErrorCode.C001, "측정 지표 목록에 null을 포함할 수 없습니다.");
+        }
+        boolean empty = metrics == null || metrics.isEmpty();
+        if (kind == DeviceKind.SENSOR) {
+            if (empty) {
+                throw new CustomException(ErrorCode.C001, "SENSOR 장비는 측정 지표를 1개 이상 선언해야 합니다.");
+            }
+        } else if (!empty) {
+            throw new CustomException(ErrorCode.C001, "SENSOR가 아닌 장비는 측정 지표를 선언할 수 없습니다.");
         }
     }
 

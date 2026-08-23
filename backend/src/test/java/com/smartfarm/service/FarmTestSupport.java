@@ -12,6 +12,8 @@ import com.smartfarm.service.dto.SignupRequest;
 import com.smartfarm.service.dto.ZoneRequest;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.SensorMetric;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
@@ -114,7 +116,11 @@ public abstract class FarmTestSupport extends IntegrationTestSupport {
         return readJson(result).get("id").asLong();
     }
 
-    /** 존·랙·층 중 지정한 위치에 장비를 등록한다(contract §4.10) — R004 삭제 거부 등 공통 픽스처. */
+    /**
+     * 존·랙·층 중 지정한 위치에 장비를 등록한다(contract §4.10) — R004 삭제 거부 등 공통 픽스처.
+     * kind=SENSOR는 metrics 선언이 필수(§4.10 사이클 2)라 기본값으로 TEMPERATURE 1개를 싣는다 —
+     * 위치·삭제 시나리오가 주 관심사인 기존 호출부를 그대로 두기 위한 편의 기본값이다.
+     */
     protected long createDevice(String ownerToken, long farmId, Long zoneId, Long rackId, Long rackLevelId,
                                  String name) throws Exception {
         MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/farms/" + farmId + "/devices")
@@ -122,7 +128,7 @@ public abstract class FarmTestSupport extends IntegrationTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, rackId, rackLevelId, name, DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return readJson(result).get("id").asLong();

@@ -12,6 +12,9 @@ public interface RackRepository extends JpaRepository<Rack, Long> {
 
     List<Rack> findByZoneIdOrderByDisplayOrderAscIdAsc(Long zoneId);
 
+    /** {@code /readings/latest}에서 zoneId 미지정(farm 전체) 시 랙 도면 전체 조회용(contract §4.11). */
+    List<Rack> findByFarmIdOrderByDisplayOrderAscIdAsc(Long farmId);
+
     /** farm 스코프 필수 — rackId 단독 조회 금지(cross-tenant IDOR 차단) */
     Optional<Rack> findByIdAndFarmId(Long id, Long farmId);
 

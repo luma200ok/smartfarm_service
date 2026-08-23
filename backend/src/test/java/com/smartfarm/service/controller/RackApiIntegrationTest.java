@@ -12,6 +12,8 @@ import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.dto.RackRequest;
 import com.smartfarm.service.dto.RackUpdateRequest;
 import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.SensorMetric;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -131,7 +133,7 @@ class RackApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 null, null, rackLevelId, "온습도센서", DeviceKind.SENSOR,
-                                null, null, null, null, null))))
+                                null, null, null, null, null, List.of(SensorMetric.TEMPERATURE)))))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(patch("/api/farms/" + farmId + "/racks/" + rackId)

@@ -33,11 +33,12 @@ spring:
 
   task:
     scheduling:
-      # @Scheduled 빈 4개(EnvironmentSnapshotPoller·EnvSnapshotPurgeScheduler·
-      # RefreshTokenPurgeScheduler·PrescriptionSweeper)가 기본 단일 스레드를 공유한다(리뷰 P3) —
-      # 60s 폴러가 임계치 웹훅을 동기 발송하는 동안(최대 5s 타임아웃) 다른 스케줄러 주기가 밀리지
-      # 않도록 풀을 2로 늘린다.
-      pool-size: 2
+      # @Scheduled 빈 6개(EnvironmentSnapshotPoller·EnvSnapshotPurgeScheduler·
+      # RefreshTokenPurgeScheduler·PrescriptionSweeper·SensorSimulatorScheduler(#90)·
+      # SensorReadingPurgeScheduler(#90))가 기본 단일 스레드를 공유한다(리뷰 P3) — 60s 폴러가
+      # 임계치 웹훅을 동기 발송하는 동안(최대 5s 타임아웃) 다른 스케줄러 주기가 밀리지 않도록
+      # 풀을 3으로 늘린다(#90 — 시뮬레이터 tick까지 추가돼 2로는 여유가 부족).
+      pool-size: 3
 
 server:
   port: 8085
@@ -114,6 +115,37 @@ env-snapshot:
 # 타임아웃만 기능별로 분리한다).
 chat:
   read-timeout: 120s
+
+# 가상 장비 시뮬레이터(contract §4.11, 이슈 #90) — 실기기 부재를 시뮬레이션으로 한정 해제.
+# false면 운영에서 실기기 연동 시 사용 — 빈 폴러가 도는 게 아니라 빈 자체가 안 뜨게
+# @ConditionalOnProperty로 등록을 막는다(SensorSimulatorScheduler).
+smartfarm:
+  simulator:
+    enabled: ${SMARTFARM_SIMULATOR_ENABLED:true}
+
+# 가상 장비 시뮬레이터 tick 주기 + 농장당/전역 1틱 최대 생성 행 수(contract §4.11 사이클 2 정정) —
+# 상한은 센서 대수가 아니라 행 수 기준(장비당 지표 수만큼 곱해지므로 대수 기준은 추정을 왜곡한다).
+# 초과분은 생성하지 않고 WARN 로그만 남긴다(조용히 자르지 않는다).
+sensor-simulator:
+  tick-initial-delay: PT60S
+  tick-fixed-delay: PT60S
+  max-rows-per-farm: 300
+  # 전역 상한(사이클 2 리뷰 P2-4) — 농장당 상한만으로는 농장 생성 상한이 아직 없는 상태(#91)에서
+  # 농장 수만큼 곱해져 무한정 커진다. ⚠️ 이 값은 SensorReadingPurgeScheduler의 purge 처리량
+  # 산정식(최악 유입 = 이 값 × 1,440틱/일)의 유일한 입력 변수다(사이클 2 리뷰 P3-A — 이전에는
+  # @Value 기본값(2000)에만 의존해 운영자가 이 노브를 yml에서 볼 수 없었다). 이 값을 올리면
+  # sensor-reading.purge-batch-size(및 MAX_BATCHES)도 반드시 같이 재산정해야 한다 — 안 하면
+  # purge가 유입을 못 따라가 90일 보존이 조용히 깨진다.
+  max-rows-per-tick: 2000
+
+# sensor_readings 90일 보존 퍼지(SensorReadingPurgeScheduler, contract §4.11) —
+# EnvSnapshotPurgeScheduler와 배치 삭제 구조는 같지만 배치 크기는 재산정했다(사이클 2 리뷰 P1-2 —
+# env_snapshots 대비 유입량이 120~432배라 같은 상수(1000×20배치)로는 보존 90일이 성립하지 않았다.
+# 산정 근거는 SensorReadingPurgeScheduler 클래스 주석 참조).
+sensor-reading:
+  purge-initial-delay: P1D
+  purge-fixed-delay: P1D
+  purge-batch-size: 20000
 
 kma:
   base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0
