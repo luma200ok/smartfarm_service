@@ -103,6 +103,18 @@ env-snapshot:
   purge-fixed-delay: P1D
   purge-batch-size: 1000
 
+# KMA 단기예보(getVilageFcst) 프록시(contract §4.8, 이슈 #56) — 전역 고정 지점(환경 대시보드와 동일
+# 데모 온실 위치). base-url은 공공데이터포털 고정 엔드포인트(시크릿 아님). service-key는 시크릿(운영
+# .env 주입, 평문 커밋 금지) — 디코딩(Decoding) 키 사용 권장(인코딩 키는 쿼리파라미터 인코딩과 겹쳐
+# 이중 인코딩으로 인증 실패 가능). grid-nx/ny도 배포 시 값 등록 필수(기본값 없음).
+kma:
+  base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService2.0
+  service-key: ${KMA_SERVICE_KEY}
+  grid-nx: ${KMA_GRID_NX}
+  grid-ny: ${KMA_GRID_NY}
+  connect-timeout: 3s
+  read-timeout: 5s
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
