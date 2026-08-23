@@ -132,11 +132,13 @@ sensor-simulator:
   max-rows-per-farm: 300
 
 # sensor_readings 90일 보존 퍼지(SensorReadingPurgeScheduler, contract §4.11) —
-# EnvSnapshotPurgeScheduler와 동일 패턴(배치 삭제, 1일 1회)
+# EnvSnapshotPurgeScheduler와 배치 삭제 구조는 같지만 배치 크기는 재산정했다(사이클 2 리뷰 P1-2 —
+# env_snapshots 대비 유입량이 120~432배라 같은 상수(1000×20배치)로는 보존 90일이 성립하지 않았다.
+# 산정 근거는 SensorReadingPurgeScheduler 클래스 주석 참조).
 sensor-reading:
   purge-initial-delay: P1D
   purge-fixed-delay: P1D
-  purge-batch-size: 1000
+  purge-batch-size: 20000
 
 kma:
   base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0
