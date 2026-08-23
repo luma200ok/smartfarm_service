@@ -328,7 +328,9 @@ export interface NutrientSourceWaterResponse {
   ec: number | null;
 }
 
-// calculate(미리보기)·저장(POST) 공용 요청 — name은 저장 시에만 필수(서버가 서비스 계층에서 검증).
+// calculate(미리보기)·저장(POST/PATCH) 공용 요청 — name은 서버가 서비스 계층에서 "저장 시 필수"로
+// 검증한다(계산은 미리보기라 name 불필요). 이 공용 타입만으로는 그 구분이 타입 레벨에서 강제되지
+// 않으므로, 저장 경로는 아래 NutrientRecipeSaveRequest(name 필수)를 대신 쓴다(리뷰 픽스 #65 P2-2).
 export interface NutrientRecipeRequest {
   name?: string;
   stage: NutrientStage;
@@ -337,6 +339,9 @@ export interface NutrientRecipeRequest {
   concentrationFactor: number;
   sourceWater?: NutrientSourceWaterRequest;
 }
+
+// 저장(POST 생성·PATCH 수정) 전용 요청 — name을 컴파일 타임에 필수로 강제한다.
+export type NutrientRecipeSaveRequest = Omit<NutrientRecipeRequest, "name"> & { name: string };
 
 // 코드 상수 프리셋(cropType×stage 1건) — GET /api/nutrient-presets 응답.
 export interface NutrientPresetResponse {

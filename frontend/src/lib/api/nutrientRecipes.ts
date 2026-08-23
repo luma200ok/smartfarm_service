@@ -5,6 +5,7 @@ import type {
   NutrientCalculationResponse,
   NutrientRecipeRequest,
   NutrientRecipeResponse,
+  NutrientRecipeSaveRequest,
   NutrientRecipeSummaryResponse,
   PageResponse,
 } from "@/types";
@@ -22,9 +23,10 @@ export async function calculateNutrientRecipe(
   });
 }
 
+// name 필수(NutrientRecipeSaveRequest) — calculate와 달리 저장 경로라 타입 레벨에서 강제한다.
 export async function createNutrientRecipe(
   farmId: number | string,
-  payload: NutrientRecipeRequest
+  payload: NutrientRecipeSaveRequest
 ): Promise<NutrientRecipeResponse> {
   return authFetch<NutrientRecipeResponse>(ENDPOINTS.farms.nutrientRecipes(farmId), {
     method: "POST",
@@ -50,11 +52,11 @@ export async function getNutrientRecipe(
   return authFetch<NutrientRecipeResponse>(ENDPOINTS.farms.nutrientRecipeDetail(farmId, recipeId));
 }
 
-// 작성자 본인만(서버 N002로 최종 판정 — 버튼 노출은 보조).
+// 작성자 본인만(서버 N002로 최종 판정 — 버튼 노출은 보조). name 필수(NutrientRecipeSaveRequest).
 export async function updateNutrientRecipe(
   farmId: number | string,
   recipeId: number | string,
-  payload: NutrientRecipeRequest
+  payload: NutrientRecipeSaveRequest
 ): Promise<NutrientRecipeResponse> {
   return authFetch<NutrientRecipeResponse>(ENDPOINTS.farms.nutrientRecipeDetail(farmId, recipeId), {
     method: "PATCH",

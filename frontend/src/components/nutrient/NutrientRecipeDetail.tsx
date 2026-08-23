@@ -5,23 +5,18 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import NutrientCalculationResult from "./NutrientCalculationResult";
 import NutrientRecipeFormFields, { type NutrientTargetFieldsState } from "./NutrientRecipeFormFields";
+import { useNutrientRecipeForm } from "./useNutrientRecipeForm";
 import FormField from "@/components/ui/FormField";
 import { NUTRIENT_STAGE_LABELS } from "@/constants";
 import { getMe } from "@/lib/api/auth";
 import { isNotFound, resolveErrorMessage, resolveNutrientCalculationErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
 import { deleteNutrientRecipe, getNutrientRecipe, updateNutrientRecipe } from "@/lib/api/nutrientRecipes";
-import type { FarmResponse, NutrientRecipeRequest, NutrientRecipeResponse, NutrientStage } from "@/types";
+import type { FarmResponse, NutrientRecipeResponse } from "@/types";
 
 interface NutrientRecipeDetailProps {
   farmId: string;
   recipeId: string;
-}
-
-function toNumber(v: string): number | null {
-  if (v.trim() === "") return null;
-  const n = Number(v);
-  return Number.isNaN(n) ? null : n;
 }
 
 function toTargetFields(target: NutrientRecipeResponse["target"]): NutrientTargetFieldsState {
@@ -38,6 +33,7 @@ function toTargetFields(target: NutrientRecipeResponse["target"]): NutrientTarge
 // 저장된 양액 레시피 상세(이슈 #65) — 계산 결과 재표시(계산 스냅샷 그대로, 재계산 없음) +
 // 작성자 본인이면 수정, 작성자 본인 또는 OWNER면 삭제. 버튼 노출은 보조 UX일 뿐이고
 // 최종 권한 판정은 항상 서버 N002(FarmLogList·farmLogs.ts와 동일한 "서버가 최종 판정" 관례).
+// 폼 필드 상태·요청 조립은 useNutrientRecipeForm(NutrientCalculator와 공유, 리뷰 픽스 #65 P2-1).
 export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecipeDetailProps) {
   const router = useRouter();
   const [recipe, setRecipe] = useState<NutrientRecipeResponse | null>(null);
@@ -48,13 +44,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
-  const [stage, setStage] = useState<NutrientStage>("SEEDLING");
-  const [target, setTarget] = useState<NutrientTargetFieldsState>({ n: "", p: "", k: "", ca: "", mg: "", s: "" });
-  const [tankVolumeL, setTankVolumeL] = useState("");
-  const [concentrationFactor, setConcentrationFactor] = useState("");
-  const [sourceWaterCa, setSourceWaterCa] = useState("");
-  const [sourceWaterMg, setSourceWaterMg] = useState("");
-  const [sourceWaterEc, setSourceWaterEc] = useState("");
+  const form = useNutrientRecipeForm();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -64,13 +54,15 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
   function applyRecipe(data: NutrientRecipeResponse) {
     setRecipe(data);
     setName(data.name);
-    setStage(data.stage);
-    setTarget(toTargetFields(data.target));
-    setTankVolumeL(String(data.tankVolumeL));
-    setConcentrationFactor(String(data.concentrationFactor));
-    setSourceWaterCa(data.sourceWater?.ca != null ? String(data.sourceWater.ca) : "");
-    setSourceWaterMg(data.sourceWater?.mg != null ? String(data.sourceWater.mg) : "");
-    setSourceWaterEc(data.sourceWater?.ec != null ? String(data.sourceWater.ec) : "");
+    form.reset({
+      stage: data.stage,
+      target: toTargetFields(data.target),
+      tankVolumeL: String(data.tankVolumeL),
+      concentrationFactor: String(data.concentrationFactor),
+      sourceWaterCa: data.sourceWater?.ca != null ? String(data.sourceWater.ca) : "",
+      sourceWaterMg: data.sourceWater?.mg != null ? String(data.sourceWater.mg) : "",
+      sourceWaterEc: data.sourceWater?.ec != null ? String(data.sourceWater.ec) : "",
+    });
   }
 
   useEffect(() => {
@@ -101,6 +93,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [farmId, recipeId]);
 
   if (notFound) {
@@ -131,43 +124,11 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
     e.preventDefault();
     setSaveError(null);
 
-    const n = toNumber(target.n);
-    const p = toNumber(target.p);
-    const k = toNumber(target.k);
-    const ca = toNumber(target.ca);
-    const mg = toNumber(target.mg);
-    const s = toNumber(target.s);
-    const tank = toNumber(tankVolumeL);
-    const factor = toNumber(concentrationFactor);
-    if (
-      n === null ||
-      p === null ||
-      k === null ||
-      ca === null ||
-      mg === null ||
-      s === null ||
-      tank === null ||
-      factor === null
-    ) {
+    const payload = form.buildSaveRequest(name);
+    if (!payload) {
       setSaveError("모든 목표 농도·탱크 용량·농축배율을 입력해주세요.");
       return;
     }
-
-    const swCa = toNumber(sourceWaterCa);
-    const swMg = toNumber(sourceWaterMg);
-    const swEc = toNumber(sourceWaterEc);
-    const hasSourceWater = swCa !== null || swMg !== null || swEc !== null;
-
-    const payload: NutrientRecipeRequest = {
-      name,
-      stage,
-      target: { n, p, k, ca, mg, s },
-      tankVolumeL: tank,
-      concentrationFactor: factor,
-      sourceWater: hasSourceWater
-        ? { ca: swCa ?? undefined, mg: swMg ?? undefined, ec: swEc ?? undefined }
-        : undefined,
-    };
 
     setSaving(true);
     try {
@@ -252,21 +213,21 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
             onChange={(e) => setName(e.target.value)}
           />
           <NutrientRecipeFormFields
-            stage={stage}
-            onStageChange={setStage}
-            target={target}
-            onTargetChange={setTarget}
-            tankVolumeL={tankVolumeL}
-            onTankVolumeLChange={setTankVolumeL}
-            concentrationFactor={concentrationFactor}
-            onConcentrationFactorChange={setConcentrationFactor}
-            sourceWaterCa={sourceWaterCa}
-            sourceWaterMg={sourceWaterMg}
-            sourceWaterEc={sourceWaterEc}
+            stage={form.stage}
+            onStageChange={form.setStage}
+            target={form.target}
+            onTargetChange={form.setTarget}
+            tankVolumeL={form.tankVolumeL}
+            onTankVolumeLChange={form.setTankVolumeL}
+            concentrationFactor={form.concentrationFactor}
+            onConcentrationFactorChange={form.setConcentrationFactor}
+            sourceWaterCa={form.sourceWaterCa}
+            sourceWaterMg={form.sourceWaterMg}
+            sourceWaterEc={form.sourceWaterEc}
             onSourceWaterChange={(field, v) => {
-              if (field === "ca") setSourceWaterCa(v);
-              else if (field === "mg") setSourceWaterMg(v);
-              else setSourceWaterEc(v);
+              if (field === "ca") form.setSourceWaterCa(v);
+              else if (field === "mg") form.setSourceWaterMg(v);
+              else form.setSourceWaterEc(v);
             }}
           />
           {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
