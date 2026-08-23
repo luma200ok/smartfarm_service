@@ -7,3 +7,11 @@ CREATE TABLE device_metrics (
     metric    VARCHAR(20) NOT NULL,
     PRIMARY KEY (device_id, metric)
 );
+
+-- 백필(사이클 2 리뷰 P2-1): #89가 이미 main에 배포됐으므로 이 마이그레이션이 적용되는 시점에
+-- kind='SENSOR'인 기존 장비가 있을 수 있다. 없으면 자연히 no-op이라 운영 상태와 무관하게 안전하다.
+-- 백필 없이 두면 device_metrics가 빈 채로 시작해 updateDevice의 null=미변경 병합이 빈 Set을
+-- 재검증해 C001로 거부하고(이름 하나 고치는 PATCH까지 막힘), 시뮬레이터도 에러 없이 조용히
+-- 0행 생성한다(사용자에겐 "센서 무반응"으로만 보임). 기본 지표는 TEMPERATURE로 둔다.
+INSERT INTO device_metrics (device_id, metric)
+SELECT id, 'TEMPERATURE' FROM devices WHERE kind = 'SENSOR';
