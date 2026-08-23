@@ -223,7 +223,9 @@
 - **Device** `{id, farmId, zoneId?, rackId?, rackLevelId?, name, kind, model?, serial?, status, lastSeenAt?, calibrationDueAt?, installedOn?}` — soft delete
   - `kind`: `SENSOR | CONTROLLER | GATEWAY` (프리뷰 "센서/제어기/통신 장치")
   - `status`: `NORMAL | WARNING | FAULT | OFFLINE` (프리뷰 statusTone ok/warning/critical + 통신두절)
+  - `metrics`: **`kind=SENSOR`는 측정 지표를 1개 이상 선언한다**(§4.11 `SensorMetric` 7종의 부분집합). 2026-08-23 사이클 2에서 추가 — 초판에 이 필드가 없어 구현이 센서 1대를 **7종 복합 프로브**로 해석했고, 적재량 추정(§4.11)이 7배 틀어졌다. `CONTROLLER`/`GATEWAY`는 비운다. SENSOR인데 비었거나 비-SENSOR인데 채워졌으면 C001
   - 위치는 3개 FK 모두 nullable — 게이트웨이는 존 단위, 센서는 층 단위로 달리 매달린다. **최소 하나는 필수**(전부 null이면 C001)
+  - ⚠️ **부모 FK 자동 채움**(2026-08-23 사이클 2 반영 — 초판 누락): 깊은 쪽이 주어지면 **상위를 유도해 함께 저장한다**(`rackLevelId` → `rackId`·`zoneId`, `rackId` → `zoneId`). 명시값이 함께 오면 자동 채움 대신 계층 정합성 ①②③으로 검증한다. 따라서 **저장되는 삼중조는 항상 완전하다**. 이것이 없으면 `rackLevelId`만 채운 센서의 측정값이 `zoneId`/`rackId` null로 적재되어 **존·랙 스코프 조회에서 조용히 누락**된다(§4.11이 위치를 그대로 복사하기 때문)
   - `serial`은 농장 스코프 partial unique(활성 행), null 허용
 
 ### 엔드포인트
@@ -262,7 +264,7 @@
 | E001 | 404 | 장비 없음(타 농장 소속 포함) |
 | E002 | 409 | 장비 시리얼 중복(농장 내) |
 
-- **마이그레이션**: V14 `zones`·`racks`·`rack_levels`·`devices` + `farms.planted_on`
+- **마이그레이션**: V14 `zones`·`racks`·`rack_levels`·`devices` + `farms.planted_on` · **V16** `device_metrics`(사이클 2에서 추가 — V15는 `sensor_readings`가 선점)
 
 ## 4.11 센서 측정값 (2026-08-23 확정, 이슈 #90 — 디자인 프리뷰 갭 대응 사이클 2)
 
@@ -288,10 +290,11 @@
 ### ⚠️ 가상 장비 시뮬레이터 (실기기 부재)
 실기기·실센서가 없으므로 측정값은 **백엔드가 생성한다**. `docs/STATUS.md`의 기존 "원격제어·EC/pH 실시간 제외(실기기 부재)" 결정을 **시뮬레이션 전제로 한정 해제**한다.
 
-- `@Scheduled(fixedDelay=60s)` — `kind=SENSOR`이고 `status != OFFLINE`인 장비마다 1틱 생성
+- `@Scheduled(fixedDelay=60s)` — `kind=SENSOR`이고 `status != OFFLINE`인 장비마다 1틱 생성. **생성 지표는 그 장비의 `metrics` 선언분만**(§4.10) — 전 지표를 일괄 생성하지 않는다
 - 값 = **일주기 기저(sin) + 층별 오프셋 + 결정적 노이즈**. 노이즈 시드는 `(deviceId, measuredAt 분)` 해시 — 재기동해도 파형이 튀지 않고, 테스트에서 재현 가능
 - `smartfarm.simulator.enabled` 플래그(기본 true, 운영에서 실기기 연동 시 false). **비활성 시 폴러 자체가 뜨지 않는다**
-- ⚠️ **적재량 상한**(#91 교훈 선반영 — 사이클 1에서 무상한 조회를 놓쳐 후속으로 뺐다): 센서 N개 × 60s × 90일 = **N × 129,600행**이고 장비 생성 상한은 아직 없다(#91). 시뮬레이터에 **1틱당 생성 행 수 상한**(예: 농장당 센서 200개)을 두고, 초과분은 생성하지 않고 **WARN 로그로 남긴다**(조용히 잘라내지 않는다)
+- ⚠️ **적재량 상한**(#91 교훈 선반영 + 사이클 2 정정): 상한은 **센서 대수가 아니라 1틱당 생성 행 수**로 센다 — 센서 대수로 세면 장비당 지표 수만큼 곱해져 추정이 빗나간다(초판이 이 실수를 했다: 센서 200개 상한을 두고 행 수는 1,400행/틱이 됐다). **농장당 1틱 최대 300행**, 초과분은 생성하지 않고 **WARN 로그**(조용히 잘라내지 않는다).
+  - 참고 추정: 프리뷰 규모(12랙×5층=60층, 층당 온습도 센서 1대=2지표) → 120행/틱 → 60s·90일 = **15.5M행**. 지표 선언 없이 7종 복합 프로브로 두면 같은 규모가 54M행이 된다
 - 응답 DTO에 `simulated: true` 를 실어 프론트가 화면에 시뮬레이션임을 표기할 수 있게 한다 — 실데이터인 척하지 않는다
 
 ### 엔드포인트
@@ -303,6 +306,7 @@
 
 - **다운샘플**: 24h=원본(60s) / 7d=30분 평균 / 30d=2시간 평균 — **§4.6 규칙 그대로 재사용**(DB 집계, 빈 구간은 점 생략)
 - **ReadingSeriesResponse** `{range, scope, simulated, series: [{metric, unit, points: [{at, value}]}]}`
+- **LevelSummaryResponse** `{rackId, code, range, simulated, levels: [{levelNo, label, metrics: [{metric, unit, average, deviationPercent, state}]}]}` — 층×지표 그리드(2026-08-23 사이클 2에서 계약 승격). 요청에 `metric` 파라미터가 없으므로 층마다 보유 지표 전부를 싣는다. 프리뷰 데이터 화면의 층별 비교표(층 / 온도 / 습도 / EC / PPFD / 편차)와 1:1 대응
 - **ReadingMatrixResponse** `{metric, unit, simulated, racks: [{rackId, code, levels: [{levelNo, value?, state}]}]}` — `state`: `OK | WARNING | CRITICAL | IDLE`(프리뷰 `CellState`와 1:1). 판정 기준은 `farm_env_thresholds`가 아직 온·습도만 다루므로 **1차는 지표별 상수 기본범위**를 쓰고, 임계치 확장은 사이클 3(알람)으로 미룬다
 - ⚠️ **스코프 파라미터도 리소스 소속을 검증한다**(사이클 1 P3 반복 방지): `scope=zone:{id}`·`rack:{id}`·`level:{id}`의 id와 `?zoneId=`·`?rackId=`는 **query 파라미터라도 path와 동일하게 취급**한다 — 농장 소속을 확인하고 미소속은 **404(R001~R003)**. 빈 배열로 뭉개지 않는다(사이클 1의 `listDevices` `zoneId`가 정확히 이 불일치로 지적됐다). `scope` 문자열 형식 위반은 C001
 - ⚠️ **집계의 이중성 정의**: 한 층에 같은 metric 센서가 여러 대 있을 수 있다. 집계는 **① 같은 시각 버킷 내 device 간 평균 → ② 시간 버킷 평균** 순서로 한다(순서를 안 정하면 센서 대수가 많은 층에 가중치가 붙는다). `level-summary`의 "층별 평균"도 동일
