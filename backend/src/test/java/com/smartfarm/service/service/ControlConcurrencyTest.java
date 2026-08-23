@@ -17,6 +17,7 @@ import com.smartfarm.service.entity.ControlChangeKind;
 import com.smartfarm.service.entity.ControlChangeStatus;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.Device;
 import com.smartfarm.service.entity.DeviceStatus;
 import com.smartfarm.service.entity.OperationMode;
 import com.smartfarm.service.entity.SensorMetric;
@@ -74,6 +75,9 @@ class ControlConcurrencyTest extends IntegrationTestSupport {
 
     @Autowired
     private DeviceRepository deviceRepository;
+
+    @Autowired
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     private record ConcurrentResult<T>(List<T> successes, List<Throwable> failures) {
     }
@@ -235,6 +239,76 @@ class ControlConcurrencyTest extends IntegrationTestSupport {
         assertThat(((CustomException) result.failures().get(0)).getErrorCode()).isEqualTo(ErrorCode.CT004);
         assertThat(controlChangeRepository.countByZoneIdAndStatus(fixture.zoneId(), ControlChangeStatus.PENDING))
                 .isEqualTo(ControlService.MAX_PENDING_PER_ZONE);
+    }
+
+    // ── ⑥ 존 삭제 vs 큐 적재 (락 안쪽 존 재확인) ─────────────
+
+    @Test
+    @DisplayName("존 삭제와 큐 적재 경합 — 삭제된 존에 PENDING이 남지 않는다(락 후 존 재확인)")
+    void enqueueRacingWithZoneDeletionLeavesNoOrphanPending() throws Exception {
+        Fixture fixture = fixture("존삭제경합");
+        ControlChangeRequest request = new ControlChangeRequest(
+                ControlChangeKind.SETPOINT, SensorMetric.TEMPERATURE, 24.0, null, null);
+
+        ConcurrentResult<Object> result = runConcurrently(List.of(
+                () -> controlService.enqueueChange(fixture.farmId(), fixture.ownerId(), fixture.zoneId(), request),
+                () -> {
+                    zoneService.deleteZone(fixture.farmId(), fixture.ownerId(), fixture.zoneId());
+                    return "deleted";
+                }));
+
+        // 적재는 성공(삭제 전)하거나 R001(삭제 후)이다 — 그 외 실패는 없어야 한다.
+        assertThat(result.failures()).allSatisfy(failure -> {
+            assertThat(failure).isInstanceOf(CustomException.class);
+            assertThat(((CustomException) failure).getErrorCode()).isEqualTo(ErrorCode.R001);
+        });
+
+        // 핵심 불변식: 삭제된 존을 참조하는 PENDING이 남으면 안 된다. 남으면 모든 표면이 R001로 막아
+        // 조회·폐기가 불가능하고(캐스케이드는 이미 지나갔다) control_changes엔 purge도 없어 영구 잔존한다.
+        assertThat(controlChangeRepository.findByZoneIdAndStatusOrderByIdAsc(
+                fixture.zoneId(), ControlChangeStatus.PENDING))
+                .as("락 획득 후 존 재확인이 없으면 삭제된 존에 PENDING이 INSERT된다")
+                .isEmpty();
+    }
+
+    // ── ⑦ 제어 apply vs 장비 레지스트리 편집 (컬럼 덮어쓰기) ──
+
+    @Test
+    @DisplayName("apply가 장비 상태를 쓰는 동안 OWNER가 바꾼 장비명을 되돌려 쓰지 않는다(@DynamicUpdate)")
+    void applyDoesNotOverwriteConcurrentlyEditedDeviceColumns() throws Exception {
+        Fixture fixture = fixture("컬럼덮어쓰기");
+        long deviceId = createController(fixture, "순환팬1");
+        controlService.changeMode(fixture.farmId(), fixture.ownerId(), fixture.zoneId(),
+                new ControlModeRequest(OperationMode.MANUAL));
+        long changeId = enqueueDeviceToggle(fixture, deviceId, DeviceStatus.OFF);
+
+        // T1(제어 apply 트랜잭션) 안에서 장비를 SELECT한 시점과 flush 시점 사이에, T2(레지스트리 PATCH)가
+        // 이름을 바꿔 커밋하는 인터리빙을 결정적으로 재현한다 — 전 컬럼 UPDATE면 T1이 옛 이름을 되쓴다.
+        transactionTemplate.executeWithoutResult(status -> {
+            deviceRepository.findByIdAndFarmId(deviceId, fixture.farmId()).orElseThrow();  // T1 스냅샷 확보
+            runInSeparateThread(() -> deviceService.updateDevice(fixture.farmId(), fixture.ownerId(), deviceId,
+                    new DeviceRequest(null, null, null, "순환팬1-교체", null, null, null, null, null, null, null)));
+            controlService.apply(fixture.farmId(), fixture.ownerId(), fixture.zoneId(),
+                    new ControlApplyRequest(List.of(changeId)));
+        });
+
+        Device device = deviceRepository.findById(deviceId).orElseThrow();
+        assertThat(device.getStatus()).isEqualTo(DeviceStatus.OFF);
+        assertThat(device.getName())
+                .as("전 컬럼 UPDATE면 일반 멤버의 apply가 OWNER의 레지스트리 편집을 조용히 되돌린다")
+                .isEqualTo("순환팬1-교체");
+    }
+
+    /** 별도 스레드 = 별도 트랜잭션·커넥션 — 호출이 끝날 때까지 기다려 인터리빙 순서를 고정한다. */
+    private void runInSeparateThread(Runnable action) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            executor.submit(action).get(30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException("별도 트랜잭션 실행 실패", e);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     // ── 픽스처 ─────────────────────────────────────────────

@@ -53,6 +53,36 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("레지스트리로는 status=OFF를 설정할 수 없다 — 생성·수정 모두 400 C001(contract §4.10 사이클 3)")
+    void deviceStatusOffCannotBeSetThroughRegistry() throws Exception {
+        String token = signupAndLogin("농장주-OFF금지");
+        long farmId = createFarm(token, "OFF금지 농장");
+        long zoneId = createZone(token, farmId, "A동");
+
+        // 생성 시 OFF 지정 거부
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "순환팬", DeviceKind.CONTROLLER,
+                                null, null, DeviceStatus.OFF, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        long deviceId = createDevice(token, farmId, zoneId, null, null, "온도센서");
+
+        // PATCH로 OFF 지정 거부 — 이 경로엔 모드 게이트·큐·존 락·감사 이력이 없어서, 허용하면
+        // 비상 정지로 꺼둔 장비를 감사 없이 되살리고 §4.12 동시성 3(존 단위 직렬화)을 우회한다.
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, null, null, null, null, DeviceStatus.OFF, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("위치(존·랙·층) 전부 null이면 400 C001을 반환한다")
     void createDeviceWithoutLocationFails() throws Exception {
         String token = signupAndLogin("농장주-장비위치없음");

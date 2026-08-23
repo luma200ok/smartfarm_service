@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 import com.smartfarm.service.IntegrationTestSupport;
 import com.smartfarm.service.dto.ControlApplyRequest;
 import com.smartfarm.service.dto.ControlChangeRequest;
+import com.smartfarm.service.dto.ControlModeRequest;
 import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.SignupRequest;
@@ -14,9 +15,11 @@ import com.smartfarm.service.entity.ControlChangeKind;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
+import com.smartfarm.service.entity.OperationMode;
 import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.entity.SensorReading;
 import com.smartfarm.service.entity.SensorSource;
+import com.smartfarm.service.repository.DeviceRepository;
 import com.smartfarm.service.repository.SensorReadingRepository;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -66,6 +69,9 @@ class SensorSimulatorControlIntegrationTest extends IntegrationTestSupport {
     @Autowired
     private SensorReadingRepository sensorReadingRepository;
 
+    @Autowired
+    private DeviceRepository deviceRepository;
+
     @Test
     @DisplayName("적용된 목표값이 시뮬레이터 기저를 대체하고 직전 값에서 tick당 일정 비율로 수렴한다")
     void appliedSetpointConvergesFromPreviousValue() {
@@ -87,21 +93,47 @@ class SensorSimulatorControlIntegrationTest extends IntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("꺼진 제어기(kind=CONTROLLER·status=OFF)가 있는 존은 목표로 수렴하지 않고 자연 표류한다")
-    void zoneWithOffControllerDoesNotConverge() {
+    @DisplayName("꺼진 제어기가 있는 존은 목표로 수렴하지 않고, 자연값 쪽으로 같은 비율로 표류한다(계단 없음)")
+    void zoneWithOffControllerDriftsBackToNaturalWithoutStep() {
         Fixture fixture = fixture("자연표류");
         long sensorId = createSensor(fixture, "온도센서");
         long controllerId = createController(fixture, "순환팬");
         seedPreviousReading(fixture, sensorId, 10.0);
         applySetpoint(fixture, SensorMetric.TEMPERATURE, 30.0);
-        turnOffController(fixture, controllerId);
+        turnOffDevice(fixture, controllerId);
 
         sensorSimulatorService.tick();
 
         SensorReading reading = latestReading(sensorId);
         double natural = SensorSimulationProfile.simulate(
                 SensorMetric.TEMPERATURE, 1, sensorId, reading.getMeasuredAt());
-        assertThat(reading.getValue()).isEqualTo(natural, within(1e-9));
+        double expected = SensorSimulationProfile.converge(
+                SensorMetric.TEMPERATURE, 10.0, natural, sensorId, reading.getMeasuredAt());
+        assertThat(reading.getValue()).isEqualTo(expected, within(1e-9));
+        // 목표(30)로 가지도, 자연값(≈22)으로 점프하지도 않는다 — 직전 10에서 자연값 쪽 한 걸음.
+        assertThat(reading.getValue()).isLessThan(natural);
+        assertThat(reading.getValue()).isGreaterThan(10.0);
+    }
+
+    @Test
+    @DisplayName("비상 정지 후에도 센서는 계속 측정한다 — 제어기만 OFF, 측정 스트림은 살아 있다(리뷰 P1)")
+    void sensorsKeepMeasuringAfterEmergencyStop() {
+        Fixture fixture = fixture("정지후측정");
+        long sensorId = createSensor(fixture, "온도센서");
+        long controllerId = createController(fixture, "순환팬");
+
+        controlService.emergencyStop(fixture.farmId(), fixture.ownerId());
+        sensorSimulatorService.tick();
+
+        // 제어기는 꺼졌지만 센서는 NORMAL 그대로이고 측정값이 계속 생성된다.
+        assertThat(deviceRepository.findById(controllerId).orElseThrow().getStatus())
+                .isEqualTo(DeviceStatus.OFF);
+        assertThat(deviceRepository.findById(sensorId).orElseThrow().getStatus())
+                .isEqualTo(DeviceStatus.NORMAL);
+        assertThat(sensorReadingRepository.findAll().stream()
+                .anyMatch(reading -> reading.getDeviceId().equals(sensorId)))
+                .as("비상 정지가 센서까지 끄면 농장 전체 측정이 영구 정지한다(복구 경로도 없다)")
+                .isTrue();
     }
 
     @Test
@@ -109,8 +141,8 @@ class SensorSimulatorControlIntegrationTest extends IntegrationTestSupport {
     void offSensorProducesNoReadings() {
         Fixture fixture = fixture("센서끄기");
         long sensorId = createSensor(fixture, "온도센서");
-        deviceService.updateDevice(fixture.farmId(), fixture.ownerId(), sensorId, new DeviceRequest(
-                null, null, null, null, null, null, null, DeviceStatus.OFF, null, null, null));
+        // OFF는 레지스트리 PATCH로 지정할 수 없다(§4.10 사이클 3) — 반드시 제어 경로를 거친다.
+        turnOffDevice(fixture, sensorId);
 
         sensorSimulatorService.tick();
 
@@ -180,13 +212,15 @@ class SensorSimulatorControlIntegrationTest extends IntegrationTestSupport {
                 new ControlApplyRequest(List.of(changeId)));
     }
 
-    /** 제어기 끄기 — MANUAL 전환(목표값은 이미 적용된 뒤다) 후 장비 토글 적용. */
-    private void turnOffController(Fixture fixture, long controllerId) {
+    /**
+     * 장비 끄기 — MANUAL 전환(목표값이 있다면 이미 적용된 뒤다) 후 장비 토글 큐 적재·적용.
+     * OFF는 제어 경로로만 설정할 수 있다(contract §4.10 사이클 3 — 레지스트리 PATCH는 C001).
+     */
+    private void turnOffDevice(Fixture fixture, long deviceId) {
         controlService.changeMode(fixture.farmId(), fixture.ownerId(), fixture.zoneId(),
-                new com.smartfarm.service.dto.ControlModeRequest(
-                        com.smartfarm.service.entity.OperationMode.MANUAL));
+                new ControlModeRequest(OperationMode.MANUAL));
         long changeId = controlService.enqueueChange(fixture.farmId(), fixture.ownerId(), fixture.zoneId(),
-                new ControlChangeRequest(ControlChangeKind.DEVICE, null, null, controllerId,
+                new ControlChangeRequest(ControlChangeKind.DEVICE, null, null, deviceId,
                         DeviceStatus.OFF)).id();
         controlService.apply(fixture.farmId(), fixture.ownerId(), fixture.zoneId(),
                 new ControlApplyRequest(List.of(changeId)));

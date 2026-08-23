@@ -346,6 +346,22 @@ class ControlApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("적용: expectedChangeIds가 큐 상한(50)을 넘으면 400 C001 — 대용량 배열로 힙을 밀어넣을 수 없다")
+    void applyRejectsOversizedExpectedIds() throws Exception {
+        String token = signupAndLogin("제어-대용량ids");
+        long farmId = createFarm(token, "대용량ids 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        List<Long> oversized = java.util.stream.LongStream.rangeClosed(1, 51).boxed().toList();
+
+        mockMvc.perform(post(controlPath(farmId, zoneId) + "/apply")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ControlApplyRequest(oversized))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("적용: 빈 큐를 빈 expectedChangeIds로 적용하면 0건 성공이고 이력은 남지 않는다")
     void applyEmptyQueue() throws Exception {
         String token = signupAndLogin("제어-빈큐적용");
@@ -392,6 +408,52 @@ class ControlApiIntegrationTest extends FarmTestSupport {
         JsonNode stateA = readJson(getControlState(token, farmId, zoneA));
         assertThat(deviceStatusOf(stateA, deviceA)).isEqualTo("OFF");
         assertThat(deviceStatusOf(readJson(getControlState(token, farmId, zoneB)), deviceB)).isEqualTo("OFF");
+    }
+
+    @Test
+    @DisplayName("비상 정지는 제어기(kind=CONTROLLER)만 끈다 — 센서·게이트웨이는 그대로 측정·통신한다")
+    void emergencyStopOnlyStopsControllers() throws Exception {
+        String token = signupAndLogin("제어-제어기만");
+        long farmId = createFarm(token, "제어기만 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long controllerId = createController(token, farmId, zoneId, "순환팬");
+        long sensorId = createDevice(token, farmId, zoneId, null, null, "온도센서");
+        long gatewayId = createGateway(token, farmId, zoneId, "게이트웨이");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/control/emergency-stop")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stoppedDeviceCount").value(1));
+
+        JsonNode state = readJson(getControlState(token, farmId, zoneId));
+        assertThat(deviceStatusOf(state, controllerId)).isEqualTo("OFF");
+        assertThat(deviceStatusOf(state, sensorId)).isEqualTo("NORMAL");
+        assertThat(deviceStatusOf(state, gatewayId)).isEqualTo("NORMAL");
+    }
+
+    @Test
+    @DisplayName("장비 요약: 비상 정지 후 off 대수가 KPI에 잡힌다 — total = normal+warning+faultOrOffline+off")
+    void deviceSummaryReportsOffCount() throws Exception {
+        String token = signupAndLogin("제어-요약off");
+        long farmId = createFarm(token, "요약off 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        createController(token, farmId, zoneId, "순환팬1");
+        createController(token, farmId, zoneId, "순환팬2");
+        createDevice(token, farmId, zoneId, null, null, "온도센서");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/control/emergency-stop")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/devices/summary")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(3))
+                .andExpect(jsonPath("$.normal").value(1))
+                .andExpect(jsonPath("$.warning").value(0))
+                .andExpect(jsonPath("$.faultOrOffline").value(0))
+                // off가 없으면 "전 제어기 정지"가 화면에서 "이상 없음"으로 읽힌다.
+                .andExpect(jsonPath("$.off").value(2));
     }
 
     @Test
@@ -572,6 +634,18 @@ class ControlApiIntegrationTest extends FarmTestSupport {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new DeviceRequest(
                                 zoneId, null, null, name, DeviceKind.CONTROLLER,
+                                null, null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
+    private long createGateway(String token, long farmId, long zoneId, String name) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, name, DeviceKind.GATEWAY,
                                 null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
