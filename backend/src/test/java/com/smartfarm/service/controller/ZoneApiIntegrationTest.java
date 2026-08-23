@@ -213,6 +213,81 @@ class ZoneApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.code").value("R001"));
     }
 
+    // ── 삭제 시 하위 활성 장비 잔존 거부 (리뷰 P1 #89 — 계약 초판 결함 보정) ────────
+    // 장비 위치 FK 3경로(zoneId 직속·rackId 직속·rackLevelId) 전부 각각 검증한다.
+
+    @Test
+    @DisplayName("존 직속(랙 아님) 장비가 있으면 존 삭제가 409 R004로 거부된다")
+    void deleteZoneWithDeviceDirectlyOnZoneConflict() throws Exception {
+        String token = signupAndLogin("농장주-존삭제거부존직속");
+        long farmId = createFarm(token, "존삭제거부존직속 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        createDevice(token, farmId, zoneId, null, null, "존직속게이트웨이");
+
+        mockMvc.perform(delete("/api/farms/" + farmId + "/zones/" + zoneId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
+
+        // 거부 후에도 존이 트리에 그대로 살아있어야 한다(부분 반영 금지)
+        mockMvc.perform(get("/api/farms/" + farmId + "/zones")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.zones.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("존 하위 랙 직속(층 아님) 장비가 있으면 존 삭제가 409 R004로 거부된다")
+    void deleteZoneWithDeviceOnRackConflict() throws Exception {
+        String token = signupAndLogin("농장주-존삭제거부랙직속");
+        long farmId = createFarm(token, "존삭제거부랙직속 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 2);
+        createDevice(token, farmId, null, rackId, null, "랙직속제어기");
+
+        mockMvc.perform(delete("/api/farms/" + farmId + "/zones/" + zoneId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
+    }
+
+    @Test
+    @DisplayName("존 하위 랙의 층에 매달린 장비가 있으면 존 삭제가 409 R004로 거부된다")
+    void deleteZoneWithDeviceOnLevelConflict() throws Exception {
+        String token = signupAndLogin("농장주-존삭제거부층");
+        long farmId = createFarm(token, "존삭제거부층 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        createRack(token, farmId, zoneId, "R1", 2);
+        long levelId = findLevelId(token, farmId, "R1", 1);
+        createDevice(token, farmId, null, null, levelId, "층센서");
+
+        mockMvc.perform(delete("/api/farms/" + farmId + "/zones/" + zoneId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("R004"));
+    }
+
+    /** 트리 조회에서 rackCode·levelNo로 rackLevelId를 찾는다(장비 부착 테스트용, RackApiIntegrationTest와 동일 패턴). */
+    private long findLevelId(String token, long farmId, String rackCode, int levelNo) throws Exception {
+        var result = mockMvc.perform(get("/api/farms/" + farmId + "/zones")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        var zones = readJson(result).get("zones");
+        for (var zone : zones) {
+            for (var rack : zone.get("racks")) {
+                if (rack.get("code").asText().equals(rackCode)) {
+                    for (var level : rack.get("levels")) {
+                        if (level.get("levelNo").asInt() == levelNo) {
+                            return level.get("id").asLong();
+                        }
+                    }
+                }
+            }
+        }
+        throw new IllegalStateException("층을 찾을 수 없음: " + rackCode + "/" + levelNo);
+    }
+
     // ── 랙 생성(존 하위) ─────────────────────────────────────
 
     @Test
