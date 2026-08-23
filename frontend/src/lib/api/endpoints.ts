@@ -37,6 +37,17 @@ export const ENDPOINTS = {
     nutrientRecipes: (farmId: number | string) => `/api/farms/${farmId}/nutrient-recipes`,
     nutrientRecipeDetail: (farmId: number | string, recipeId: number | string) =>
       `/api/farms/${farmId}/nutrient-recipes/${recipeId}`,
+    // 존·랙 구조 (contract §4.10, 이슈 #89) — 조회만 사용(존·랙 CRUD는 이번 사이클 범위 밖)
+    zones: (farmId: number | string) => `/api/farms/${farmId}/zones`,
+    // 장비/센서 레지스트리 (contract §4.10, 이슈 #89)
+    devices: (farmId: number | string) => `/api/farms/${farmId}/devices`,
+    deviceSummary: (farmId: number | string) => `/api/farms/${farmId}/devices/summary`,
+    deviceDetail: (farmId: number | string, deviceId: number | string) =>
+      `/api/farms/${farmId}/devices/${deviceId}`,
+    // 센서 측정값 (contract §4.11, 이슈 #90)
+    readingsSeries: (farmId: number | string) => `/api/farms/${farmId}/readings/series`,
+    readingsLatest: (farmId: number | string) => `/api/farms/${farmId}/readings/latest`,
+    readingsLevelSummary: (farmId: number | string) => `/api/farms/${farmId}/readings/level-summary`,
   },
   invitations: {
     accept: "/api/invitations/accept",

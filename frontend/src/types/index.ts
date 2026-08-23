@@ -19,6 +19,16 @@ export type WeatherSky = "SUNNY" | "CLOUDY" | "OVERCAST";
 // 양액 배합 생육단계 enum (contract §4.9, 이슈 #64·#65) — 1차는 TOMATO 단일이라 작물별 분기 없음.
 export type NutrientStage = "SEEDLING" | "VEGETATIVE" | "FRUITING" | "HARVEST";
 
+// 존·랙·장비 레지스트리 enum (contract §4.10, 이슈 #89)
+export type DeviceKind = "SENSOR" | "CONTROLLER" | "GATEWAY";
+export type DeviceStatus = "NORMAL" | "WARNING" | "FAULT" | "OFFLINE";
+
+// 센서 측정 지표 enum (contract §4.11, 이슈 #90) — unit은 서버가 응답에 함께 실어준다.
+export type SensorMetric = "TEMPERATURE" | "HUMIDITY" | "CO2" | "EC" | "PH" | "PPFD" | "POWER";
+
+// 랙 도면·층별 비교표 상태 enum (contract §4.11)
+export type ReadingCellState = "OK" | "WARNING" | "CRITICAL" | "IDLE";
+
 export type ErrorCode =
   | "C001"
   | "C002"
@@ -36,6 +46,12 @@ export type ErrorCode =
   | "F004"
   | "F005"
   | "F006"
+  | "R001"
+  | "R002"
+  | "R003"
+  | "R004"
+  | "E001"
+  | "E002"
   | "D001"
   | "D002"
   | "D003"
@@ -399,6 +415,155 @@ export interface NutrientRecipeSummaryResponse {
   estimatedEc: number;
   createdBy: number;
   createdAt: string;
+}
+
+// ── 존·랙 구조 (contract §4.10, 이슈 #89) ──────────────
+export interface ZoneTreeLevelNode {
+  id: number;
+  levelNo: number;
+  label: string;
+}
+
+export interface ZoneTreeRackNode {
+  id: number;
+  code: string;
+  levelCount: number;
+  displayOrder: number;
+  levels: ZoneTreeLevelNode[];
+}
+
+export interface ZoneTreeZoneNode {
+  id: number;
+  name: string;
+  displayOrder: number;
+  racks: ZoneTreeRackNode[];
+}
+
+// 존+랙+층 트리 — 랙 도면 렌더용 1회 조회(GET /zones). 이번 사이클은 조회만 쓴다(존·랙 CRUD
+// 화면은 handoff #99 범위 밖 — "농장·랙 구성" 관리 화면은 별도 이슈).
+export interface ZoneTreeResponse {
+  zones: ZoneTreeZoneNode[];
+}
+
+// ── 장비/센서 레지스트리 (contract §4.10, 이슈 #89) ──────────────
+// PATCH는 부분 수정이라 전 필드가 옵셔널. null은 "해제"(위치 FK는 1차 미지원), undefined는 "미변경".
+export interface DeviceRequest {
+  zoneId?: number | null;
+  rackId?: number | null;
+  rackLevelId?: number | null;
+  name?: string;
+  kind?: DeviceKind;
+  model?: string | null;
+  serial?: string | null;
+  status?: DeviceStatus;
+  calibrationDueAt?: string | null;
+  installedOn?: string | null;
+  metrics?: SensorMetric[];
+}
+
+export interface DeviceResponse {
+  id: number;
+  zoneId: number | null;
+  rackId: number | null;
+  rackLevelId: number | null;
+  name: string;
+  kind: DeviceKind;
+  model: string | null;
+  serial: string | null;
+  status: DeviceStatus;
+  lastSeenAt: string | null;
+  calibrationDueAt: string | null;
+  installedOn: string | null;
+  metrics: SensorMetric[];
+  createdAt: string;
+}
+
+export interface DeviceListResponse {
+  devices: DeviceResponse[];
+}
+
+// byModel의 status = 그룹 내 최악 상태(FAULT > OFFLINE > WARNING > NORMAL, 백엔드 주석 기준).
+export interface DeviceSummaryByModel {
+  name: string;
+  kind: DeviceKind;
+  count: number;
+  status: DeviceStatus;
+}
+
+export interface DeviceSummaryResponse {
+  total: number;
+  normal: number;
+  warning: number;
+  faultOrOffline: number;
+  calibrationDueSoon: number;
+  byModel: DeviceSummaryByModel[];
+}
+
+// ── 센서 측정값 (contract §4.11, 이슈 #90) ──────────────
+// range는 §4.6과 동일한 다운샘플 규칙(24h/7d/30d) 재사용 — EnvironmentHistoryRange와 값이 같다.
+export type ReadingRange = EnvironmentHistoryRange;
+
+export interface ReadingSeriesPoint {
+  at: string;
+  value: number | null;
+}
+
+export interface ReadingSeriesSeries {
+  metric: SensorMetric;
+  unit: string;
+  points: ReadingSeriesPoint[];
+}
+
+export interface ReadingSeriesResponse {
+  range: string;
+  scope: string;
+  simulated: boolean;
+  series: ReadingSeriesSeries[];
+}
+
+// 신선도 상한을 넘기면 state=IDLE·value=null로 떨어지지만 measuredAt은 마지막 실측 시각을
+// 그대로 싣는다(백엔드 LevelCell 주석) — FE가 "마지막으로 언제 봤는지"를 판단할 수 있게.
+export interface ReadingMatrixLevelCell {
+  levelNo: number;
+  value: number | null;
+  measuredAt: string | null;
+  state: ReadingCellState;
+}
+
+export interface ReadingMatrixRackRow {
+  rackId: number;
+  code: string;
+  levels: ReadingMatrixLevelCell[];
+}
+
+export interface ReadingMatrixResponse {
+  metric: SensorMetric;
+  unit: string;
+  simulated: boolean;
+  racks: ReadingMatrixRackRow[];
+}
+
+// 데이터 없는 (층,지표) 조합도 average=null·state="IDLE"로 채워져 온다(표 형태 유지 목적).
+export interface LevelSummaryMetricCell {
+  metric: SensorMetric;
+  unit: string;
+  average: number | null;
+  deviationPercent: number | null;
+  state: ReadingCellState;
+}
+
+export interface LevelSummaryLevelRow {
+  levelNo: number;
+  label: string;
+  metrics: LevelSummaryMetricCell[];
+}
+
+export interface LevelSummaryResponse {
+  rackId: number;
+  code: string;
+  range: string;
+  simulated: boolean;
+  levels: LevelSummaryLevelRow[];
 }
 
 // ── 페이지네이션 ──────────────────────────────────
