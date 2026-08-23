@@ -651,6 +651,25 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("metrics 배열에 null 원소가 섞이면 400 C001을 반환한다(사이클 2 리뷰 P3-1 — "
+            + "null 원소가 검증을 통과하면 DeviceResponse.from의 정렬에서 NPE로 500이 났었다)")
+    void createSensorDeviceWithNullMetricElementFails() throws Exception {
+        String token = signupAndLogin("농장주-센서지표null");
+        long farmId = createFarm(token, "센서지표null 농장");
+        long zoneId = createZone(token, farmId, "A동");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "센서", DeviceKind.SENSOR,
+                                null, null, null, null, null,
+                                java.util.Arrays.asList(SensorMetric.TEMPERATURE, null)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("CONTROLLER 장비인데 metrics가 채워져 있으면 400 C001을 반환한다")
     void createControllerDeviceWithMetricsFails() throws Exception {
         String token = signupAndLogin("농장주-제어기지표");

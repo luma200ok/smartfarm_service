@@ -16,6 +16,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import lombok.AccessLevel;
@@ -120,6 +121,16 @@ public class Device {
         this.calibrationDueAt = calibrationDueAt;
         this.installedOn = installedOn;
         this.metrics = metrics != null ? new LinkedHashSet<>(metrics) : new LinkedHashSet<>();
+    }
+
+    /**
+     * {@code @Getter}가 자동 생성하는 getter는 내부 mutable {@code Set}을 그대로 반환한다 — 호출측이
+     * 반환값을 {@code add}/{@code remove}하면 영속 컬렉션이 검증을 거치지 않고 바뀐다(사이클 2
+     * 리뷰 P3-4). 읽기 전용 뷰로 감싸 노출한다 — 뷰이므로 {@link #update}가 내부 Set을 갱신하면
+     * (clear+addAll) 그대로 반영된다(복사본이 아니다).
+     */
+    public Set<SensorMetric> getMetrics() {
+        return Collections.unmodifiableSet(metrics);
     }
 
     @PrePersist

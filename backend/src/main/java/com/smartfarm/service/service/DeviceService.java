@@ -126,7 +126,11 @@ public class DeviceService {
         ResolvedLocation location = resolveLocation(farmId, request.zoneId(), request.rackId(),
                 request.rackLevelId());
 
-        Set<SensorMetric> metrics = request.metrics() != null ? new LinkedHashSet<>(request.metrics()) : Set.of();
+        // Set.of()(불변)는 안 쓴다 — validateMetrics의 metrics.contains(null) 널 안전 검사가
+        // Set.of().contains(null)에서 NPE를 던진다(사이클 2 리뷰 P3-1 회귀 — 빈 LinkedHashSet은
+        // null 원소가 없어도 contains(null)이 안전하게 false를 반환한다).
+        Set<SensorMetric> metrics =
+                request.metrics() != null ? new LinkedHashSet<>(request.metrics()) : new LinkedHashSet<>();
         validateMetrics(request.kind(), metrics);
 
         if (request.serial() != null && deviceRepository.existsByFarmIdAndSerial(farmId, request.serial())) {
@@ -256,8 +260,17 @@ public class DeviceService {
      * 장비 측정 지표 선언 검증(contract §4.10 사이클 2, V16) — {@code kind=SENSOR}는 1개 이상,
      * 그 외(CONTROLLER·GATEWAY)는 비어야 한다. 위반 시 C001. kind가 null(PATCH에서 미변경)이면
      * 호출측이 이미 기존 kind로 병합한 값을 넘기므로 이 메서드는 kind가 항상 확정된 상태로 받는다.
+     *
+     * <p>⚠️ {@code null} 원소 거부(사이클 2 리뷰 P3-1) — {@code metrics:["TEMPERATURE", null]}처럼
+     * Jackson이 배열 안에 null을 그대로 담아 역직렬화하면 이 검사 없이는 "비었는가"만 보고
+     * 통과시켜, 이후 {@code DeviceResponse.from}의 {@code .sorted()}가 null Comparable에서
+     * NPE를 던지거나 DB NOT NULL 위반으로 500이 난다. 잘못된 입력에 5xx는 실패 안전 위반이므로
+     * 여기서 명시적으로 C001 처리한다.
      */
     private void validateMetrics(DeviceKind kind, Set<SensorMetric> metrics) {
+        if (metrics != null && metrics.contains(null)) {
+            throw new CustomException(ErrorCode.C001, "측정 지표 목록에 null을 포함할 수 없습니다.");
+        }
         boolean empty = metrics == null || metrics.isEmpty();
         if (kind == DeviceKind.SENSOR) {
             if (empty) {
