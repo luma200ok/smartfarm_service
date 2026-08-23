@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DEVICE_LABELS } from "@/constants";
 import { getTodayEnvironment } from "@/lib/api/environment";
+import MeasuredBadge from "@/components/monitoring/MeasuredBadge";
 import type { EnvironmentTodayResponse } from "@/types";
 
 interface EnvironmentWidgetProps {
@@ -66,7 +67,10 @@ export default function EnvironmentWidget({ farmId }: EnvironmentWidgetProps) {
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">오늘의 환경</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">오늘의 환경</h3>
+          <MeasuredBadge />
+        </div>
         <div className="flex items-center gap-2">
           {data.demo && (
             <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">

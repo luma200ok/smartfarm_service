@@ -1,4 +1,14 @@
-import type { ErrorCode, EnvironmentHistoryRange, FarmLogType, NutrientStage, WeatherSky } from "@/types";
+import type {
+  DeviceKind,
+  DeviceStatus,
+  ErrorCode,
+  EnvironmentHistoryRange,
+  FarmLogType,
+  NutrientStage,
+  ReadingCellState,
+  SensorMetric,
+  WeatherSky,
+} from "@/types";
 
 // localStorage 키 — 앱 prefix = farm (docs/api-contract.md §1)
 export const STORAGE_KEYS = {
@@ -77,6 +87,43 @@ export const NUTRIENT_SAFETY_NOTICE = "참고용 — 적용 전 원수 분석·�
 export const NUTRIENT_PRESET_SOURCE =
   "프리셋 출처: Kroggel & Kubota (2018), OSU Extension HYG-1437 (Table 3, 4단계 Jensen/UA-CEA 처방)";
 
+// 장비 종류 라벨 (contract §4.10, 이슈 #89 — 프리뷰 "센서/제어기/통신 장치")
+export const DEVICE_KIND_LABELS: Record<DeviceKind, string> = {
+  SENSOR: "센서",
+  CONTROLLER: "제어기",
+  GATEWAY: "통신 장치",
+};
+
+// 장비 상태 라벨 (contract §4.10)
+export const DEVICE_STATUS_LABELS: Record<DeviceStatus, string> = {
+  NORMAL: "정상",
+  WARNING: "주의",
+  FAULT: "고장",
+  OFFLINE: "통신두절",
+};
+
+// 센서 측정 지표 라벨 (contract §4.11, 이슈 #90) — unit은 서버 응답 필드를 그대로 쓴다.
+export const SENSOR_METRIC_LABELS: Record<SensorMetric, string> = {
+  TEMPERATURE: "온도",
+  HUMIDITY: "습도",
+  CO2: "CO2",
+  EC: "EC",
+  PH: "pH",
+  PPFD: "PPFD",
+  POWER: "전력",
+};
+
+// 랙 도면·층별 비교표 상태 라벨 (contract §4.11)
+export const READING_CELL_STATE_LABELS: Record<ReadingCellState, string> = {
+  OK: "정상",
+  WARNING: "주의",
+  CRITICAL: "경보",
+  IDLE: "미가동",
+};
+
+// 시계열 항목(metrics) 다중 선택 상한 (contract §4.11 — 초과 시 C001)
+export const READING_METRIC_LIMIT = 4;
+
 // ErrorCode -> 사용자 노출 메시지 (docs/api-contract.md §5)
 export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   C001: "입력값을 확인해주세요.",
@@ -95,6 +142,12 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   F004: "초대코드가 유효하지 않거나 만료되었습니다.",
   F005: "이미 해당 농장의 멤버입니다.",
   F006: "관리자는 농장 삭제로만 탈퇴할 수 있습니다.",
+  R001: "존을 찾을 수 없습니다.",
+  R002: "랙을 찾을 수 없습니다.",
+  R003: "층을 찾을 수 없습니다.",
+  R004: "하위에 장비가 있어 처리할 수 없습니다.",
+  E001: "장비를 찾을 수 없습니다.",
+  E002: "이미 등록된 시리얼 번호입니다.",
   D001: "진단 이력을 찾을 수 없습니다.",
   D002: "이미지 형식 또는 크기를 확인해주세요.",
   D003: "AI 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
