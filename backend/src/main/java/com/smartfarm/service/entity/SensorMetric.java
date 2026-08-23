@@ -22,4 +22,13 @@ public enum SensorMetric {
     public String unit() {
         return unit;
     }
+
+    /**
+     * 제어 가능한 지표인가(contract §4.12 — 프리뷰 목표값 4종). EC/PH/POWER는 제어 대상이 아니다
+     * (EC/PH는 양액 배합 §4.9의 영역, POWER는 결과 지표라 목표값 개념이 성립하지 않는다).
+     * {@code ControlSetpoint}의 metric은 이 조건을 만족해야 한다(위반 시 C001).
+     */
+    public boolean isControllable() {
+        return this == TEMPERATURE || this == HUMIDITY || this == CO2 || this == PPFD;
+    }
 }

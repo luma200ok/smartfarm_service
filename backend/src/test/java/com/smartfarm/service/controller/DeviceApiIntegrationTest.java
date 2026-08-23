@@ -53,6 +53,70 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("레지스트리로는 status=OFF를 설정할 수 없다 — 생성·수정 모두 400 C001(contract §4.10 사이클 3)")
+    void deviceStatusOffCannotBeSetThroughRegistry() throws Exception {
+        String token = signupAndLogin("농장주-OFF금지");
+        long farmId = createFarm(token, "OFF금지 농장");
+        long zoneId = createZone(token, farmId, "A동");
+
+        // 생성 시 OFF 지정 거부
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "순환팬", DeviceKind.CONTROLLER,
+                                null, null, DeviceStatus.OFF, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        long deviceId = createDevice(token, farmId, zoneId, null, null, "온도센서");
+
+        // PATCH로 OFF 지정 거부 — 이 경로엔 모드 게이트·큐·존 락·감사 이력이 없어서, 허용하면
+        // 비상 정지로 꺼둔 장비를 감사 없이 되살리고 §4.12 동시성 3(존 단위 직렬화)을 우회한다.
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, null, null, null, null, DeviceStatus.OFF, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("OFF 장비를 PATCH로 되살릴 수 없다 — 비상 정지가 요청 1건으로 무력화되면 안 된다(2차 리뷰)")
+    void offDeviceCannotBeRevivedThroughRegistry() throws Exception {
+        String token = signupAndLogin("농장주-되살리기금지");
+        long farmId = createFarm(token, "되살리기금지 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long controllerId = createControllerDevice(token, farmId, zoneId, "순환팬");
+
+        // 비상 정지로 제어기를 OFF로 내린다(제어 경로 — 감사 이력이 남는 유일한 경로).
+        mockMvc.perform(post("/api/farms/" + farmId + "/control/emergency-stop")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        // OFF 장비의 상태 변경은 제어 경로로만 — NORMAL로 되살리는 PATCH도 C001이다.
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + controllerId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, null, null, null, null,
+                                DeviceStatus.NORMAL, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+
+        // 상태를 건드리지 않는 편집(이름 변경)은 OFF 장비라도 그대로 허용된다.
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + controllerId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, "순환팬-A동", null, null, null, null, null, null, null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OFF"))
+                .andExpect(jsonPath("$.name").value("순환팬-A동"));
+    }
+
+    @Test
     @DisplayName("위치(존·랙·층) 전부 null이면 400 C001을 반환한다")
     void createDeviceWithoutLocationFails() throws Exception {
         String token = signupAndLogin("농장주-장비위치없음");
@@ -838,5 +902,18 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
             }
         }
         throw new IllegalStateException("층을 찾을 수 없음: " + rackCode + "/" + levelNo);
+    }
+
+    /** 제어기 등록 — 비상 정지 대상(kind=CONTROLLER)이 필요한 시나리오용. */
+    private long createControllerDevice(String token, long farmId, long zoneId, String name) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, name, DeviceKind.CONTROLLER,
+                                null, null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return readJson(result).get("id").asLong();
     }
 }

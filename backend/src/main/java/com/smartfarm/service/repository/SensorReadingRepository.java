@@ -153,4 +153,19 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
             + "(SELECT id FROM sensor_readings WHERE measured_at < :cutoff LIMIT :batchSize)",
             nativeQuery = true)
     int deleteBeforeBatch(@Param("cutoff") LocalDateTime cutoff, @Param("batchSize") int batchSize);
+
+    /**
+     * 장비×지표별 <b>직전 측정값</b>(contract §4.12 시뮬레이터 연동) — 목표값 수렴이
+     * "직전 값 + (목표 - 직전 값) × 비율"이라 tick마다 필요하다. {@code DISTINCT ON}(Postgres)으로
+     * 그룹별 최신 1행을 한 번에 뽑는다 — 장비 수만큼 쿼리를 날리면(N+1) 1틱이 수백 쿼리가 된다.
+     *
+     * <p>조회 범위는 목표값이 설정된 존의 장비로 한정된다(호출측이 device id 목록을 좁혀 넘긴다) —
+     * 목표값이 하나도 없으면 아예 호출하지 않는다.
+     */
+    @Query(value = "SELECT DISTINCT ON (sr.device_id, sr.metric) "
+            + "sr.device_id AS \"deviceId\", sr.metric AS \"metric\", sr.value AS \"value\" "
+            + "FROM sensor_readings sr WHERE sr.device_id IN (:deviceIds) "
+            + "ORDER BY sr.device_id, sr.metric, sr.measured_at DESC",
+            nativeQuery = true)
+    List<ReadingLatestValueProjection> findLatestValueByDeviceIds(@Param("deviceIds") List<Long> deviceIds);
 }

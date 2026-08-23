@@ -35,6 +35,7 @@ public class ZoneService {
     private final DeviceRepository deviceRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
+    private final ControlCascadeService controlCascadeService;
 
     /** 존+랙+층 트리 1회 조회(contract ZoneTreeResponse) — N+1 방지를 위해 IN 절 배치 조회 후 조립. */
     public ZoneTreeResponse findZoneTree(Long farmId, Long userId) {
@@ -92,6 +93,10 @@ public class ZoneService {
                 ? List.of()
                 : rackLevelRepository.findByRackIdInOrderByLevelNoAsc(rackIds);
         ensureNoActiveDevices(zone, rackIds, levels);
+
+        // 제어 캐스케이드(contract §4.12) — 존을 참조하는 PENDING 큐 폐기 + 목표값 soft delete.
+        // 같은 트랜잭션·같은 존 잠금 하에서 처리해 "삭제 중 apply"가 고아 참조를 적용하지 못하게 한다.
+        controlCascadeService.discardForZone(farmId, zone.getId());
 
         rackLevelRepository.deleteAll(levels);
         rackRepository.deleteAll(racks);

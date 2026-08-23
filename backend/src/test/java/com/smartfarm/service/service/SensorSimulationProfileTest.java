@@ -65,6 +65,30 @@ class SensorSimulationProfileTest {
     }
 
     @Test
+    @DisplayName("습도는 100%를 넘지 않는다(ceiling — 사이클 3 리뷰 P3)")
+    void humidityNeverExceedsHundred() {
+        // 기저 65 + 진폭 8 + 층 오프셋(-1/층)이라 자연 생성만으로는 100을 넘지 않지만, 목표 수렴은
+        // 사용자가 지정한 목표(최대 100)에 노이즈(±2)가 얹혀 상한을 넘을 수 있다 — 두 경로 모두 확인.
+        for (int hour = 0; hour < 24; hour++) {
+            assertThat(SensorSimulationProfile.simulate(
+                    SensorMetric.HUMIDITY, 1, 999L, MEASURED_AT.withHour(hour))).isLessThanOrEqualTo(100.0);
+        }
+        for (long deviceId = 1; deviceId <= 50; deviceId++) {
+            assertThat(SensorSimulationProfile.converge(
+                    SensorMetric.HUMIDITY, 100.0, 100.0, deviceId, MEASURED_AT)).isLessThanOrEqualTo(100.0);
+        }
+    }
+
+    @Test
+    @DisplayName("목표 수렴은 직전 값과 목표 사이 한 걸음이다 — 즉시 점프하지 않는다")
+    void convergeMovesOneStepTowardTarget() {
+        double moved = SensorSimulationProfile.converge(SensorMetric.TEMPERATURE, 10.0, 30.0, 1L, MEASURED_AT);
+
+        // 비율 0.2 → 10 + 20*0.2 = 14, 노이즈 진폭 ±0.3.
+        assertThat(moved).isBetween(13.7, 14.3);
+    }
+
+    @Test
     @DisplayName("7종 지표 전부 계산 가능하고 NaN/Infinite이 아니다")
     void allMetricsProduceFiniteValues() {
         for (SensorMetric metric : SensorMetric.values()) {
