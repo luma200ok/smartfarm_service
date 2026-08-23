@@ -42,7 +42,9 @@ export type ErrorCode =
   | "P004"
   | "L001"
   | "L002"
-  | "W001";
+  | "W001"
+  | "CH001"
+  | "CH002";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
@@ -273,6 +275,23 @@ export interface ForecastPoint {
 export interface ForecastResponse {
   updatedAt: string;
   points: ForecastPoint[];
+}
+
+// ── AI 챗봇 (contract §4.7, 이슈 #54·#55) ──────────────
+export interface ChatRequest {
+  question: string;
+}
+
+// answer·sources는 LLM이 생성한 자유 텍스트 — FE는 React 기본 이스케이프로만 렌더하고
+// dangerouslySetInnerHTML·raw HTML 마크다운 렌더러를 절대 쓰지 않는다(저장형 XSS 차단).
+export interface ChatMessageResponse {
+  id: number;
+  question: string;
+  answer: string;
+  sources: string[];
+  fallback: boolean;
+  createdBy: number;
+  createdAt: string;
 }
 
 // ── 페이지네이션 ──────────────────────────────────
