@@ -163,6 +163,35 @@
 - 신규 env: `KMA_SERVICE_KEY`(시크릿 — 배포 .env, 평문 커밋 금지), `KMA_GRID_NX`/`KMA_GRID_NY`. 타임아웃 5s.
 - VPD·이슬점·몰리에르 지표는 FE 순수 계산(BE 없음) — 현재 온습도(environment/today) 입력.
 
+## 4.9 양액 배합 (2026-08-23 확정, 이슈 #64·#65 — 다함 벤치마킹 5 '양액제어 대시보드'의 **계산·레시피 부분만**)
+
+- **범위 한정(중요)**: 실제 양액기 제어(펌프·밸브·EC/pH 자동 조정)와 EC/pH 실시간 모니터링은 **범위 밖** — 장비 부재·센서에 EC/pH 없음(§4.6 스냅샷은 온습도뿐). 본 기능은 **배합 계산기 + 레시피 저장**이다.
+- **안전 고지 의무**: 계산 결과 화면에 "참고용 — 적용 전 원수 분석·현장 확인 필요" 고지를 반드시 노출(FE). 프리셋 출처를 화면·코드 양쪽에 명시.
+- **마이그레이션**: V13 `nutrient_recipes` (V11=#56 작업일지, V12=#54 챗 예약).
+
+**프리셋**: DB가 아닌 **코드 리소스 상수**(버전 관리·출처 추적 목적). 값은 **반드시 공개 출처(농촌진흥청 표준 배양액·야마자키 처방 등)에서 인용**하고 파일 주석에 출처를 남긴다 — **임의 창작 금지**. 1차 작물=TOMATO(cropType 제약), 생육단계 enum `SEEDLING, VEGETATIVE, FRUITING, HARVEST`.
+
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/nutrient-presets` | 인증 | `?cropType=TOMATO` | 200 NutrientPresetResponse[] |
+| POST | `/api/farms/{farmId}/nutrient-recipes/calculate` | 멤버 | NutrientRecipeRequest | 200 NutrientCalculationResponse (저장 없이 미리보기) |
+| POST | `/api/farms/{farmId}/nutrient-recipes` | 멤버 | NutrientRecipeRequest{+name} | 201 NutrientRecipeResponse |
+| GET | `/api/farms/{farmId}/nutrient-recipes` | 멤버 | `?page&size` | 200 Page\<NutrientRecipeSummaryResponse\> (최신순) |
+| GET | `/api/farms/{farmId}/nutrient-recipes/{id}` | 멤버 | — | 200 NutrientRecipeResponse (계산 결과 동봉) |
+| PATCH | `/api/farms/{farmId}/nutrient-recipes/{id}` | **작성자 본인** | NutrientRecipeRequest | 200 NutrientRecipeResponse |
+| DELETE | `/api/farms/{farmId}/nutrient-recipes/{id}` | **작성자 본인 또는 OWNER** | — | 204 |
+
+- **NutrientRecipeRequest** `{name?(1~50, 저장 시 필수), stage, target{n, p, k, ca, mg, s}(ppm, 각 0~1000), tankVolumeL(1~10000), concentrationFactor(1~500), sourceWater?{ca?, mg?, ec?}}` — sourceWater=원수 분석값(있으면 목표치에서 차감 보정).
+- **NutrientCalculationResponse** `{tanks: [{tank: "A"|"B", items: [{fertilizer, formula, amountG}]}], estimatedEc, ionBalance{cationMeL, anionMeL, deviationPercent}, warnings: [str]}`
+- **NutrientRecipeResponse** `{id, name, stage, target{...}, tankVolumeL, concentrationFactor, sourceWater?, calculation(NutrientCalculationResponse), createdBy, createdAt, updatedAt}` / **Summary**는 `{id, name, stage, estimatedEc, createdBy, createdAt}`.
+
+**배합 규칙(서버 강제 — 위반 시 N003)**
+- **A탱크 = 칼슘계**(질산칼슘 4수염, 킬레이트철, 질산칼륨 일부) / **B탱크 = 인산·황산계**(제1인산칼륨, 황산마그네슘, 미량요소 혼합제, 질산칼륨 잔량). 같은 탱크에 **Ca와 (PO4 또는 SO4) 동시 배치 금지** — 인산칼슘·황산칼슘 침전. 이 규칙은 코드 상수가 아니라 **검증 로직으로 강제**하고 테스트로 고정한다.
+- 산출 투입량이 음수(원수 보정 과다)면 N003 + 어떤 성분이 초과인지 warnings에 명시.
+- 이온 밸런스: 양이온 me/L 합과 음이온 me/L 합의 편차 10% 초과 시 계산은 반환하되 warnings 경고.
+- EC 추정: `EC(dS/m) ≈ Σ(me/L) / 10` (원예 통용 근사 — 주석에 근거 명시).
+- 데모 계정: 계산·저장 허용(체험 핵심), 수정·삭제는 본인 것만이라 자연 격리(§4.5 차단 목록 미추가).
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -199,6 +228,9 @@
 | L001 | 404 | 작업일지 없음 |
 | L002 | 403 | 작업일지 수정/삭제 권한 없음(작성자 본인·삭제는 OWNER 겸용) |
 | W001 | 502 | 날씨예보 조회 실패(KMA 오류·캐시 없음) |
+| N001 | 404 | 양액 레시피 없음 |
+| N002 | 403 | 양액 레시피 수정/삭제 권한 없음(작성자 본인·삭제는 OWNER 겸용) |
+| N003 | 400 | 배합 불가(탱크 침전 위험·원수 보정 과다로 투입량 음수 등) |
 
 ## 6. 환경변수 · CORS
 
