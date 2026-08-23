@@ -21,7 +21,7 @@ docker network create shared-net
 ```
 
 - [ ] `~/srv/db/compose.yml`의 postgres 서비스(`db-postgres`)에 `shared-net`을 조인하도록 추가
-      (`networks: [default, shared-net]` 형태 — 이 레포의 `deploy/home/compose.yml` backend 서비스와 동일 패턴)
+      (`networks: [default, shared-net]` 형태 — 이 레포의 `deploy/home/compose.yml` `smartfarm-backend` 서비스와 동일 패턴)
       후 `docker compose -f ~/srv/db/compose.yml up -d`로 재적용
 - [ ] `smartfarm-ai` 컨테이너도 필요 시 동일하게 `shared-net` 조인 확인(AI_SERVER_URL이 컨테이너명으로
       접근하므로 같은 네트워크에 있어야 함)
@@ -49,7 +49,7 @@ mkdir -p ~/srv/smartfarm/images
 sudo chown -R 1000:1000 ~/srv/smartfarm/images
 ```
 
-- [ ] `deploy/home/compose.yml`의 backend 볼륨(`${DATA_DIR}/images:/data/images`)과 경로 일치 확인
+- [ ] `deploy/home/compose.yml`의 `smartfarm-backend` 볼륨(`${DATA_DIR}/images:/data/images`)과 경로 일치 확인
       — `.env`의 `DATA_DIR`(절대경로, 예: `/home/jb/srv/smartfarm`)이 이 디렉터리를 가리켜야 한다
 - [ ] `chown` UID/GID 1000은 `backend/Dockerfile`의 비루트 유저(spring)와 고정 매칭된다(리뷰 P1) —
       컨테이너 내부에서 쓰기 권한이 필요하므로 반드시 먼저 실행. 검증: `docker run --rm <backend 이미지> id -u` → `1000`
@@ -91,9 +91,11 @@ sudo chown -R 1000:1000 ~/srv/smartfarm/images
 
 - [ ] Cloudflare Zero Trust 대시보드 → Networks → Tunnels → Create a tunnel(이름 예: `smartfarm-home`)
 - [ ] 생성된 토큰을 `~/srv/smartfarm/.env`의 `TUNNEL_TOKEN`에 채움(§2)
-- [ ] Public Hostname 추가: `farm-home.luma200ok.com` → Service `http://nginx:80`
-      — **컨테이너 내부 라우팅이므로 대상은 nginx 컨테이너의 80 포트**, cloudflared 컨테이너가
-      compose의 `default` 네트워크로 nginx에 서비스명 DNS로 접근한다(호스트 포트 불필요)
+- [ ] Public Hostname 추가: `farm.luma200ok.com` → Service **`http://smartfarm-nginx:80`**
+      — **컨테이너 내부 라우팅이므로 대상은 nginx 컨테이너의 80 포트**다. 터널은 이 스택 밖의
+      독립 스택(luma200ok/home-infra 의 tunnel)이며 `shared-net` 으로 도달한다(#75).
+      ⚠️ 서비스명은 반드시 **고유명**(`smartfarm-nginx`)을 쓴다 — `nginx` 같은 일반명은
+      공유망에서 다른 스택과 충돌해 502 를 낸다(#97, luma200ok/home-infra#15)
 - [ ] DNS 탭에서 `farm-home.luma200ok.com` CNAME이 자동 생성됐는지 확인
 
 ## 6. 스모크 절차

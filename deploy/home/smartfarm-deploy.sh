@@ -23,7 +23,8 @@ case "$1" in
     chmod 600 "$LOG_DIR/last-failure.log" || true
     "${COMPOSE[@]}" ps || true
     # backend는 container_name 미지정 — 프로젝트명(smartfarm-home) 기반 이름이므로 ps -q로 안전 조회
-    BACKEND_ID="$("${COMPOSE[@]}" ps -q backend 2>/dev/null || true)"
+    # 서비스 키는 smartfarm-backend 다(#97 — 공유망 일반명 충돌 회피).
+    BACKEND_ID="$("${COMPOSE[@]}" ps -q smartfarm-backend 2>/dev/null || true)"
     if [ -n "$BACKEND_ID" ]; then
       docker inspect "$BACKEND_ID" --format 'backend health: {{json .State.Health.Status}}' || true
     fi
