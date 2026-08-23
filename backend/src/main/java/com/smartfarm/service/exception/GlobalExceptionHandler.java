@@ -1,5 +1,6 @@
 package com.smartfarm.service.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -45,7 +46,11 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException.class,
             // 필수 @RequestParam 누락(예: /api/nutrient-presets?cropType=… — 이슈 #64) — 이 핸들러가
             // 없으면 일반 Exception 핸들러로 떨어져 500 C002로 잘못 응답한다.
-            MissingServletRequestParameterException.class
+            MissingServletRequestParameterException.class,
+            // @Validated 클래스의 @RequestParam 제약 위반(예: DeviceController#listDevices의
+            // q @Size — 리뷰 P3 #89). MethodArgumentNotValidException과 달리 @RequestBody가 아닌
+            // 파라미터 제약 위반이라 별도 예외 타입으로 온다 — 없으면 500 C002로 잘못 응답한다.
+            ConstraintViolationException.class
     })
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception e) {
         return ResponseEntity.status(ErrorCode.C001.getStatus())

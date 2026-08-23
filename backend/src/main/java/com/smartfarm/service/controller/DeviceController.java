@@ -10,10 +10,12 @@ import com.smartfarm.service.service.DeviceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,18 +30,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/farms/{farmId}/devices")
 @RequiredArgsConstructor
+@Validated
 public class DeviceController {
 
     private final DeviceService deviceService;
 
     @Operation(summary = "장비 목록 조회 (멤버, kind·status·q(이름 부분일치)·zoneId 필터)")
     @GetMapping
-    public ResponseEntity<DeviceListResponse> listDevices(@AuthenticationPrincipal Long userId,
-                                                           @PathVariable Long farmId,
-                                                           @RequestParam(required = false) DeviceKind kind,
-                                                           @RequestParam(required = false) DeviceStatus status,
-                                                           @RequestParam(required = false) String q,
-                                                           @RequestParam(required = false) Long zoneId) {
+    public ResponseEntity<DeviceListResponse> listDevices(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long farmId,
+            @RequestParam(required = false) DeviceKind kind,
+            @RequestParam(required = false) DeviceStatus status,
+            // name 컬럼이 VARCHAR(50)이라 50 초과는 애초에 매칭 불가(리뷰 P3 #89) — 무제한 길이 입력 차단
+            @RequestParam(required = false) @Size(max = 50, message = "검색어는 50자 이하여야 합니다.") String q,
+            @RequestParam(required = false) Long zoneId) {
         return ResponseEntity.ok(deviceService.listDevices(farmId, userId, kind, status, q, zoneId));
     }
 

@@ -10,6 +10,7 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -41,7 +42,9 @@ public class DeviceRepositoryImpl implements DeviceRepositoryCustom {
             predicates.add(cb.equal(root.get("zoneId"), zoneId));
         }
         if (q != null && !q.isBlank()) {
-            String escaped = q.trim().toLowerCase()
+            // 서버 기본 로케일이 tr이면 toLowerCase()가 'I'→'ı'로 접혀 검색이 조용히 어긋난다
+            // (리뷰 P3 #89) — Locale.ROOT로 로케일 독립적인 소문자 변환을 강제한다.
+            String escaped = q.trim().toLowerCase(Locale.ROOT)
                     .replace("\\", "\\\\")
                     .replace("%", "\\%")
                     .replace("_", "\\_");
