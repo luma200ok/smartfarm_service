@@ -3,6 +3,10 @@ package com.smartfarm.service.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.smartfarm.service.config.KmaProperties;
 import com.smartfarm.service.dto.ForecastResponse;
 import com.smartfarm.service.dto.SkyCondition;
@@ -22,6 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.web.client.RestClient;
@@ -218,5 +223,57 @@ class KmaForecastClientUnitTest {
         assertThatThrownBy(() -> client(clock).fetchForecast())
                 .isInstanceOf(CustomException.class)
                 .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.W001));
+    }
+
+    // ── DEBUG 로그 서비스키 마스킹(이슈 #80 P1) ──────────────────────
+
+    /**
+     * 요청 인터셉터로 I/O 실패를 직접 주입 — Spring의 {@code ResourceAccessException}은
+     * "I/O error on GET request for \"<쿼리 제거된 URI>\": <원인 IOException 메시지>" 형태로 메시지를
+     * 조립하는데, 뒷부분(원인 메시지)은 그대로 이어붙이므로 원인 IOException 메시지에 서비스키가
+     * 들어 있으면 그대로 노출된다 — 실제 리뷰에서 지적된 경로를 그대로 재현한다.
+     */
+    private KmaForecastClient clientWithIoFailure(Clock clock, String ioFailureMessage) {
+        KmaProperties properties = new KmaProperties(
+                "http://localhost:" + server.getPort(), "test-service-key", 60, 127,
+                Duration.ofMillis(300), Duration.ofMillis(300));
+        RestClient restClient = RestClient.builder()
+                .baseUrl("http://localhost:" + server.getPort())
+                .requestInterceptor((request, body, execution) -> {
+                    throw new IOException(ioFailureMessage);
+                })
+                .build();
+        return new KmaForecastClient(restClient, properties, clock);
+    }
+
+    @Test
+    @DisplayName("원인 예외 메시지에 서비스키가 섞여도 DEBUG 로그에 원문이 남지 않는다(이슈 #80 P1 회귀 방지)")
+    void debugLogMasksServiceKeyOnIoFailure() {
+        Logger logger = (Logger) LoggerFactory.getLogger(KmaForecastClient.class);
+        Level originalLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+
+        String secretKey = "SUPER-SECRET-KMA-KEY-0000";
+        Clock clock = Clock.fixed(Instant.parse("2026-08-23T07:45:00Z"), ZoneOffset.UTC);
+        KmaForecastClient client = clientWithIoFailure(clock,
+                "Connection reset while calling serviceKey=" + secretKey + "&pageNo=1");
+
+        try {
+            assertThatThrownBy(client::fetchForecast)
+                    .isInstanceOf(CustomException.class)
+                    .satisfies(e -> assertThat(((CustomException) e).getErrorCode()).isEqualTo(ErrorCode.W001));
+
+            String allLogs = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .reduce("", (a, b) -> a + "\n" + b);
+            assertThat(allLogs).doesNotContain(secretKey);
+            assertThat(allLogs).contains("serviceKey=***");
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+        }
     }
 }

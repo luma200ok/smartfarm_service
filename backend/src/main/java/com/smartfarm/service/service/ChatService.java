@@ -39,7 +39,7 @@ public class ChatService {
 
     /**
      * 동기 질의(200) — ai-server 호출은 외부 I/O라 <b>트랜잭션 밖</b>에서 수행한다(PR #13 회귀 교훈,
-     * PrescriptionService.createPrescription과 동일 원칙: 이 메서드가 트랜잭션에 감싸이면 최대 30s
+     * PrescriptionService.createPrescription과 동일 원칙: 이 메서드가 트랜잭션에 감싸이면 최대 120s
      * 외부 호출 동안 DB 커넥션을 붙들게 된다). 가드 조회·이력 저장 각각의 원자성은 Spring Data JPA의
      * 메서드 단위 자체 트랜잭션이 보장한다.
      */

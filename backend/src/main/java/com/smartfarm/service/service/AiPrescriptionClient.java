@@ -3,6 +3,7 @@ package com.smartfarm.service.service;
 import com.smartfarm.service.dto.AiPrescriptionResponse;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
+import java.util.concurrent.CancellationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
@@ -60,8 +61,10 @@ public class AiPrescriptionClient {
             return result;
         } catch (CustomException e) {
             throw e;
-        } catch (RestClientException e) {
-            // 예외 본문에 요청 URL·응답 조각이 실릴 수 있어 WARN에는 클래스명만, 상세는 DEBUG로(reviewer P3)
+        } catch (RestClientException | CancellationException e) {
+            // JDK HttpClient 기반 요청 팩토리는 읽기 타임아웃 시 future를 cancel해 RestClientException이
+            // 아닌 CancellationException으로 표면화될 수 있다(이슈 #80, 운영 실측). 예외 본문에 요청
+            // URL·응답 조각이 실릴 수 있어 WARN에는 클래스명만, 상세는 DEBUG로(reviewer P3)
             log.warn("ai-server 처방 요청 실패(접속불가/타임아웃): {}", e.getClass().getSimpleName());
             log.debug("ai-server 처방 요청 실패 상세", e);
             throw new CustomException(ErrorCode.P002);

@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>공격 경로</b>: 농장 단위(+사용자 단위) 레이트리밋은 "한 주체가 만드는 요청 빈도"만 제한할
  * 뿐, "여러 계정이 여러 농장을 만들어 각자 상한까지 동시에 때리면" backend 스레드가 챗 응답 대기
- * (최대 30s)로 계속 쌓여 Tomcat 스레드 풀이 고갈될 수 있다(nginx {@code limit_req}는 auth 4개
+ * (최대 120s)로 계속 쌓여 Tomcat 스레드 풀이 고갈될 수 있다(nginx {@code limit_req}는 auth 4개
  * 엔드포인트에만 적용되고 {@code /api/} catch-all은 무방비). 이 가드는 농장·사용자 수와 무관하게
  * "backend가 동시에 붙잡는 챗 스레드"를 절대 상한으로 묶어 이 경로를 차단한다.
  *
