@@ -1,0 +1,213 @@
+package com.smartfarm.service.service;
+
+import com.smartfarm.service.dto.DeviceListResponse;
+import com.smartfarm.service.dto.DeviceRequest;
+import com.smartfarm.service.dto.DeviceResponse;
+import com.smartfarm.service.dto.DeviceSummaryResponse;
+import com.smartfarm.service.dto.DeviceSummaryResponse.ByModel;
+import com.smartfarm.service.entity.Device;
+import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.DeviceStatus;
+import com.smartfarm.service.exception.CustomException;
+import com.smartfarm.service.exception.ErrorCode;
+import com.smartfarm.service.repository.DeviceRepository;
+import com.smartfarm.service.repository.RackLevelRepository;
+import com.smartfarm.service.repository.RackRepository;
+import com.smartfarm.service.repository.ZoneRepository;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 장비/센서 레지스트리 CRUD(contract §4.10, 이슈 #89). 개별 장비 단위로 저장하고, 제품군 집계는
+ * {@link #summary}가 서버에서 계산한다(개체 저장·집계는 서버 원칙 — handoff).
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class DeviceService {
+
+    /** V14의 unique(farm_id, serial)(활성 행) 제약명 — race 판정에 사용(InvitationService 선례). */
+    static final String DEVICE_SERIAL_UNIQUE_CONSTRAINT = "ux_devices_farm_id_serial_active";
+
+    /** calibrationDueSoon 판정 기준(contract §4.10 — 30일 이내, 이미 지난 것도 포함). */
+    private static final int CALIBRATION_DUE_SOON_DAYS = 30;
+
+    /** byModel 집계에서 그룹 상태를 대표할 심각도 우선순위(왼쪽일수록 심각). */
+    private static final List<DeviceStatus> STATUS_SEVERITY =
+            List.of(DeviceStatus.FAULT, DeviceStatus.OFFLINE, DeviceStatus.WARNING, DeviceStatus.NORMAL);
+
+    private final DeviceRepository deviceRepository;
+    private final ZoneRepository zoneRepository;
+    private final RackRepository rackRepository;
+    private final RackLevelRepository rackLevelRepository;
+    private final FarmAccessGuard farmAccessGuard;
+    private final DemoAccountGuard demoAccountGuard;
+
+    public DeviceListResponse listDevices(Long farmId, Long userId, DeviceKind kind, DeviceStatus status,
+                                           String q, Long zoneId) {
+        farmAccessGuard.requireMember(farmId, userId);
+        return DeviceListResponse.of(deviceRepository.search(farmId, kind, status, q, zoneId));
+    }
+
+    public DeviceSummaryResponse summary(Long farmId, Long userId) {
+        farmAccessGuard.requireMember(farmId, userId);
+        List<Device> devices = deviceRepository.findByFarmId(farmId);
+
+        long total = devices.size();
+        long normal = devices.stream().filter(d -> d.getStatus() == DeviceStatus.NORMAL).count();
+        long warning = devices.stream().filter(d -> d.getStatus() == DeviceStatus.WARNING).count();
+        long faultOrOffline = devices.stream()
+                .filter(d -> d.getStatus() == DeviceStatus.FAULT || d.getStatus() == DeviceStatus.OFFLINE)
+                .count();
+
+        LocalDateTime dueSoonThreshold = LocalDateTime.now().plusDays(CALIBRATION_DUE_SOON_DAYS);
+        long calibrationDueSoon = devices.stream()
+                .filter(d -> d.getCalibrationDueAt() != null && !d.getCalibrationDueAt().isAfter(dueSoonThreshold))
+                .count();
+
+        List<ByModel> byModel = groupByModel(devices);
+
+        return new DeviceSummaryResponse(total, normal, warning, faultOrOffline, calibrationDueSoon, byModel);
+    }
+
+    private List<ByModel> groupByModel(List<Device> devices) {
+        Map<String, List<Device>> grouped = devices.stream()
+                .collect(Collectors.groupingBy(this::modelGroupKey, LinkedHashMap::new, Collectors.toList()));
+
+        List<ByModel> result = new ArrayList<>();
+        for (Map.Entry<String, List<Device>> entry : grouped.entrySet()) {
+            List<Device> group = entry.getValue();
+            Device representative = group.get(0);
+            DeviceStatus worst = group.stream()
+                    .map(Device::getStatus)
+                    .min(Comparator.comparingInt(STATUS_SEVERITY::indexOf))
+                    .orElse(DeviceStatus.NORMAL);
+            result.add(new ByModel(representative.getModel() != null ? representative.getModel()
+                    : representative.getName(), representative.getKind(), group.size(), worst));
+        }
+        result.sort(Comparator.comparing(ByModel::name));
+        return result;
+    }
+
+    private String modelGroupKey(Device device) {
+        String model = device.getModel() != null ? device.getModel() : device.getName();
+        return model + "::" + device.getKind();
+    }
+
+    @Transactional
+    public DeviceResponse createDevice(Long farmId, Long userId, DeviceRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
+        farmAccessGuard.requireOwner(farmId, userId);
+
+        if (request.name() == null || request.name().isBlank()) {
+            throw new CustomException(ErrorCode.C001, "장비명은 필수입니다.");
+        }
+        if (request.kind() == null) {
+            throw new CustomException(ErrorCode.C001, "장비 종류는 필수입니다.");
+        }
+        if (request.zoneId() == null && request.rackId() == null && request.rackLevelId() == null) {
+            throw new CustomException(ErrorCode.C001, "위치(존·랙·층) 중 최소 하나는 필수입니다.");
+        }
+        validateLocation(farmId, request.zoneId(), request.rackId(), request.rackLevelId());
+
+        if (request.serial() != null && deviceRepository.existsByFarmIdAndSerial(farmId, request.serial())) {
+            throw new CustomException(ErrorCode.E002);
+        }
+
+        try {
+            Device device = deviceRepository.save(Device.builder()
+                    .farmId(farmId)
+                    .zoneId(request.zoneId())
+                    .rackId(request.rackId())
+                    .rackLevelId(request.rackLevelId())
+                    .name(request.name())
+                    .kind(request.kind())
+                    .model(request.model())
+                    .serial(request.serial())
+                    .status(request.status())
+                    .calibrationDueAt(request.calibrationDueAt())
+                    .installedOn(request.installedOn())
+                    .build());
+            return DeviceResponse.from(device);
+        } catch (DataIntegrityViolationException e) {
+            throw translateSerialViolation(e);
+        }
+    }
+
+    @Transactional
+    public DeviceResponse updateDevice(Long farmId, Long userId, Long deviceId, DeviceRequest request) {
+        demoAccountGuard.rejectDemoAccount(userId);
+        farmAccessGuard.requireOwner(farmId, userId);
+        Device device = findDeviceOrThrow(farmId, deviceId);
+
+        validateLocation(farmId, request.zoneId(), request.rackId(), request.rackLevelId());
+
+        if (request.serial() != null
+                && deviceRepository.existsByFarmIdAndSerialAndIdNot(farmId, request.serial(), device.getId())) {
+            throw new CustomException(ErrorCode.E002);
+        }
+
+        try {
+            device.update(request.zoneId(), request.rackId(), request.rackLevelId(), request.name(),
+                    request.kind(), request.model(), request.serial(), request.status(),
+                    request.calibrationDueAt(), request.installedOn());
+            // update()는 dirty checking이라 flush 전엔 UPDATE SQL이 나가지 않는다 — race 감지를
+            // 위해 명시적으로 즉시 flush(RackService#updateRack과 동일 패턴).
+            deviceRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw translateSerialViolation(e);
+        }
+        return DeviceResponse.from(device);
+    }
+
+    @Transactional
+    public void deleteDevice(Long farmId, Long userId, Long deviceId) {
+        demoAccountGuard.rejectDemoAccount(userId);
+        farmAccessGuard.requireOwner(farmId, userId);
+        Device device = findDeviceOrThrow(farmId, deviceId);
+        deviceRepository.delete(device);
+    }
+
+    /** 위치 FK 3종이 제공된 경우 그 리소스가 이 농장 소속인지 재확인(cross-tenant IDOR 차단). */
+    private void validateLocation(Long farmId, Long zoneId, Long rackId, Long rackLevelId) {
+        if (zoneId != null) {
+            zoneRepository.findByIdAndFarmId(zoneId, farmId).orElseThrow(() -> new CustomException(ErrorCode.R001));
+        }
+        if (rackId != null) {
+            rackRepository.findByIdAndFarmId(rackId, farmId).orElseThrow(() -> new CustomException(ErrorCode.R002));
+        }
+        if (rackLevelId != null) {
+            rackLevelRepository.findByIdAndFarmId(rackLevelId, farmId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.R003));
+        }
+    }
+
+    /** 장비가 해당 farm 소속인지 재확인(cross-tenant IDOR 차단) — 미소속·미존재는 동일하게 E001. */
+    private Device findDeviceOrThrow(Long farmId, Long deviceId) {
+        return deviceRepository.findByIdAndFarmId(deviceId, farmId)
+                .orElseThrow(() -> new CustomException(ErrorCode.E001));
+    }
+
+    /**
+     * 같은 농장 내 시리얼 동시 등록 race → unique(farm_id, serial) 위반만 E002로 변환. 다른
+     * 제약(FK 등) 위반을 오분류하지 않도록 제약명 확인 후 아니면 재throw(InvitationService 선례).
+     */
+    private RuntimeException translateSerialViolation(DataIntegrityViolationException e) {
+        if (e.getCause() instanceof ConstraintViolationException cve
+                && cve.getConstraintName() != null
+                && cve.getConstraintName().contains(DEVICE_SERIAL_UNIQUE_CONSTRAINT)) {
+            return new CustomException(ErrorCode.E002);
+        }
+        return e;
+    }
+}
