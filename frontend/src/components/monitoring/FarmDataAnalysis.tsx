@@ -126,6 +126,9 @@ export default function FarmDataAnalysis({ farmId }: FarmDataAnalysisProps) {
     return () => {
       cancelled = true;
     };
+    // metrics 배열 자체는 deps에서 뺐다 — 매 렌더 새 배열 identity라 넣으면 무한 재요청이 된다.
+    // load()는 이 렌더의 클로저가 캡처한 metrics를 그대로 쓰므로 join(",")로 "값이 실제로
+    // 바뀔 때만" 재실행되게 하는 것으로 충분하고 안전하다(참조가 아니라 내용 비교).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [farmId, range, scope, metrics.join(",")]);
 

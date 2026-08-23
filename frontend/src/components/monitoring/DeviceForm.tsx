@@ -80,7 +80,12 @@ export default function DeviceForm({ tree, initial, submitting, error, submitLab
       model: model || null,
       serial: serial || null,
       status,
-      calibrationDueAt: calibrationDueAt ? new Date(calibrationDueAt).toISOString() : null,
+      // "YYYY-MM-DD" + 고정 시각을 오프셋 없는 로컬 포맷으로 보낸다 — 서버 필드가
+      // LocalDateTime(Jackson 기본 LocalDateTimeDeserializer)이라 toISOString()의 트레일링
+      // Z(UTC 오프셋 표기)를 명시적으로 거부해 항상 400 C001이 났다(FarmLogForm.tsx의
+      // 로컬 타임존 직접 조립 선례와 동일한 이유 — installedOn(LocalDate)은 "YYYY-MM-DD"를
+      // 그대로 보내 문제가 없었다).
+      calibrationDueAt: calibrationDueAt ? `${calibrationDueAt}T00:00:00` : null,
       installedOn: installedOn || null,
       zoneId,
       rackId,
