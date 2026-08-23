@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import EnvironmentHistoryChart from "@/components/environment/EnvironmentHistoryChart";
 import EnvThresholdForm from "@/components/environment/EnvThresholdForm";
 import EnvironmentWidget from "@/components/environment/EnvironmentWidget";
+import ForecastWidget from "@/components/environment/ForecastWidget";
+import VpdWidget from "@/components/environment/VpdWidget";
 import FormField from "@/components/ui/FormField";
 import { VALIDATION } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
@@ -114,6 +116,10 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
       <EnvironmentWidget farmId={farmId} />
+      <div className="grid gap-6 md:grid-cols-2">
+        <ForecastWidget farmId={farmId} />
+        <VpdWidget farmId={farmId} />
+      </div>
       <EnvironmentHistoryChart farmId={farmId} />
 
       <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">

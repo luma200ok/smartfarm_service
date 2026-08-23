@@ -28,7 +28,10 @@ export const ENDPOINTS = {
       `/api/farms/${farmId}/prescriptions/${prescriptionId}`,
     environmentToday: (farmId: number | string) => `/api/farms/${farmId}/environment/today`,
     environmentHistory: (farmId: number | string) => `/api/farms/${farmId}/environment/history`,
+    environmentForecast: (farmId: number | string) => `/api/farms/${farmId}/environment/forecast`,
     envThresholds: (farmId: number | string) => `/api/farms/${farmId}/env-thresholds`,
+    logs: (farmId: number | string) => `/api/farms/${farmId}/logs`,
+    logDetail: (farmId: number | string, logId: number | string) => `/api/farms/${farmId}/logs/${logId}`,
   },
   invitations: {
     accept: "/api/invitations/accept",
