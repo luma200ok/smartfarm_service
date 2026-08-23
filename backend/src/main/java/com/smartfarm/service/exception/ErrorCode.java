@@ -52,7 +52,12 @@ public enum ErrorCode {
 
     // Chat
     CH001(HttpStatus.BAD_GATEWAY, "CH001", "챗 응답에 실패했습니다. 잠시 후 다시 시도해주세요."),
-    CH002(HttpStatus.TOO_MANY_REQUESTS, "CH002", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
+    CH002(HttpStatus.TOO_MANY_REQUESTS, "CH002", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요."),
+
+    // Nutrient
+    N001(HttpStatus.NOT_FOUND, "N001", "양액 레시피를 찾을 수 없습니다."),
+    N002(HttpStatus.FORBIDDEN, "N002", "양액 레시피 수정/삭제 권한이 없습니다."),
+    N003(HttpStatus.BAD_REQUEST, "N003", "배합할 수 없는 조합입니다.");
 
     private final HttpStatus status;
     private final String code;

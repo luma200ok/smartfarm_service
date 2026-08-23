@@ -7,6 +7,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -21,8 +22,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<ErrorResponse> handleCustomException(CustomException e) {
         ErrorCode errorCode = e.getErrorCode();
+        // e.getMessage()는 단일 인자 생성자를 쓴 기존 전 도메인에서는 errorCode.getMessage()와
+        // 항상 동일하다(CustomException 단일 인자 생성자가 super(errorCode.getMessage())를 호출) —
+        // 상세 메시지 생성자(N003 등)를 쓴 경우에만 다른 값이 실린다.
         return ResponseEntity.status(errorCode.getStatus())
-                .body(ErrorResponse.of(errorCode));
+                .body(ErrorResponse.of(errorCode, e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -38,7 +42,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
             HttpMediaTypeNotSupportedException.class,
-            MethodArgumentTypeMismatchException.class
+            MethodArgumentTypeMismatchException.class,
+            // 필수 @RequestParam 누락(예: /api/nutrient-presets?cropType=… — 이슈 #64) — 이 핸들러가
+            // 없으면 일반 Exception 핸들러로 떨어져 500 C002로 잘못 응답한다.
+            MissingServletRequestParameterException.class
     })
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception e) {
         return ResponseEntity.status(ErrorCode.C001.getStatus())
