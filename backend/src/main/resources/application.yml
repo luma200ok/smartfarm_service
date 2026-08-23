@@ -107,6 +107,12 @@ env-snapshot:
 # 데모 온실 위치). base-url은 공공데이터포털 고정 엔드포인트(시크릿 아님). service-key는 시크릿(운영
 # .env 주입, 평문 커밋 금지) — 디코딩(Decoding) 키 사용 권장(인코딩 키는 쿼리파라미터 인코딩과 겹쳐
 # 이중 인코딩으로 인증 실패 가능). grid-nx/ny도 배포 시 값 등록 필수(기본값 없음).
+# AI 챗봇 프록시(contract §4.7, 이슈 #54) — 동기 호출, 계약 타임아웃 30s.
+# base-url·connect-timeout은 ai-server 설정 재사용(진단·처방·환경 대시보드와 동일 원칙 — 응답
+# 타임아웃만 기능별로 분리한다).
+chat:
+  read-timeout: 30s
+
 kma:
   base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService2.0
   service-key: ${KMA_SERVICE_KEY}

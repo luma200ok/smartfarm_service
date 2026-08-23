@@ -56,6 +56,10 @@ env-snapshot:
 # KMA 단기예보(이슈 #56) — 실키 취급 금지(핸드오프), 테스트 전용 더미값. base-url은 KmaApiTestSupport가
 # MockWebServer 포트로 동적 오버라이드한다. grid 좌표(60,127)는 임의 테스트값(도메인 결정 아님 — 실제
 # 배포 좌표는 운영 .env로 별도 등록).
+# AI 챗봇 프록시(이슈 #54) — 타임아웃 테스트를 빠르게(url은 공유 AI_SERVER MockWebServer).
+chat:
+  read-timeout: 2s
+
 kma:
   service-key: "test-only-kma-service-key-not-real"
   grid-nx: 60
