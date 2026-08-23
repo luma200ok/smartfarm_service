@@ -102,11 +102,13 @@ public class NutrientCalculationEngine {
         tankItems.put("A", new ArrayList<>());
         tankItems.put("B", new ArrayList<>());
 
-        // 1) Ca → A탱크, 질산칼슘 4수염
+        // 1) Ca → A탱크, 질산칼슘 4수염(반올림해서 0.00g으로 표시될 항목은 넣지 않는다 — 계산
+        // 자체는 caEff=0이면 자연히 0이 되고, 극소 잔여량이 반올림 경계에서 남아도 "0.00g 투입"
+        // 이라는 무의미한 표시 항목으로 결과를 지저분하게 만들지 않기 위한 표시상 처리일 뿐이다).
         Fertilizer caNitrate = Fertilizer.CALCIUM_NITRATE_TETRAHYDRATE;
         double caNitrateMassG = (caEff * scale) / caNitrate.getCaFraction();
         double nFromCaNitrate = caNitrateMassG * caNitrate.getNFraction();
-        tankItems.get("A").add(new TankItemComputation(caNitrate, caNitrateMassG));
+        addTankItemIfDisplayable(tankItems.get("A"), caNitrate, caNitrateMassG);
 
         // 2) 남는 N → A탱크, 질산칼륨
         Fertilizer potassiumNitrate = Fertilizer.POTASSIUM_NITRATE;
@@ -118,7 +120,7 @@ public class NutrientCalculationEngine {
             double knO3MassG = nRemainingG / potassiumNitrate.getNFraction();
             kFromKno3 = knO3MassG * potassiumNitrate.getKFraction();
             nDeliveredG += nRemainingG;
-            tankItems.get("A").add(new TankItemComputation(potassiumNitrate, knO3MassG));
+            addTankItemIfDisplayable(tankItems.get("A"), potassiumNitrate, knO3MassG);
         }
 
         // 3) P → B탱크, 제1인산칼륨(MKP)
@@ -126,14 +128,14 @@ public class NutrientCalculationEngine {
         double pTargetG = target.p() * scale;
         double mkpMassG = pTargetG / mkp.getPFraction();
         double kFromMkp = mkpMassG * mkp.getKFraction();
-        tankItems.get("B").add(new TankItemComputation(mkp, mkpMassG));
+        addTankItemIfDisplayable(tankItems.get("B"), mkp, mkpMassG);
 
         // 4) Mg → B탱크, 황산마그네슘 7수염
         Fertilizer mgso4 = Fertilizer.MAGNESIUM_SULFATE_HEPTAHYDRATE;
         double mgTargetG = mgEff * scale;
         double mgso4MassG = mgTargetG / mgso4.getMgFraction();
         double sFromMgso4 = mgso4MassG * mgso4.getSFraction();
-        tankItems.get("B").add(new TankItemComputation(mgso4, mgso4MassG));
+        addTankItemIfDisplayable(tankItems.get("B"), mgso4, mgso4MassG);
 
         // 5) 남는 K → B탱크, 황산칼륨
         Fertilizer k2so4 = Fertilizer.POTASSIUM_SULFATE;
@@ -146,7 +148,7 @@ public class NutrientCalculationEngine {
             double k2so4MassG = kRemainingG / k2so4.getKFraction();
             sFromK2so4 = k2so4MassG * k2so4.getSFraction();
             kDeliveredG += kRemainingG;
-            tankItems.get("B").add(new TankItemComputation(k2so4, k2so4MassG));
+            addTankItemIfDisplayable(tankItems.get("B"), k2so4, k2so4MassG);
         }
 
         double sDeliveredG = sFromMgso4 + sFromK2so4;
@@ -236,6 +238,13 @@ public class NutrientCalculationEngine {
     /** 탱크 질량(g) → ppm(mg/L) 환산(scale 역연산) — scale은 항상 양수(tankVolumeL≥1, concentrationFactor≥1). */
     private double fromGrams(double massG, double scale) {
         return massG / scale;
+    }
+
+    /** 반올림 결과가 0.00g보다 큰 경우에만 탱크 항목으로 추가한다(0.00g 표시 항목 방지). */
+    private void addTankItemIfDisplayable(List<TankItemComputation> items, Fertilizer fertilizer, double massG) {
+        if (round2(massG) > 0) {
+            items.add(new TankItemComputation(fertilizer, massG));
+        }
     }
 
     private static double round2(double value) {
