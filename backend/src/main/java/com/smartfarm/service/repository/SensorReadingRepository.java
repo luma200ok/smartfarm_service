@@ -30,18 +30,29 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
      * 셋 다 null(farm 스코프)이다 — 서비스 계층이 {@code scope} 파라미터를 해석해 셋 중 하나만
      * 채워 넘긴다. 버킷 경계는 EnvSnapshotRepository#findAggregated와 동일하게 절대 epoch 고정
      * 그리드(재현성).
+     *
+     * <p>⚠️ {@code rack_levels}를 <b>LEFT JOIN</b>하고 층이 soft delete된 행만 제외한다(사이클 2
+     * 리뷰 P2-3) — soft delete된 층(§4.10 "측정 이력만 있으면 층 soft delete + 이력 보존")의
+     * 과거 이력이 집계에 계속 섞이는 문제를 막는다. {@code scope=farm}이 가장 크게 영향받지만
+     * (리뷰가 지적한 지점), zone/rack scope도 그 범위 안의 개별 층이 이후 삭제됐을 수 있어
+     * 동일하게 적용한다 — level scope는 대상 자체가 {@code resolveScope}에서 이미 활성 검증을
+     * 거치므로 이 조건이 no-op이다. INNER JOIN이 아니라 LEFT JOIN인 이유: {@code rack_level_id}가
+     * null인 읽기(zone/farm 단위 측정 — 랙 하위구조에 아직 배치 안 된 device)도 존재하므로,
+     * INNER JOIN이면 그 정상 데이터까지 통째로 사라진다.
      */
     @Query(value = """
             WITH device_avg AS (
-                SELECT measured_at, rack_level_id, avg(value) AS v
-                FROM sensor_readings
-                WHERE farm_id = :farmId
-                  AND metric = :metric
-                  AND measured_at >= :since
-                  AND (CAST(:zoneId AS BIGINT) IS NULL OR zone_id = :zoneId)
-                  AND (CAST(:rackId AS BIGINT) IS NULL OR rack_id = :rackId)
-                  AND (CAST(:rackLevelId AS BIGINT) IS NULL OR rack_level_id = :rackLevelId)
-                GROUP BY measured_at, rack_level_id
+                SELECT sr.measured_at, sr.rack_level_id, avg(sr.value) AS v
+                FROM sensor_readings sr
+                LEFT JOIN rack_levels rl ON rl.id = sr.rack_level_id
+                WHERE sr.farm_id = :farmId
+                  AND sr.metric = :metric
+                  AND sr.measured_at >= :since
+                  AND (sr.rack_level_id IS NULL OR rl.deleted_at IS NULL)
+                  AND (CAST(:zoneId AS BIGINT) IS NULL OR sr.zone_id = :zoneId)
+                  AND (CAST(:rackId AS BIGINT) IS NULL OR sr.rack_id = :rackId)
+                  AND (CAST(:rackLevelId AS BIGINT) IS NULL OR sr.rack_level_id = :rackLevelId)
+                GROUP BY sr.measured_at, sr.rack_level_id
             )
             SELECT to_timestamp(floor(extract(epoch FROM measured_at) / :bucketSeconds) * :bucketSeconds)
                        AS "bucket",
@@ -62,6 +73,13 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
      * {@code /readings/latest} 랙 도면 셀(contract §4.11) — 층별 가장 최근 tick을 찾은 뒤(같은
      * 최신 tick 내) device 간 평균을 낸다(handoff 요건 5와 동일한 device-평균 원칙, 시간축은
      * "최신 1틱"으로 고정된 특수 케이스).
+     *
+     * <p>⚠️ 바깥 SELECT에 {@code farm_id}/{@code metric} 술어가 반드시 있어야 한다(사이클 2 리뷰
+     * P1-1) — CTE는 좁혀도 값을 만드는 바깥 SELECT가 그 좁힘을 상속하지 않으면 JOIN 조건이
+     * {@code (rack_level_id, measured_at)}뿐이라 같은 층·같은 틱의 <b>모든 지표</b>가 섞여
+     * 평균된다(시뮬레이터가 한 device의 전 metric을 동일 분단위 {@code measuredAt}으로 쓰므로
+     * 정상 운영에서 100% 발생). 값을 반환하는 쿼리에 테넌트 술어(farm_id)가 없는 것도 이 레포
+     * 규칙(#89, farm 스코프 필수)의 유일한 예외였다 — 방어 깊이 차원에서도 필요.
      */
     @Query(value = """
             WITH latest_tick AS (
@@ -77,6 +95,7 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
                    max(sr.measured_at) AS "measuredAt"
             FROM sensor_readings sr
             JOIN latest_tick lt ON sr.rack_level_id = lt.rack_level_id AND sr.measured_at = lt.at
+            WHERE sr.farm_id = :farmId AND sr.metric = :metric
             GROUP BY sr.rack_level_id
             """, nativeQuery = true)
     List<ReadingLevelLatestProjection> findLatestPerLevel(@Param("farmId") Long farmId,

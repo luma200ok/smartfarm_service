@@ -156,6 +156,104 @@ class SensorReadingRepositoryTest extends FarmTestSupport {
         assertThat(notExists).isFalse();
     }
 
+    @Test
+    @DisplayName("findSeriesAggregated: 랙 삭제(soft delete)로 층이 사라지면 farm 스코프 집계에서도 제외된다 "
+            + "(사이클 2 리뷰 P2-3 — scope=farm이 soft delete된 구조의 과거 이력을 계속 포함하던 버그)")
+    void findSeriesAggregatedExcludesSoftDeletedRackLevelInFarmScope() throws Exception {
+        String ownerToken = signupAndLogin("repo-owner8");
+        long farmId = createFarm(ownerToken, "농장R8");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        long rackId = createRack(ownerToken, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOf(ownerToken, farmId, zoneId, rackId);
+        long deviceId = createDevice(ownerToken, farmId, null, null, levelId, "센서1");
+
+        LocalDateTime measuredAt = LocalDateTime.now().withSecond(0).withNano(0);
+        sensorReadingRepository.save(SensorReading.builder()
+                .farmId(farmId).deviceId(deviceId).rackId(rackId).rackLevelId(levelId)
+                .metric(SensorMetric.TEMPERATURE).value(99.0).measuredAt(measuredAt)
+                .source(SensorSource.SIMULATED).build());
+
+        // 랙(및 하위 층) soft delete — RackService#ensureNoActiveDevices 때문에 장비를 먼저 지워야 한다.
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNoContent());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/farms/" + farmId + "/racks/" + rackId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNoContent());
+
+        List<ReadingSeriesBucketProjection> result = sensorReadingRepository.findSeriesAggregated(
+                farmId, SensorMetric.TEMPERATURE.name(), measuredAt.minusHours(1), 60L, null, null, null);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("findLatestPerLevel: 같은 device·같은 measuredAt에 다른 지표가 있어도 요청 metric 값만 반환한다 "
+            + "(사이클 2 리뷰 P1-1 회귀 — 바깥 SELECT의 farm_id/metric 술어 누락 시 전 지표 평균으로 오염됨)")
+    void findLatestPerLevelDoesNotMixOtherMetricsAtSameTick() throws Exception {
+        String ownerToken = signupAndLogin("repo-owner6");
+        long farmId = createFarm(ownerToken, "농장R6");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        long rackId = createRack(ownerToken, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOf(ownerToken, farmId, zoneId, rackId);
+        long deviceId = createDevice(ownerToken, farmId, null, null, levelId, "온습도센서");
+
+        LocalDateTime measuredAt = LocalDateTime.now().withSecond(0).withNano(0);
+        sensorReadingRepository.save(SensorReading.builder()
+                .farmId(farmId).deviceId(deviceId).rackLevelId(levelId)
+                .metric(SensorMetric.TEMPERATURE).value(22.4).measuredAt(measuredAt)
+                .source(SensorSource.SIMULATED).build());
+        sensorReadingRepository.save(SensorReading.builder()
+                .farmId(farmId).deviceId(deviceId).rackLevelId(levelId)
+                .metric(SensorMetric.CO2).value(650.0).measuredAt(measuredAt)
+                .source(SensorSource.SIMULATED).build());
+
+        List<ReadingLevelLatestProjection> result = sensorReadingRepository.findLatestPerLevel(
+                farmId, SensorMetric.TEMPERATURE.name(), List.of(levelId));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getValue()).isEqualTo(22.4); // CO2(650.0)와 섞이면 336.2가 됨
+    }
+
+    @Test
+    @DisplayName("findLevelSummaryAggregated: metric별로 GROUP BY가 이미 걸려있어 같은 틱의 다른 지표와 섞이지 않는다 "
+            + "(findLatestPerLevel의 P1-1과 동일 패턴이 없는지 확인하는 회귀 테스트)")
+    void findLevelSummaryAggregatedDoesNotMixOtherMetricsAtSameTick() throws Exception {
+        String ownerToken = signupAndLogin("repo-owner7");
+        long farmId = createFarm(ownerToken, "농장R7");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        long rackId = createRack(ownerToken, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOf(ownerToken, farmId, zoneId, rackId);
+        long deviceId = createDevice(ownerToken, farmId, null, null, levelId, "온습도센서");
+
+        LocalDateTime measuredAt = LocalDateTime.now().withSecond(0).withNano(0);
+        sensorReadingRepository.save(SensorReading.builder()
+                .farmId(farmId).deviceId(deviceId).rackId(rackId).rackLevelId(levelId)
+                .metric(SensorMetric.TEMPERATURE).value(22.4).measuredAt(measuredAt)
+                .source(SensorSource.SIMULATED).build());
+        sensorReadingRepository.save(SensorReading.builder()
+                .farmId(farmId).deviceId(deviceId).rackId(rackId).rackLevelId(levelId)
+                .metric(SensorMetric.CO2).value(650.0).measuredAt(measuredAt)
+                .source(SensorSource.SIMULATED).build());
+
+        List<ReadingLevelAverageProjection> result = sensorReadingRepository.findLevelSummaryAggregated(
+                farmId, rackId, measuredAt.minusHours(1));
+
+        assertThat(result).hasSize(2);
+        assertThat(result).anySatisfy(row -> {
+            if (row.getMetric().equals(SensorMetric.TEMPERATURE.name())) {
+                assertThat(row.getAverage()).isEqualTo(22.4);
+            }
+        });
+        assertThat(result).anySatisfy(row -> {
+            if (row.getMetric().equals(SensorMetric.CO2.name())) {
+                assertThat(row.getAverage()).isEqualTo(650.0);
+            }
+        });
+    }
+
     private long levelIdOf(String ownerToken, long farmId, long zoneId, long rackId) throws Exception {
         return levelIdOfByNo(ownerToken, farmId, zoneId, rackId, 1);
     }
