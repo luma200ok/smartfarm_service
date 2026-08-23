@@ -222,7 +222,9 @@
 
 - **Device** `{id, farmId, zoneId?, rackId?, rackLevelId?, name, kind, model?, serial?, status, lastSeenAt?, calibrationDueAt?, installedOn?}` — soft delete
   - `kind`: `SENSOR | CONTROLLER | GATEWAY` (프리뷰 "센서/제어기/통신 장치")
-  - `status`: `NORMAL | WARNING | FAULT | OFFLINE` (프리뷰 statusTone ok/warning/critical + 통신두절)
+  - `status`: `NORMAL | WARNING | FAULT | OFFLINE | OFF` (프리뷰 statusTone ok/warning/critical + 통신두절 + 제어 OFF)
+    - ⚠️ **`OFF`는 2026-08-24 사이클 3에서 추가**(§4.12 초판이 `Device.status == OFF`를 전제로 썼는데 이 enum에 값이 없었다 — 계약 내부 모순이었다). `OFFLINE`(통신 두절, 장비가 응답하지 않음)과 `OFF`(정상 통신 중이나 제어로 꺼둠)는 **다른 상태**다
+    - ⚠️ **`DeviceSummaryResponse` KPI와의 관계**: KPI 4종(`normal`/`warning`/`faultOrOffline`/`calibrationDueSoon`)에 `OFF`가 포함되지 않아 **`total ≥ normal + warning + faultOrOffline`** 이며 차이가 OFF 대수다. 프리뷰 관리 화면이 KPI 4종만 보여주므로 필드를 늘리지 않고 이 비대칭을 **명시적으로 수용**한다
   - `metrics`: **`kind=SENSOR`는 측정 지표를 1개 이상 선언한다**(§4.11 `SensorMetric` 7종의 부분집합). 2026-08-23 사이클 2에서 추가 — 초판에 이 필드가 없어 구현이 센서 1대를 **7종 복합 프로브**로 해석했고, 적재량 추정(§4.11)이 7배 틀어졌다. `CONTROLLER`/`GATEWAY`는 비운다. SENSOR인데 비었거나 비-SENSOR인데 채워졌으면 C001
   - 위치는 3개 FK 모두 nullable — 게이트웨이는 존 단위, 센서는 층 단위로 달리 매달린다. **최소 하나는 필수**(전부 null이면 C001)
   - ⚠️ **부모 FK 자동 채움**(2026-08-23 사이클 2 반영 — 초판 누락): 깊은 쪽이 주어지면 **상위를 유도해 함께 저장한다**(`rackLevelId` → `rackId`·`zoneId`, `rackId` → `zoneId`). 명시값이 함께 오면 자동 채움 대신 계층 정합성 ①②③으로 검증한다. 따라서 **저장되는 삼중조는 항상 완전하다**. 이것이 없으면 `rackLevelId`만 채운 센서의 측정값이 `zoneId`/`rackId` null로 적재되어 **존·랙 스코프 조회에서 조용히 누락**된다(§4.11이 위치를 그대로 복사하기 때문)
@@ -378,6 +380,13 @@
 ### 상한 (사이클 2 교훈 선반영)
 - **PENDING 큐 상한: 존당 50건**(초과 시 CT004). 무제한이면 `apply` 트랜잭션이 무한정 커진다
 - **`ControlApplyLog` 보존 90일** + purge. ⚠️ **purge 상한은 유입량 기준으로 산정하고 근거를 주석에 계산식으로 남긴다** — 사이클 2에서 `EnvSnapshotPurgeScheduler` 상수를 유입량 120배 차이에 그대로 복사해 P1이 났다. 적용 로그는 사용자 조작 기반이라 유입이 훨씬 적지만(하루 수백 건 수준), **그 산정 자체를 근거와 함께 남기는 것이 요구사항**이다
+
+### 계약 초판 누락분 (2026-08-24 구현 중 드러나 확정)
+- **모드 변경 시 새 모드에서 허용되지 않는 PENDING은 폐기**한다(`DISCARDED`). 남겨두면 `apply`가 영구히 CT003으로 실패하는 교착이 된다
+- **목표값 sanity 범위**: 물리적으로 불가능한 값이 시뮬레이터 기저가 되는 것을 막기 위해 지표별 넉넉한 입력 범위를 검증한다(위반 C001)
+- **개별 취소의 권한 위반**은 전용 CT 코드를 두지 않고 기존 **A005**(403)를 쓴다
+- **랙 삭제 캐스케이드는 불필요**: 큐가 참조하는 대상은 존·장비뿐이고, §4.10 R004가 활성 장비 잔존 랙의 삭제를 막으므로 폐기 대상이 생기지 않는다
+- **존 soft delete 시 `control_modes` 행은 남긴다**: 그 행이 존 단위 잠금 지점이라 지우면 락 대상이 사라진다. 존 id는 재사용되지 않고 전 API 표면이 R001로 막으므로 도달 불가하다
 
 ### ErrorCode (신규)
 | 코드 | HTTP | 의미 |
