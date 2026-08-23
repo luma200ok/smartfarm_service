@@ -33,6 +33,11 @@ function buildTabs(farmId: string): TabItem[] {
       isActive: (pathname) =>
         pathname === `${base}/prescriptions` || pathname.startsWith(`${base}/prescriptions/`),
     },
+    {
+      href: `${base}/logs`,
+      label: "작업일지",
+      isActive: (pathname) => pathname === `${base}/logs` || pathname.startsWith(`${base}/logs/`),
+    },
     { href: `${base}/members`, label: "멤버", isActive: (pathname) => pathname === `${base}/members` },
   ];
 }
