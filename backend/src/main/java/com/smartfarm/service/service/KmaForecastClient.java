@@ -105,15 +105,22 @@ public class KmaForecastClient {
         } catch (CustomException e) {
             throw e;
         } catch (RestClientException e) {
-            // 예외 본문에 요청 URL(서비스키 쿼리파라미터 포함)이 실릴 수 있어 WARN에는 클래스명만.
+            // Spring이 I/O 실패를 감쌀 때 예외 메시지·스택트레이스에 요청 URI 전체(서비스키 쿼리파라미터
+            // 포함)가 실릴 수 있다(이슈 #80 P1) — 지금은 로그 레벨이 INFO라 노출되지 않지만, 장애 시
+            // DEBUG를 켜는 순간 평문으로 남는다. throwable을 그대로 넘기지 않고 클래스명+마스킹된
+            // 메시지만 문자열로 조립해 DEBUG에 남긴다(스택트레이스 자체는 남기지 않음 — 스택트레이스
+            // 헤더 라인에도 메시지가 반복 출력되므로 이 방식이 아니면 마스킹이 무의미해진다).
             log.warn("KMA 단기예보 조회 실패(접속불가/타임아웃/파싱): {}", e.getClass().getSimpleName());
-            log.debug("KMA 단기예보 조회 실패 상세", e);
+            log.debug("KMA 단기예보 조회 실패 상세: {}", sanitizeForLog(e));
             throw new CustomException(ErrorCode.W001);
         } catch (RuntimeException e) {
-            // fcstDate/fcstTime·fcstValue 형식이 예상과 다른 경우(NumberFormatException 등) — 응답 자체는
-            // 200으로 왔으나 파싱할 수 없는 이례적 데이터라 마찬가지로 W001로 통일한다.
-            log.warn("KMA 단기예보 응답 파싱 실패: {}", e.getClass().getSimpleName());
-            log.debug("KMA 단기예보 응답 파싱 실패 상세", e);
+            // fcstDate/fcstTime·fcstValue 형식이 예상과 다른 경우(NumberFormatException 등)와
+            // CancellationException(JDK HttpClient 타임아웃 표면화, 이슈 #80)을 함께 잡는 catch-all —
+            // 응답 자체는 200으로 왔으나 파싱할 수 없는 이례적 데이터거나 접속·타임아웃 실패이므로
+            // 마찬가지로 W001로 통일한다. DEBUG 로그는 RestClientException 분기와 동일하게 throwable을
+            // 직접 넘기지 않고 마스킹된 문자열로 남긴다(일관성·방어적 하드닝).
+            log.warn("KMA 단기예보 응답 파싱/타임아웃 실패: {}", e.getClass().getSimpleName());
+            log.debug("KMA 단기예보 응답 파싱/타임아웃 실패 상세: {}", sanitizeForLog(e));
             throw new CustomException(ErrorCode.W001);
         }
     }
@@ -136,6 +143,32 @@ public class KmaForecastClient {
 
     private boolean hasHeader(KmaForecastEnvelope envelope) {
         return envelope != null && envelope.response() != null && envelope.response().header() != null;
+    }
+
+    /**
+     * DEBUG 로그 전용(이슈 #80 P1) — throwable을 그대로 넘기면 원인 체인의 메시지(요청 URI·서비스키
+     * 쿼리파라미터 포함 가능)가 스택트레이스와 함께 그대로 출력된다. 클래스명 + 서비스키를 마스킹한
+     * 메시지만 원인 체인을 따라가며 조립한다 — 어떤 경로로도 키 원문이 로그에 남지 않는다.
+     */
+    private String sanitizeForLog(Throwable throwable) {
+        StringBuilder sb = new StringBuilder();
+        Throwable current = throwable;
+        while (current != null) {
+            if (!sb.isEmpty()) {
+                sb.append(" -> ");
+            }
+            sb.append(current.getClass().getSimpleName());
+            String message = current.getMessage();
+            if (message != null) {
+                sb.append(": ").append(maskServiceKey(message));
+            }
+            current = current.getCause();
+        }
+        return sb.toString();
+    }
+
+    private String maskServiceKey(String message) {
+        return message.replaceAll("(?i)(service ?key)=[^&\\s\"'\\]\\)]*", "$1=***");
     }
 
     private ForecastResponse toForecastResponse(KmaForecastEnvelope envelope) {
