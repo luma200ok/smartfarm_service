@@ -8,6 +8,8 @@ import com.smartfarm.service.dto.DeviceSummaryResponse.ByModel;
 import com.smartfarm.service.entity.Device;
 import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
+import com.smartfarm.service.entity.Rack;
+import com.smartfarm.service.entity.RackLevel;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DeviceRepository;
@@ -150,7 +152,13 @@ public class DeviceService {
         farmAccessGuard.requireOwner(farmId, userId);
         Device device = findDeviceOrThrow(farmId, deviceId);
 
-        validateLocation(farmId, request.zoneId(), request.rackId(), request.rackLevelId());
+        // PATCH는 부분 수정(null=미변경)이라 위치 FK 하나만 바뀌어도 나머지 기존 값과 계층이
+        // 어긋날 수 있다 — 요청값과 기존 엔티티를 병합한 "최종 상태"로 정합성을 검증한다
+        // (contract §4.10 리뷰 반영 — 요청값만 보면 새지 않은 것처럼 통과해버린다).
+        Long effectiveZoneId = request.zoneId() != null ? request.zoneId() : device.getZoneId();
+        Long effectiveRackId = request.rackId() != null ? request.rackId() : device.getRackId();
+        Long effectiveRackLevelId = request.rackLevelId() != null ? request.rackLevelId() : device.getRackLevelId();
+        validateLocation(farmId, effectiveZoneId, effectiveRackId, effectiveRackLevelId);
 
         if (request.serial() != null
                 && deviceRepository.existsByFarmIdAndSerialAndIdNot(farmId, request.serial(), device.getId())) {
@@ -178,17 +186,32 @@ public class DeviceService {
         deviceRepository.delete(device);
     }
 
-    /** 위치 FK 3종이 제공된 경우 그 리소스가 이 농장 소속인지 재확인(cross-tenant IDOR 차단). */
+    /**
+     * 위치 FK 3종이 제공된 경우 (1) 그 리소스가 이 농장 소속인지 재확인(cross-tenant IDOR 차단),
+     * (2) 서로의 계층 관계가 일치하는지 확인한다(rack.zoneId==zoneId, level.rackId==rackId —
+     * contract §4.10 리뷰 반영). 불일치 시 C001 — §4.11 SensorReading이 이 3종을 device에서
+     * 유도해 비정규화하므로, 모순된 삼중조를 여기서 막지 않으면 측정값 테이블까지 오염된다.
+     */
     private void validateLocation(Long farmId, Long zoneId, Long rackId, Long rackLevelId) {
         if (zoneId != null) {
             zoneRepository.findByIdAndFarmId(zoneId, farmId).orElseThrow(() -> new CustomException(ErrorCode.R001));
         }
+
+        Rack rack = null;
         if (rackId != null) {
-            rackRepository.findByIdAndFarmId(rackId, farmId).orElseThrow(() -> new CustomException(ErrorCode.R002));
+            rack = rackRepository.findByIdAndFarmId(rackId, farmId)
+                    .orElseThrow(() -> new CustomException(ErrorCode.R002));
+            if (zoneId != null && !rack.getZoneId().equals(zoneId)) {
+                throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 랙이 지정한 존 소속이 아닙니다.");
+            }
         }
+
         if (rackLevelId != null) {
-            rackLevelRepository.findByIdAndFarmId(rackLevelId, farmId)
+            RackLevel level = rackLevelRepository.findByIdAndFarmId(rackLevelId, farmId)
                     .orElseThrow(() -> new CustomException(ErrorCode.R003));
+            if (rackId != null && !level.getRackId().equals(rackId)) {
+                throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 층이 지정한 랙 소속이 아닙니다.");
+            }
         }
     }
 
