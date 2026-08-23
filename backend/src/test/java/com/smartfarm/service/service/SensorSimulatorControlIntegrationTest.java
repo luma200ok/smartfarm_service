@@ -116,6 +116,34 @@ class SensorSimulatorControlIntegrationTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("AUTO로 되돌려도 제어기가 OFF면 목표로 수렴하지 않는다 — 해제 조건 ①(꺼진 제어기) 전용 가드")
+    void autoZoneWithOffControllerStillDoesNotConverge() {
+        // 기존 표류 테스트는 turnOffDevice가 MANUAL을 거쳐 해제 조건 ①·② 를 동시에 만족시킨다.
+        // 그래서 ①(꺼진 제어기) 블록을 지워도 아무 테스트가 깨지지 않는 사각이 있었다(2차 리뷰 NP3).
+        // AUTO로 되돌리면 ②가 빠지므로 이 테스트만 ①을 단독으로 고정한다
+        // (changeMode는 장비를 되켜지 않으므로 AUTO + OFF 제어기는 실제 도달 가능한 상태다 — 계약 §4.12).
+        Fixture fixture = fixture("자동복귀");
+        long sensorId = createSensor(fixture, "온도센서");
+        long controllerId = createController(fixture, "순환팬");
+        seedPreviousReading(fixture, sensorId, 10.0);
+        applySetpoint(fixture, SensorMetric.TEMPERATURE, 30.0);
+        turnOffDevice(fixture, controllerId);
+        controlService.changeMode(fixture.farmId(), fixture.ownerId(), fixture.zoneId(),
+                new ControlModeRequest(OperationMode.AUTO));
+
+        sensorSimulatorService.tick();
+
+        SensorReading reading = latestReading(sensorId);
+        double natural = SensorSimulationProfile.simulate(
+                SensorMetric.TEMPERATURE, 1, sensorId, reading.getMeasuredAt());
+        double expected = SensorSimulationProfile.converge(
+                SensorMetric.TEMPERATURE, 10.0, natural, sensorId, reading.getMeasuredAt());
+        assertThat(reading.getValue()).isEqualTo(expected, within(1e-9));
+        // 조건 ①이 사라지면 목표(30) 쪽으로 끌려가 자연값(≈22)보다 커진다.
+        assertThat(reading.getValue()).isLessThan(natural);
+    }
+
+    @Test
     @DisplayName("제어기가 없는 존도 비상 정지(MANUAL) 후에는 목표로 수렴하지 않는다 — 끌 제어기가 없어도 정지가 성립한다")
     void zoneWithoutControllerStopsConvergingAfterEmergencyStop() {
         Fixture fixture = fixture("제어기없음");
