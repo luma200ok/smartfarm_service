@@ -16,6 +16,9 @@ export type FarmLogType = "WATERING" | "FERTILIZING" | "PRUNING" | "HARVEST" | "
 // 날씨예보 하늘상태 enum (contract §4.8)
 export type WeatherSky = "SUNNY" | "CLOUDY" | "OVERCAST";
 
+// 양액 배합 생육단계 enum (contract §4.9, 이슈 #64·#65) — 1차는 TOMATO 단일이라 작물별 분기 없음.
+export type NutrientStage = "SEEDLING" | "VEGETATIVE" | "FRUITING" | "HARVEST";
+
 export type ErrorCode =
   | "C001"
   | "C002"
@@ -44,7 +47,10 @@ export type ErrorCode =
   | "L002"
   | "W001"
   | "CH001"
-  | "CH002";
+  | "CH002"
+  | "N001"
+  | "N002"
+  | "N003";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
@@ -290,6 +296,107 @@ export interface ChatMessageResponse {
   answer: string;
   sources: string[];
   fallback: boolean;
+  createdBy: number;
+  createdAt: string;
+}
+
+// ── 양액 배합 계산기 (contract §4.9, 이슈 #64·#65) ──────────────
+// 계산 로직(비료 투입량·EC·이온밸런스)은 전부 서버(NutrientCalculationEngine)가 수행한다 —
+// FE는 아래 Response 타입 값을 그대로 표시만 하고 재구현하지 않는다.
+export interface NutrientTargetRequest {
+  n: number;
+  p: number;
+  k: number;
+  ca: number;
+  mg: number;
+  s: number;
+}
+
+// 프리셋·저장된 레시피 응답의 목표 ppm — 요청과 필드가 동일해 별칭으로 둔다.
+export type NutrientTargetResponse = NutrientTargetRequest;
+
+export interface NutrientSourceWaterRequest {
+  ca?: number;
+  mg?: number;
+  ec?: number;
+}
+
+// 저장하지 않았으면 세 필드 모두 null(백엔드 NutrientSourceWaterResponse).
+export interface NutrientSourceWaterResponse {
+  ca: number | null;
+  mg: number | null;
+  ec: number | null;
+}
+
+// calculate(미리보기)·저장(POST/PATCH) 공용 요청 — name은 서버가 서비스 계층에서 "저장 시 필수"로
+// 검증한다(계산은 미리보기라 name 불필요). 이 공용 타입만으로는 그 구분이 타입 레벨에서 강제되지
+// 않으므로, 저장 경로는 아래 NutrientRecipeSaveRequest(name 필수)를 대신 쓴다(리뷰 픽스 #65 P2-2).
+export interface NutrientRecipeRequest {
+  name?: string;
+  stage: NutrientStage;
+  target: NutrientTargetRequest;
+  tankVolumeL: number;
+  concentrationFactor: number;
+  sourceWater?: NutrientSourceWaterRequest;
+}
+
+// 저장(POST 생성·PATCH 수정) 전용 요청 — name을 컴파일 타임에 필수로 강제한다.
+export type NutrientRecipeSaveRequest = Omit<NutrientRecipeRequest, "name"> & { name: string };
+
+// 코드 상수 프리셋(cropType×stage 1건) — GET /api/nutrient-presets 응답.
+export interface NutrientPresetResponse {
+  cropType: CropType;
+  stage: NutrientStage;
+  target: NutrientTargetResponse;
+}
+
+// fertilizer=국문 표기, formula=화학식(백엔드 NutrientTankItemResponse).
+export interface NutrientTankItemResponse {
+  fertilizer: string;
+  formula: string;
+  amountG: number;
+}
+
+export interface NutrientTankAllocationResponse {
+  tank: "A" | "B";
+  items: NutrientTankItemResponse[];
+}
+
+export interface NutrientIonBalanceResponse {
+  cationMeL: number;
+  anionMeL: number;
+  deviationPercent: number;
+}
+
+// 배합 계산 결과 — calculate(미리보기)·레시피 저장/조회 응답에 공통으로 실린다.
+export interface NutrientCalculationResponse {
+  tanks: NutrientTankAllocationResponse[];
+  estimatedEc: number;
+  ionBalance: NutrientIonBalanceResponse;
+  warnings: string[];
+}
+
+// 레시피 단건 응답 — calculation은 저장 시점 계산 스냅샷.
+export interface NutrientRecipeResponse {
+  id: number;
+  name: string;
+  stage: NutrientStage;
+  target: NutrientTargetResponse;
+  tankVolumeL: number;
+  concentrationFactor: number;
+  sourceWater: NutrientSourceWaterResponse | null;
+  calculation: NutrientCalculationResponse;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 레시피 목록 요약 응답.
+export interface NutrientRecipeSummaryResponse {
+  id: number;
+  name: string;
+  stage: NutrientStage;
+  estimatedEc: number;
   createdBy: number;
   createdAt: string;
 }

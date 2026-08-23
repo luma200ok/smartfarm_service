@@ -1,4 +1,4 @@
-import type { ErrorCode, EnvironmentHistoryRange, FarmLogType, WeatherSky } from "@/types";
+import type { ErrorCode, EnvironmentHistoryRange, FarmLogType, NutrientStage, WeatherSky } from "@/types";
 
 // localStorage 키 — 앱 prefix = farm (docs/api-contract.md §1)
 export const STORAGE_KEYS = {
@@ -61,6 +61,22 @@ export const ENV_THRESHOLD_RANGE = {
   humidity: { min: 0, max: 100 },
 } as const;
 
+// 양액 배합 생육단계 라벨 (contract §4.9, 이슈 #64·#65). 백엔드 NutrientPresetResponse에는
+// 라벨 필드가 없어(GrowthStage enum 값만 옴) FE에서 한글 라벨을 정의한다.
+export const NUTRIENT_STAGE_LABELS: Record<NutrientStage, string> = {
+  SEEDLING: "육묘기",
+  VEGETATIVE: "영양생장기",
+  FRUITING: "착과/과실비대기",
+  HARVEST: "수확기",
+};
+
+// 계산 결과 화면 상시 노출 고지 문구(요구사항 — 숨김/토글 금지, contract §4.9).
+export const NUTRIENT_SAFETY_NOTICE = "참고용 — 적용 전 원수 분석·현장 확인이 필요합니다.";
+
+// 프리셋 출처 표기(백엔드 NutrientPresets.java 클래스 주석 인용 — API 응답엔 출처 필드가 없어 FE 상수로 고정).
+export const NUTRIENT_PRESET_SOURCE =
+  "프리셋 출처: Kroggel & Kubota (2018), OSU Extension HYG-1437 (Table 3, 4단계 Jensen/UA-CEA 처방)";
+
 // ErrorCode -> 사용자 노출 메시지 (docs/api-contract.md §5)
 export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   C001: "입력값을 확인해주세요.",
@@ -91,4 +107,10 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   W001: "예보를 불러올 수 없습니다.",
   CH001: "AI 응답 생성에 실패했습니다. 잠시 후 다시 시도해주세요.",
   CH002: "AI 상담이 혼잡합니다. 잠시 후 다시 시도해주세요.",
+  N001: "양액 레시피를 찾을 수 없습니다.",
+  N002: "양액 레시피를 수정/삭제할 권한이 없습니다.",
+  // N003은 서버가 상세 사유를 message에 담아 보낸다 — 이 값은 resolveErrorMessage의 최후
+  // 폴백일 뿐, 실제 노출은 resolveNutrientCalculationErrorMessage(errorMessage.ts)가
+  // err.message를 그대로 사용해 이 문구를 대체한다(코드 쪽 임의 문구로 덮지 않는다).
+  N003: "배합할 수 없는 조합입니다. 입력값을 확인해주세요.",
 };

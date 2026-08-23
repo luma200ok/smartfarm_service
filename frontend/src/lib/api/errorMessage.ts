@@ -26,3 +26,13 @@ export function isTooManyRequests(err: unknown): boolean {
 export function isPrescriptionLimitExceeded(err: unknown): boolean {
   return err instanceof ApiError && err.code === "P004";
 }
+
+// N003(배합 불가 — 탱크 침전 위험·원수 보정 과다 등)은 서버가 상세 사유를 message에 직접
+// 담아 보낸다(contract §4.9). ERROR_MESSAGES의 고정 문구로 대체하지 않고 서버 메시지를
+// 그대로 노출해야 하므로, 계산/저장 에러 처리에서는 resolveErrorMessage 대신 이 함수를 쓴다.
+export function resolveNutrientCalculationErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.code === "N003") {
+    return err.message;
+  }
+  return resolveErrorMessage(err);
+}
