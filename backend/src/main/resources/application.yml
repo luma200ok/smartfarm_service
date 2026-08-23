@@ -123,13 +123,20 @@ smartfarm:
   simulator:
     enabled: ${SMARTFARM_SIMULATOR_ENABLED:true}
 
-# 가상 장비 시뮬레이터 tick 주기 + 농장당 1틱 최대 생성 행 수(contract §4.11 사이클 2 정정) —
+# 가상 장비 시뮬레이터 tick 주기 + 농장당/전역 1틱 최대 생성 행 수(contract §4.11 사이클 2 정정) —
 # 상한은 센서 대수가 아니라 행 수 기준(장비당 지표 수만큼 곱해지므로 대수 기준은 추정을 왜곡한다).
 # 초과분은 생성하지 않고 WARN 로그만 남긴다(조용히 자르지 않는다).
 sensor-simulator:
   tick-initial-delay: PT60S
   tick-fixed-delay: PT60S
   max-rows-per-farm: 300
+  # 전역 상한(사이클 2 리뷰 P2-4) — 농장당 상한만으로는 농장 생성 상한이 아직 없는 상태(#91)에서
+  # 농장 수만큼 곱해져 무한정 커진다. ⚠️ 이 값은 SensorReadingPurgeScheduler의 purge 처리량
+  # 산정식(최악 유입 = 이 값 × 1,440틱/일)의 유일한 입력 변수다(사이클 2 리뷰 P3-A — 이전에는
+  # @Value 기본값(2000)에만 의존해 운영자가 이 노브를 yml에서 볼 수 없었다). 이 값을 올리면
+  # sensor-reading.purge-batch-size(및 MAX_BATCHES)도 반드시 같이 재산정해야 한다 — 안 하면
+  # purge가 유입을 못 따라가 90일 보존이 조용히 깨진다.
+  max-rows-per-tick: 2000
 
 # sensor_readings 90일 보존 퍼지(SensorReadingPurgeScheduler, contract §4.11) —
 # EnvSnapshotPurgeScheduler와 배치 삭제 구조는 같지만 배치 크기는 재산정했다(사이클 2 리뷰 P1-2 —
