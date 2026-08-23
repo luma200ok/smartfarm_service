@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-23 (🚨 홈서버 전 서비스 장애 복구 — 터널 SPOF #75·KMA env 누락 #76. 아래 장애 이력 참조. / 이전: 2026-08-22 (🎯 데모 계정 라이브 — PR #58 BE(is_demo 시드·demo-login·A007 가드, opus 이중리뷰 P1 3건 픽스)·PR #59 FE(체험 버튼). deploy-home push 트리거(#39, 타 세션)로 자동 배포됨 → 수동 dispatch 불필요. 실사이트 검증: demo-login 200·데모 농장·삭제 403 A007. 후속=#51 데모 하드닝. / 이전: FE UX 개편 6건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭(#43)·#48 프로필 메뉴(#47). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
+> 마지막 갱신: **2026-08-23 (✅ 터널 독립 스택 분리 완료 — PR #79·#82 + home-infra#4. 재현 테스트 통과(배포 실패시켜도 터널 무사). KMA env `:?required` 가드 적용. 후속=메모리 상한·530 감시. / 이전: 🚨 홈서버 전 서비스 장애 복구 — 터널 SPOF #75·KMA env 누락 #76. 아래 장애 이력 참조. / 이전: 2026-08-22 (🎯 데모 계정 라이브 — PR #58 BE(is_demo 시드·demo-login·A007 가드, opus 이중리뷰 P1 3건 픽스)·PR #59 FE(체험 버튼). deploy-home push 트리거(#39, 타 세션)로 자동 배포됨 → 수동 dispatch 불필요. 실사이트 검증: demo-login 200·데모 농장·삭제 403 A007. 후속=#51 데모 하드닝. / 이전: FE UX 개편 6건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭(#43)·#48 프로필 메뉴(#47). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
@@ -12,6 +12,35 @@
 - 홈서버 DB: 공용 스택 `~/srv/db/compose.yml`(**pgvector/pg16**·mysql8·redis7), 리허설 복원 검증 완료. 이전 순서·백업 현황은 메모리 `oci-migration-progress` 참조.
 
 ## 🚨 장애 이력
+
+### ✅ 2026-08-23 구조 개선 완료 — 재발 경로 차단
+
+장애 복구에 그치지 않고 **원인 구조 자체**를 바꿨다. 터널을 앱 스택에서 분리했다.
+
+| PR | 내용 |
+|---|---|
+| #79 | `nginx`를 `shared-net`에 조인 — 터널 분리의 선행 조건(G1이 잡아낸 502 위험) |
+| luma200ok/home-infra#4 | 터널 독립 스택(compose + runbook). 신설 레포 |
+| #82 | `cloudflared` 정의 제거 + KMA env `:?required` 가드 + 거짓 주석 정정 |
+
+**재현 테스트 통과** — 운영 `.env`에서 `KMA_SERVICE_KEY`를 제거하고 배포를 실행(8/23과 동일 트리거):
+
+```
+error while interpolating services.backend.environment.KMA_SERVICE_KEY:
+  required variable KMA_SERVICE_KEY is missing a value
+```
+
+배포는 **compose 파싱 단계에서 멈췄고**(컨테이너 생성 전), `tunnel-cloudflared-1`은 건드려지지도 않았으며
+10개 도메인 전부 정상이었다. 8/23에는 같은 트리거로 전 도메인 530이 40분간 지속됐다.
+
+**두 겹의 방어가 각각 독립적으로 작동한다:**
+1. `:?required` 가드 — 컨테이너를 하나도 건드리기 전에 배포를 멈춘다
+2. 스택 분리 — 배포가 진행돼 backend가 죽어도 터널은 다른 스택이라 무관하다
+
+⚠️ **`deploy/home/compose.yml`에 `cloudflared`를 다시 추가하지 말 것.** 앱 배포 실패가 전 서비스를 내리는 구조가 되살아난다.
+⚠️ **`nginx`의 `shared-net` 조인을 지우지 말 것.** 터널이 nginx에 닿는 유일한 경로다 — 지우면 `farm`만 502가 된다(찾기 어려운 형태).
+
+후속: home-infra#2(메모리 상한 — 24개 컨테이너 전부 무제한), home-infra#3(530 감지 — 40분간 아무도 몰랐던 문제는 아직 그대로)
 
 ### 2026-08-23 04:00 — 홈서버 전 서비스 다운 (약 40분) → 복구 완료
 - **현상**: `luma200ok.com` 포함 **홈서버 전 도메인 530**(Cloudflare Error 1033, tunnel down). hajacheck·community·mes 등 smartfarm 무관 서비스까지 전부 다운. 이어 `farm.luma200ok.com` 502.
