@@ -135,11 +135,13 @@
 **backend (#54)**:
 | 메서드 | 경로 | 권한 | 요청 | 응답 |
 |---|---|---|---|---|
-| POST | `/api/farms/{farmId}/chat` | 멤버 | ChatRequest{question(1~500)} | 200 ChatMessageResponse (동기, 타임아웃 30s) |
+| POST | `/api/farms/{farmId}/chat` | 멤버 | ChatRequest{question(1~500)} | 200 ChatMessageResponse (동기, **타임아웃 120s**) |
 | GET | `/api/farms/{farmId}/chat` | 멤버 | `?page&size` | 200 Page\<ChatMessageResponse\> (최신순) |
 
 - **ChatMessageResponse** `{id, question, answer, sources[], fallback, createdBy, createdAt}` — backend `chat_messages`(V12, farm_id·user_id 포함)에 이력 저장 후 매핑.
-- caller_ref = `svc:farm:{farmId}` 전달. ai-server 429 → **CH002(429)**, 그 외 실패/타임아웃 → **CH001(502)**. 데모 계정 허용(체험 핵심 — 남용 쿼터는 #51에서 일괄).
+- caller_ref = `svc:farm:{farmId}` 전달. ai-server 429 → **CH002(429)**, 그 외 실패/타임아웃 → **CH001(502)**.
+  - **타임아웃 120s 근거(2026-08-23 #80)**: 초판 30s는 같은 로컬 LLM을 쓰는 처방 경로(120s)보다 짧아 **실사용에서 항상 타임아웃**했다(라이브 실측 30.6s 실패). 스레드 점유는 전역 동시성 가드(Semaphore 2)가 상한선을 보장하므로 타임아웃을 늘려도 고갈 위험은 없다.
+  - **타임아웃 예외 매핑 주의**: JDK HttpClient 기반 팩토리는 읽기 타임아웃을 `RestClientException`이 아니라 **`CancellationException`으로 표면화할 수 있다**(운영 실측). 외부 호출 클라이언트는 이 계열까지 도메인 ErrorCode로 매핑해야 하며, 놓치면 계약이 정한 502가 아니라 **일반 500**이 나간다. 데모 계정 허용(체험 핵심 — 남용 쿼터는 #51에서 일괄).
 - **자원 보호(2026-08-23 보안 리뷰 P2)**: ai-server는 챗 전용 하위 상한 1(진단·처방이 굶지 않도록 최소 1슬롯 확보) — 챗 포화 시 CH002. backend는 **3중 방어**를 둔다(2026-08-23 #54 보안 리뷰 P1 반영 — 원래 농장 단위만 두었으나, 일반 계정이 농장을 여러 개 만들어 곱하기로 우회하면 챗이 Tomcat 스레드를 30s씩 점유해 **사이트 전체 마비**가 가능함을 확인):
   1. **농장 단위** 분당 10건 (공유 농장의 합산 남용 차단)
   2. **사용자 단위** 분당 10건 (농장을 늘려 우회하는 경로 차단) — 둘 중 하나라도 초과하면 CH002
