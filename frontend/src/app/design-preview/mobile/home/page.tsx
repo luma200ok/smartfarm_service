@@ -9,7 +9,7 @@ import {
   RACK_SELECTED,
   UNREAD_ALARMS,
 } from "@/components/design-preview/mock";
-import { Card, RackGrid } from "@/components/design-preview/ui";
+import { AlertMarker, Card, RackGrid } from "@/components/design-preview/ui";
 
 // 화면 M1 — 모바일 홈. 핸드오프 `Mobile`.
 // 상단 농장 전환 바 + 미확인 경보 카드 + 지표 3열×2행 + 랙 도면 축약 + 오늘의 제어.
@@ -67,9 +67,15 @@ export default function MobileHomePage() {
               className={`mt-1.5 text-[20px] leading-none font-bold ${kpi.alert ? "text-dp-red-ink" : "text-dp-ink"}`}
             >
               {kpi.value}
-              {/* 시안은 이상값을 색으로만 구분한다. 색을 못 보는 사용자를 위해 상태를 텍스트로도 싣는다
-                  (시각 표기는 시안 확정 사항이라 임의로 바꾸지 않음 — 아이콘/라벨 추가는 디자인 확인 필요) */}
-              {kpi.alert ? <span className="sr-only"> 목표 초과</span> : null}
+              {/* 이슈 #88: 색만으로 이상값을 구분하지 않도록 값 옆에 작은 마커(!)를 더한다
+                  (마커는 aria-hidden — 바로 뒤 sr-only 텍스트와 중복 낭독되지 않게).
+                  색 자체는 시안 그대로 유지, 마커는 보강 수단이다. */}
+              {kpi.alert ? (
+                <>
+                  <AlertMarker />
+                  <span className="sr-only"> 목표 초과</span>
+                </>
+              ) : null}
             </div>
           </Card>
         ))}

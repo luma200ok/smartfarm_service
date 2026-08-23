@@ -122,6 +122,20 @@ export function Pill({ label, alert = false }: { label: string; alert?: boolean 
   );
 }
 
+/**
+ * 이상값 마커 — 지표 값 옆에 붙여 색 외의 수단으로도 이상 상태를 전달한다(WCAG 1.4.1,
+ * 이슈 #88). 색은 그대로 유지하고 마커는 보강 수단이므로 부모가 이미 색으로 상태를 표시한
+ * 자리에서만 쓴다. 값 옆에 스크린리더용 상태 텍스트(sr-only)가 함께 오는 경우가 많아
+ * 중복 낭독을 막기 위해 aria-hidden을 준다.
+ */
+export function AlertMarker({ className = "" }: { className?: string }) {
+  return (
+    <span aria-hidden className={`ml-0.5 ${className}`}>
+      !
+    </span>
+  );
+}
+
 /** 상태 배지 (농장 카드) */
 export function StatusBadge({ label, tone }: { label: string; tone: Severity }) {
   const style =

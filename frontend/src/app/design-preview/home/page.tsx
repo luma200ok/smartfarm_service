@@ -23,6 +23,7 @@ import {
   UNREAD_ALARMS,
 } from "@/components/design-preview/mock";
 import {
+  AlertMarker,
   AxisLabels,
   CardTitle,
   Chip,
@@ -111,6 +112,14 @@ export default function DesignPreviewHomePage() {
                       }`}
                     >
                       {m.value}
+                      {/* 이슈 #88: 카드 상단 StatusBadge가 맥락을 주긴 하지만 지표 단위로는
+                          여전히 색으로만 구분되므로 모바일 홈과 동일하게 마커 + sr-only 텍스트를 더한다. */}
+                      {m.tone !== "normal" ? (
+                        <>
+                          <AlertMarker />
+                          <span className="sr-only">{m.tone === "critical" ? " 경보" : " 주의"}</span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 ))}
