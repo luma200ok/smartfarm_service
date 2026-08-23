@@ -27,10 +27,10 @@ class ArchitectureRulesTest {
     /**
      * 규칙 ①: {farmId} PathVariable을 받는 컨트롤러가 호출하는 서비스는 FarmAccessGuard 의존을
      * 가져야 한다(cross-tenant IDOR 차단). ArchUnit이 "컨트롤러 메서드의 PathVariable 이름"까지
-     * 정적 분석하긴 어려워, controller 패키지에서 {farmId}를 다루는 컨트롤러 7개
+     * 정적 분석하긴 어려워, controller 패키지에서 {farmId}를 다루는 컨트롤러 9개
      * (DiagnosisController·InvitationController·FarmMemberController·FarmController·
-     * PrescriptionController·EnvironmentController·EnvThresholdController — grep '{farmId}' 확인)가
-     * 실제로 호출하는 서비스 7개를 명시 리스트로 검증하는 근사 규칙을 쓴다(handoff 허용).
+     * PrescriptionController·EnvironmentController·EnvThresholdController·FarmLogController — grep '{farmId}' 확인)가
+     * 실제로 호출하는 서비스 9개를 명시 리스트로 검증하는 근사 규칙을 쓴다(handoff 허용).
      */
     @Test
     @DisplayName("규칙①: farmId를 다루는 서비스는 FarmAccessGuard에 의존해야 한다")
@@ -42,7 +42,9 @@ class ArchitectureRulesTest {
                 "com.smartfarm.service.service.FarmMemberService",
                 "com.smartfarm.service.service.InvitationService",
                 "com.smartfarm.service.service.EnvironmentService",
-                "com.smartfarm.service.service.EnvThresholdService"
+                "com.smartfarm.service.service.EnvThresholdService",
+                "com.smartfarm.service.service.FarmLogService",
+                "com.smartfarm.service.service.ForecastService"
         );
 
         JavaClasses classes = new ClassFileImporter().importPackages("com.smartfarm.service.service");

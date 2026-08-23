@@ -6,6 +6,9 @@ import com.smartfarm.service.dto.KmaForecastEnvelope;
 import com.smartfarm.service.dto.SkyCondition;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -64,19 +67,18 @@ public class KmaForecastClient {
     /**
      * 공공데이터포털 인증키(디코딩 키)에는 {@code +}·{@code =}가 흔한데, {@code +}는 쿼리에서 합법 문자라
      * UriBuilder가 그대로 두고 서버는 이를 공백으로 해석해 인증이 깨진다. 그래서 키만 직접 퍼센트
-     * 인코딩한 쿼리 문자열을 만들어 {@link java.net.URI}로 넘긴다(URI를 직접 주면 재인코딩되지 않아
+     * 인코딩한 쿼리 문자열을 만들어 {@link URI}로 넘긴다(URI를 직접 주면 재인코딩되지 않아
      * 이중 인코딩도 없다).
      */
-    private java.net.URI buildForecastUri(BaseSlot slot) {
-        String encodedKey = java.net.URLEncoder.encode(
-                kmaProperties.serviceKey(), java.nio.charset.StandardCharsets.UTF_8);
+    private URI buildForecastUri(BaseSlot slot) {
+        String encodedKey = URLEncoder.encode(kmaProperties.serviceKey(), StandardCharsets.UTF_8);
         String query = "serviceKey=" + encodedKey
                 + "&pageNo=1&numOfRows=1000&dataType=JSON"
                 + "&base_date=" + slot.baseDate()
                 + "&base_time=" + slot.baseTime()
                 + "&nx=" + kmaProperties.gridNx()
                 + "&ny=" + kmaProperties.gridNy();
-        return java.net.URI.create(kmaProperties.baseUrl() + "/getVilageFcst?" + query);
+        return URI.create(kmaProperties.baseUrl() + "/getVilageFcst?" + query);
     }
 
     public ForecastResponse fetchForecast() {

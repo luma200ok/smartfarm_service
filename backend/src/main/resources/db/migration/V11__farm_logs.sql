@@ -1,8 +1,9 @@
 -- V11: farm_logs — 작업일지(contract §4.8, 이슈 #56)
 CREATE TABLE farm_logs (
     id BIGSERIAL PRIMARY KEY,
-    farm_id BIGINT NOT NULL,
-    author BIGINT NOT NULL,
+    -- FK는 V3(diagnoses)·V4(prescriptions)와 동일 관례 — 고아 행 차단.
+    farm_id BIGINT NOT NULL REFERENCES farms (id),
+    author BIGINT NOT NULL REFERENCES users (id),
     log_date DATE NOT NULL,
     type VARCHAR(20) NOT NULL,
     memo VARCHAR(1000),

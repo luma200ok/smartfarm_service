@@ -24,6 +24,9 @@ public class KmaClientConfig {
                 .withConnectTimeout(kmaProperties.connectTimeout())
                 .withReadTimeout(kmaProperties.readTimeout());
         ClientHttpRequestFactory factory = ClientHttpRequestFactoryBuilder.detect().build(settings);
-        return builder.baseUrl(kmaProperties.baseUrl()).requestFactory(factory).build();
+        // baseUrl은 설정하지 않는다 — KmaForecastClient가 인증키 단일 인코딩을 위해 절대 URI를 직접
+        // 만들어 넘기는데, RestClient는 절대 URI를 받으면 빌더의 baseUrl을 무시한다. 여기에 baseUrl을
+        // 두면 "상대 경로만 넘기면 된다"는 오해를 부르는 죽은 설정이 된다(리뷰 P3).
+        return builder.requestFactory(factory).build();
     }
 }
