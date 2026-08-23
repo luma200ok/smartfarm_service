@@ -62,6 +62,15 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
+    # 메모리 상한(home-infra#9) — 실측 RSS 503MiB(-Xmx512m 힙 기준).
+    # -Xmx512m은 "힙"만의 상한이고 그 위에 메타스페이스·코드캐시·스레드 스택·다이렉트/NIO 버퍼가 추가로
+    # 붙는다 — JVM 프로세스 총 RSS는 대략 힙의 2~3배가 흔하다. 그래서 힙(512m)의 약 3배인 1.5G를 상한으로
+    # 잡아 GC·클래스로딩 스파이크에 여유를 주면서도, 폭주 시엔 무관한 다른 컨테이너 대신 이 컨테이너만
+    # OOM killer에 잡히게 한다.
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
 
   frontend:
     build:
@@ -73,6 +82,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # 메모리 상한(home-infra#9) — 실측 RSS 40MiB(Next.js 프로덕션 서버, 정적 자산 위주).
+    # 여유를 넉넉히 두어 512M — 트래픽 급증 시 Node 힙·캐시 증가를 흡수하면서도 무한대(0=무제한)는 피한다.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   nginx:
     image: nginx:alpine
@@ -94,3 +109,9 @@ services:
         condition: service_healthy
       frontend:
         condition: service_healthy
+    # 메모리 상한(home-infra#9) — 실측 RSS 5MiB(nginx:alpine, 단순 리버스 프록시 설정).
+    # 자체 사용량은 매우 낮지만 커넥션 버퍼링·워커 프로세스 여유를 위해 256M으로 설정(0=무제한 회피).
+    deploy:
+      resources:
+        limits:
+          memory: 256M
