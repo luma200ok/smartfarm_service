@@ -1,6 +1,6 @@
 # 📊 SmartFarm Service — 진행 현황 (STATUS)
 
-> 마지막 갱신: **2026-08-22 (🎯 데모 계정 라이브 — PR #58 BE(is_demo 시드·demo-login·A007 가드, opus 이중리뷰 P1 3건 픽스)·PR #59 FE(체험 버튼). deploy-home push 트리거(#39, 타 세션)로 자동 배포됨 → 수동 dispatch 불필요. 실사이트 검증: demo-login 200·데모 농장·삭제 403 A007. 후속=#51 데모 하드닝. / 이전: FE UX 개편 6건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭(#43)·#48 프로필 메뉴(#47). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
+> 마지막 갱신: **2026-08-23 (🚨 홈서버 전 서비스 장애 복구 — 터널 SPOF #75·KMA env 누락 #76. 아래 장애 이력 참조. / 이전: 2026-08-22 (🎯 데모 계정 라이브 — PR #58 BE(is_demo 시드·demo-login·A007 가드, opus 이중리뷰 P1 3건 픽스)·PR #59 FE(체험 버튼). deploy-home push 트리거(#39, 타 세션)로 자동 배포됨 → 수동 dispatch 불필요. 실사이트 검증: demo-login 200·데모 농장·삭제 403 A007. 후속=#51 데모 하드닝. / 이전: FE UX 개편 6건 머지 — PR #34 가드 레이스(#33)·#35 farms 분리(#32)·#37 다크 토글(#36)·#45 좌측 사이드바+농장 스위처(#42)·#46 농장 상세 탭(#43)·#48 프로필 메뉴(#47). 후속=#44 중복 조회 정리. deploy-home 배포. ⚠️ 구 deploy.yml(OCI push 배포)이 머지마다 arm1에 재배포됨 — 정지 상태와 충돌, 트리거 제거 필요. 이전 갱신: 🏁 OCI 이전 전체 종료 — 전 서비스 컷오버+마무리 완료, OCI 정지·관찰 중(해지만 남음). 상세=`_local/oci-migration-plan.md`)**
 > 새 세션은 이 문서 + [api-contract.md](api-contract.md) 로 현황 파악.
 
 ## 🏠 홈서버 이전 (이슈 #27 — OCI 폐기 결정)
@@ -10,6 +10,16 @@
 - **PR #30 ✅**: 첫 배포의 frontend unhealthy 픽스 — Next standalone HOSTNAME 바인딩 함정 + alpine localhost=::1. **홈서버 첫 배포 성공: backend·frontend healthy, 내부 스모크 200.**
 - **PR-3 (다음)**: Public Hostname(farm-home) 등록 후 외부 e2e 스모크 + 컷오버 체크리스트 / **PR-4**: 컷오버(DNS 전환+최종 데이터 동기, 이슈 #27 닫음).
 - 홈서버 DB: 공용 스택 `~/srv/db/compose.yml`(**pgvector/pg16**·mysql8·redis7), 리허설 복원 검증 완료. 이전 순서·백업 현황은 메모리 `oci-migration-progress` 참조.
+
+## 🚨 장애 이력
+
+### 2026-08-23 04:00 — 홈서버 전 서비스 다운 (약 40분) → 복구 완료
+- **현상**: `luma200ok.com` 포함 **홈서버 전 도메인 530**(Cloudflare Error 1033, tunnel down). hajacheck·community·mes 등 smartfarm 무관 서비스까지 전부 다운. 이어 `farm.luma200ok.com` 502.
+- **원인 2건** (모두 03:28 #56 배포가 유발):
+  1. `cloudflared`가 **smartfarm-home compose에 포함**되어 배포 시 recreate → backend 기동 실패로 up 중단 → 터널이 `Created` 상태로 start 안 됨. `restart: unless-stopped`는 한 번도 start 안 된 컨테이너엔 무효라 자동 복구 불가 → **이슈 #75**
+  2. #56이 요구하는 `KMA_SERVICE_KEY`/`KMA_GRID_NX`/`KMA_GRID_NY`가 **운영 `.env` 미반영**(`.env.example`에만 추가) → `KmaProperties` fail-fast로 backend 크래시 루프 → **이슈 #76**
+- **복구**: 터널 컨테이너 기동 → 전 도메인 200 / 운영 `.env`에 KMA 3키 주입(서비스키=smartfarm-ai 스택 동일 키 재사용, 격자 60·127) → 재배포 후 backend Healthy, `farm` 200·`/api/health` ok
+- **교훈**: `.env.example` 갱신 ≠ 운영 반영. **필수 env 추가는 코드 머지와 서버 반영이 한 세트.** 터널은 앱 스택과 분리해야 한다.
 
 ## 개요
 smartfarm_ai(솔로 프로젝트, ML/DL/LLM)를 **멀티테넌시 3-tier 서비스**로 확장.
