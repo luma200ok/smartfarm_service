@@ -174,6 +174,49 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("위치 FK 전이 불일치(rackId 생략, level→rack→zone이 지정한 zoneId와 다름) 시 400 C001(2차 리뷰 P1 #89)")
+    void createDeviceLocationTransitiveMismatchFails() throws Exception {
+        String token = signupAndLogin("농장주-장비위치전이불일치");
+        long farmId = createFarm(token, "위치전이불일치 농장");
+        long zoneA = createZone(token, farmId, "A동");
+        long zoneB = createZone(token, farmId, "B동");
+        createRack(token, farmId, zoneB, "R1", 1);
+        long levelInRackOfZoneB = findLevelId(token, farmId, "R1", 1);
+
+        // rackId를 생략(null)하면 쌍 검사(①②) 둘 다 skip된다 — level -> rack -> zone 전이 검사만이 잡는다.
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneA, null, levelInRackOfZoneB, "모순장비", DeviceKind.SENSOR,
+                                null, null, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("PATCH로 rackLevelId만 바꿔도 병합된 최종 상태의 전이 불일치면 400 C001(2차 리뷰 P1 #89)")
+    void updateDeviceLocationTransitiveMismatchFails() throws Exception {
+        String token = signupAndLogin("농장주-장비수정전이불일치");
+        long farmId = createFarm(token, "장비수정전이불일치 농장");
+        long zoneA = createZone(token, farmId, "A동");
+        long zoneB = createZone(token, farmId, "B동");
+        createRack(token, farmId, zoneB, "R1", 1);
+        long levelInRackOfZoneB = findLevelId(token, farmId, "R1", 1);
+        // 존 직속(zoneId만) 게이트웨이 — rackId·rackLevelId 둘 다 null인 기존 장비
+        long deviceId = createDevice(token, farmId, zoneA, null, null, "존직속게이트웨이");
+
+        // rackLevelId만 바꾼다 — 기존 zoneId(A동)는 그대로라 병합된 최종 상태가 전이로 어긋난다
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, levelInRackOfZoneB, null, null, null, null, null, null, null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("같은 농장 내 시리얼 중복 시 409 E002를 반환한다")
     void createDeviceDuplicateSerialConflict() throws Exception {
         String token = signupAndLogin("농장주-시리얼중복");
@@ -207,6 +250,25 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                                 null, null, null, null, null))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("F002"));
+    }
+
+    @Test
+    @DisplayName("일반 멤버(OWNER 아님)는 장비 등록 시 403 F003을 반환한다(2차 리뷰 P3 #89)")
+    void createDeviceAsMemberForbidden() throws Exception {
+        String ownerToken = signupAndLogin("농장주-장비등록F003");
+        String memberToken = signupAndLogin("멤버-장비등록F003");
+        long farmId = createFarm(ownerToken, "장비등록F003 농장");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, null, null, "침입장비", DeviceKind.SENSOR,
+                                null, null, null, null, null))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("F003"));
     }
 
     // ── 목록 조회(필터) ────────────────────────────────────
@@ -351,6 +413,40 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("일반 멤버(OWNER 아님)는 장비 수정 시 403 F003을 반환한다(2차 리뷰 P3 #89)")
+    void updateDeviceAsMemberForbidden() throws Exception {
+        String ownerToken = signupAndLogin("농장주-장비수정F003");
+        String memberToken = signupAndLogin("멤버-장비수정F003");
+        long farmId = createFarm(ownerToken, "장비수정F003 농장");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        long deviceId = createDevice(ownerToken, farmId, zoneId, "센서", DeviceKind.SENSOR, "SN-F003", DeviceStatus.NORMAL);
+        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+
+        mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, "침입", null, null, null, null, null, null))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("F003"));
+    }
+
+    @Test
+    @DisplayName("데모 계정은 장비 수정 시 403 A007을 반환한다(파괴적 작업 차단, 2차 리뷰 P3 #89)")
+    void updateDeviceAsDemoAccountForbidden() throws Exception {
+        String demoToken = demoAccountLogin();
+        long demoFarmId = demoAccountFarmId(demoToken);
+
+        mockMvc.perform(patch("/api/farms/" + demoFarmId + "/devices/999999999")
+                        .header("Authorization", "Bearer " + demoToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                null, null, null, "침입", null, null, null, null, null, null))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
+    }
+
+    @Test
     @DisplayName("PATCH로 위치 FK 한 필드만 바꿔도 병합된 최종 상태 기준 계층 불일치면 400 C001(리뷰 P2-3 #89 — 요청값만 보면 통과해버리는 우회 케이스)")
     void updateDeviceLocationHierarchyMismatchFails() throws Exception {
         String token = signupAndLogin("농장주-장비수정위치불일치");
@@ -474,6 +570,34 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("E001"));
+    }
+
+    @Test
+    @DisplayName("일반 멤버(OWNER 아님)는 장비 삭제 시 403 F003을 반환한다(2차 리뷰 P3 #89)")
+    void deleteDeviceAsMemberForbidden() throws Exception {
+        String ownerToken = signupAndLogin("농장주-장비삭제F003");
+        String memberToken = signupAndLogin("멤버-장비삭제F003");
+        long farmId = createFarm(ownerToken, "장비삭제F003 농장");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        long deviceId = createDevice(ownerToken, farmId, zoneId, "센서", DeviceKind.SENSOR, "SN-DF003", DeviceStatus.NORMAL);
+        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+
+        mockMvc.perform(delete("/api/farms/" + farmId + "/devices/" + deviceId)
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("F003"));
+    }
+
+    @Test
+    @DisplayName("데모 계정은 장비 삭제 시 403 A007을 반환한다(파괴적 작업 차단, 2차 리뷰 P3 #89)")
+    void deleteDeviceAsDemoAccountForbidden() throws Exception {
+        String demoToken = demoAccountLogin();
+        long demoFarmId = demoAccountFarmId(demoToken);
+
+        mockMvc.perform(delete("/api/farms/" + demoFarmId + "/devices/999999999")
+                        .header("Authorization", "Bearer " + demoToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
     }
 
     private long createDevice(String token, long farmId, long zoneId, String name, DeviceKind kind, String serial,

@@ -173,6 +173,37 @@ class ZoneApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.code").value("R001"));
     }
 
+    @Test
+    @DisplayName("일반 멤버(OWNER 아님)는 존 수정 시 403 F003을 반환한다(2차 리뷰 P3 #89)")
+    void updateZoneAsMemberForbidden() throws Exception {
+        String ownerToken = signupAndLogin("농장주-존수정F003");
+        String memberToken = signupAndLogin("멤버-존수정F003");
+        long farmId = createFarm(ownerToken, "존수정F003 농장");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+
+        mockMvc.perform(patch("/api/farms/" + farmId + "/zones/" + zoneId)
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ZoneUpdateRequest("침입", null))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("F003"));
+    }
+
+    @Test
+    @DisplayName("데모 계정은 존 수정 시 403 A007을 반환한다(파괴적 작업 차단, 2차 리뷰 P3 #89)")
+    void updateZoneAsDemoAccountForbidden() throws Exception {
+        String demoToken = demoAccountLogin();
+        long demoFarmId = demoAccountFarmId(demoToken);
+
+        mockMvc.perform(patch("/api/farms/" + demoFarmId + "/zones/999999999")
+                        .header("Authorization", "Bearer " + demoToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ZoneUpdateRequest("침입", null))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
+    }
+
     // ── 삭제(캐스케이드) ────────────────────────────────────
 
     @Test
@@ -211,6 +242,33 @@ class ZoneApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("R001"));
+    }
+
+    @Test
+    @DisplayName("일반 멤버(OWNER 아님)는 존 삭제 시 403 F003을 반환한다(2차 리뷰 P3 #89)")
+    void deleteZoneAsMemberForbidden() throws Exception {
+        String ownerToken = signupAndLogin("농장주-존삭제F003");
+        String memberToken = signupAndLogin("멤버-존삭제F003");
+        long farmId = createFarm(ownerToken, "존삭제F003 농장");
+        long zoneId = createZone(ownerToken, farmId, "A동");
+        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+
+        mockMvc.perform(delete("/api/farms/" + farmId + "/zones/" + zoneId)
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("F003"));
+    }
+
+    @Test
+    @DisplayName("데모 계정은 존 삭제 시 403 A007을 반환한다(파괴적 작업 차단, 2차 리뷰 P3 #89)")
+    void deleteZoneAsDemoAccountForbidden() throws Exception {
+        String demoToken = demoAccountLogin();
+        long demoFarmId = demoAccountFarmId(demoToken);
+
+        mockMvc.perform(delete("/api/farms/" + demoFarmId + "/zones/999999999")
+                        .header("Authorization", "Bearer " + demoToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
     }
 
     // ── 삭제 시 하위 활성 장비 잔존 거부 (리뷰 P1 #89 — 계약 초판 결함 보정) ────────
