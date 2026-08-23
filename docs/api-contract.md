@@ -140,6 +140,8 @@
 
 - **ChatMessageResponse** `{id, question, answer, sources[], fallback, createdBy, createdAt}` — backend `chat_messages`(V12, farm_id·user_id 포함)에 이력 저장 후 매핑.
 - caller_ref = `svc:farm:{farmId}` 전달. ai-server 429 → **CH002(429)**, 그 외 실패/타임아웃 → **CH001(502)**. 데모 계정 허용(체험 핵심 — 남용 쿼터는 #51에서 일괄).
+- **자원 보호(2026-08-23 보안 리뷰 P2)**: ai-server는 챗 전용 하위 상한 1(진단·처방이 굶지 않도록 최소 1슬롯 확보) — 챗 포화 시 CH002. backend는 추가로 농장·사용자 단위 레이트리밋을 둔다(#54 범위).
+- **⚠️ FE 렌더링 규칙(보안 필수)**: `answer`는 **LLM이 생성한 자유 텍스트**이므로 프롬프트 인젝션으로 스크립트 문자열이 섞일 수 있다. FE는 React 기본 이스케이프(텍스트 노드)로만 렌더링하고 **`dangerouslySetInnerHTML`·raw HTML 허용 마크다운 렌더러 사용 금지**(저장형 XSS 차단 — 답변이 이력으로 재노출되므로 1회성이 아님).
 
 ## 4.8 작업일지 · 날씨예보 (2026-08-23 확정, 이슈 #56·#57 — 다함 벤치마킹 4)
 
