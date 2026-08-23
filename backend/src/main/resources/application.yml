@@ -147,6 +147,16 @@ sensor-reading:
   purge-fixed-delay: P1D
   purge-batch-size: 20000
 
+# control_apply_logs 90일 보존 퍼지(ControlApplyLogPurgeScheduler, contract §4.12 상한) —
+# 구조는 위 두 퍼지와 같지만 상수는 이 도메인 유입량으로 다시 산정했다("패턴 그대로" 금지, 사이클 2
+# 리뷰 P1-2의 교훈). 적용 이력은 사용자 조작 1회당 1행이라 배경 유입이 없다: 현실 유입 2,000행/일,
+# 자동화 클라이언트를 가정한 방어적 상한도 1,440,000행/일이며 5,000×600배치 = 3,000,000행/일로
+# 안전계수 2를 만족한다(계산식 전문은 ControlApplyLogPurgeScheduler 클래스 주석).
+control-apply-log:
+  purge-initial-delay: P1D
+  purge-fixed-delay: P1D
+  purge-batch-size: 5000
+
 kma:
   base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0
   # 기본값 필수(핫픽스 #73) — env 미설정 시 placeholder 해석 실패/빈 문자열 Integer 변환으로

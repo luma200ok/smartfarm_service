@@ -67,7 +67,14 @@ public enum ErrorCode {
 
     // Device (contract §4.10)
     E001(HttpStatus.NOT_FOUND, "E001", "장비를 찾을 수 없습니다."),
-    E002(HttpStatus.CONFLICT, "E002", "이미 등록된 장비 시리얼입니다.");
+    E002(HttpStatus.CONFLICT, "E002", "이미 등록된 장비 시리얼입니다."),
+
+    // Control (제어 도메인 — contract §4.12)
+    CT001(HttpStatus.NOT_FOUND, "CT001", "제어 변경 항목을 찾을 수 없습니다."),
+    CT002(HttpStatus.CONFLICT, "CT002", "통신이 두절된 장비는 조작할 수 없습니다."),
+    CT003(HttpStatus.CONFLICT, "CT003", "현재 운전 모드에서 허용되지 않는 조작입니다."),
+    CT004(HttpStatus.CONFLICT, "CT004", "적용 대기 큐 상한(존당 50건)을 초과했습니다."),
+    CT005(HttpStatus.CONFLICT, "CT005", "대기 큐가 변경되었습니다. 최신 큐를 확인한 뒤 다시 적용해주세요.");
 
     private final HttpStatus status;
     private final String code;

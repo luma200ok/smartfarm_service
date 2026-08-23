@@ -46,6 +46,15 @@ public class SensorSimulatorService {
     private final DeviceRepository deviceRepository;
     private final RackLevelRepository rackLevelRepository;
     private final SensorSimulatorPersistenceService sensorSimulatorPersistenceService;
+    private final ControlSimulationContextProvider controlSimulationContextProvider;
+
+    /**
+     * 시뮬레이터 대상에서 제외할 장비 상태 — {@code OFFLINE}(통신 두절, §4.11)에 더해 사이클 3에서
+     * {@code OFF}(제어로 꺼진 장비, §4.12)를 추가했다. 껐는데 측정값이 계속 흐르면 제어가 데이터에
+     * 반영된다는 이 사이클의 전제 자체가 깨진다.
+     */
+    private static final List<DeviceStatus> EXCLUDED_SENSOR_STATUSES =
+            List.of(DeviceStatus.OFFLINE, DeviceStatus.OFF);
 
     /** 농장당 1틱 최대 생성 행 수(contract §4.11 사이클 2 정정 — 센서 대수가 아니라 행 수 기준). */
     @Value("${sensor-simulator.max-rows-per-farm:300}")
@@ -61,8 +70,8 @@ public class SensorSimulatorService {
     private int maxRowsPerTick;
 
     public void tick() {
-        List<Device> eligible = deviceRepository.findByKindAndStatusNotOrderByIdAsc(
-                DeviceKind.SENSOR, DeviceStatus.OFFLINE);
+        List<Device> eligible = deviceRepository.findByKindAndStatusNotInOrderByIdAsc(
+                DeviceKind.SENSOR, EXCLUDED_SENSOR_STATUSES);
         if (eligible.isEmpty()) {
             return;
         }
@@ -113,6 +122,9 @@ public class SensorSimulatorService {
     private List<SensorReading> generateForFarm(Long farmId, List<Device> devices,
                                                  Map<Long, RackLevel> levelsById, LocalDateTime measuredAt,
                                                  int effectiveCap) {
+        // 제어 반영 입력(contract §4.12) — 농장당 1회 배치 조회. 목표값이 없는 농장은 빈 컨텍스트라
+        // 아래 분기가 전부 자연 생성으로 떨어진다(기존 §4.11 동작 그대로).
+        ControlSimulationContext control = controlSimulationContextProvider.forFarm(farmId, devices);
         List<SensorReading> readings = new ArrayList<>();
         int generatedRows = 0;
         int processedDevices = 0;
@@ -126,7 +138,7 @@ public class SensorSimulatorService {
             RackLevel level = device.getRackLevelId() != null ? levelsById.get(device.getRackLevelId()) : null;
             int levelNo = level != null ? level.getLevelNo() : 1;
             for (SensorMetric metric : device.getMetrics()) {
-                double value = SensorSimulationProfile.simulate(metric, levelNo, device.getId(), measuredAt);
+                double value = valueOf(control, device, metric, levelNo, measuredAt);
                 readings.add(SensorReading.builder()
                         .farmId(farmId)
                         .deviceId(device.getId())
@@ -150,6 +162,24 @@ public class SensorSimulatorService {
                     farmId, effectiveCap, devices.size(), processedDevices, skippedDevices, generatedRows);
         }
         return readings;
+    }
+
+    /**
+     * 한 장비·한 지표의 이번 tick 값(contract §4.12 시뮬레이터 연동) — 목표값이 설정된 존이면
+     * <b>직전 값에서 목표로 tick당 일정 비율</b> 수렴시키고(첫 tick은 자연 생성값에서 출발),
+     * 목표가 없거나 그 존의 제어기가 꺼져 있으면 기존 자연 생성(일주기 sin + 층 오프셋 + 노이즈)
+     * 그대로다. ⚠️ 어느 경로든 {@code source}는 {@code SIMULATED}다 — 제어가 붙었다고 실측이 아니다.
+     */
+    private double valueOf(ControlSimulationContext control, Device device, SensorMetric metric, int levelNo,
+                            LocalDateTime measuredAt) {
+        double natural = SensorSimulationProfile.simulate(metric, levelNo, device.getId(), measuredAt);
+        Double target = control.targetFor(device.getZoneId(), metric);
+        if (target == null) {
+            return natural;
+        }
+        Double previous = control.previousValueOf(device.getId(), metric);
+        return SensorSimulationProfile.converge(metric, previous != null ? previous : natural, target,
+                device.getId(), measuredAt);
     }
 
     /** N+1 방지 — 대상 장비들의 rackLevelId를 한 번에 배치 조회(층별 오프셋 계산용 levelNo). */

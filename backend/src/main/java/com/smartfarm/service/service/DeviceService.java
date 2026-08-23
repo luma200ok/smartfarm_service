@@ -48,8 +48,8 @@ public class DeviceService {
     private static final int CALIBRATION_DUE_SOON_DAYS = 30;
 
     /** byModel 집계에서 그룹 상태를 대표할 심각도 우선순위(왼쪽일수록 심각). */
-    private static final List<DeviceStatus> STATUS_SEVERITY =
-            List.of(DeviceStatus.FAULT, DeviceStatus.OFFLINE, DeviceStatus.WARNING, DeviceStatus.NORMAL);
+    private static final List<DeviceStatus> STATUS_SEVERITY = List.of(DeviceStatus.FAULT, DeviceStatus.OFFLINE,
+            DeviceStatus.WARNING, DeviceStatus.OFF, DeviceStatus.NORMAL);
 
     private final DeviceRepository deviceRepository;
     private final ZoneRepository zoneRepository;
@@ -57,6 +57,7 @@ public class DeviceService {
     private final RackLevelRepository rackLevelRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
+    private final ControlCascadeService controlCascadeService;
 
     public DeviceListResponse listDevices(Long farmId, Long userId, DeviceKind kind, DeviceStatus status,
                                            String q, Long zoneId) {
@@ -74,6 +75,10 @@ public class DeviceService {
         long faultOrOffline = devices.stream()
                 .filter(d -> d.getStatus() == DeviceStatus.FAULT || d.getStatus() == DeviceStatus.OFFLINE)
                 .count();
+        // ⚠️ 사이클 3(§4.12)에서 추가된 OFF(제어로 꺼진 장비)는 KPI 4종 어디에도 세지 않는다 —
+        // 장애가 아니라 조작 결과라 faultOrOffline에 넣으면 알림 성격의 지표가 오염되고, normal에
+        // 넣으면 "정상 가동 중"으로 읽힌다. 따라서 total >= normal + warning + faultOrOffline이며
+        // 차이가 OFF 대수다(계약 §4.10 DeviceSummaryResponse 필드는 그대로 유지 — 필드 추가는 계약 변경).
 
         LocalDateTime dueSoonThreshold = LocalDateTime.now().plusDays(CALIBRATION_DUE_SOON_DAYS);
         long calibrationDueSoon = devices.stream()
@@ -202,6 +207,8 @@ public class DeviceService {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireOwner(farmId, userId);
         Device device = findDeviceOrThrow(farmId, deviceId);
+        // 제어 캐스케이드(contract §4.12) — 이 장비를 참조하는 PENDING 큐 폐기(고아 참조 방지).
+        controlCascadeService.discardForDevice(device);
         deviceRepository.delete(device);
     }
 

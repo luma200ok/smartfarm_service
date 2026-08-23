@@ -40,6 +40,9 @@ final class SensorSimulationProfile {
         PARAMS.put(SensorMetric.POWER, new Params(5.0, 2.0, 13.0, 0.1, 0.3, 0.0));
     }
 
+    /** tick당 목표 접근 비율(contract §4.12 — "목표와 현재의 차이 × 0.2"). */
+    private static final double CONVERGENCE_RATE = 0.2;
+
     private SensorSimulationProfile() {
     }
 
@@ -53,6 +56,26 @@ final class SensorSimulationProfile {
         double noise = deterministicNoise(deviceId, measuredAt) * p.noiseAmplitude();
         double value = base + levelOffset + noise;
         return Math.max(value, p.floor());
+    }
+
+    /**
+     * 목표값 수렴(contract §4.12 시뮬레이터 연동) — 적용된 {@code ControlSetpoint.targetValue}가
+     * 일주기 sin 기저를 <b>대체</b>하고, 값은 즉시 점프하지 않고 <b>tick당 일정 비율</b>
+     * ({@link #CONVERGENCE_RATE})로 목표에 근접한다. 즉시 점프시키면 시계열 그래프가 계단이 되어
+     * 데모가 부자연스러워진다.
+     *
+     * <p>노이즈는 자연 생성과 동일한 결정적 노이즈를 그대로 얹는다 — 목표에 도달한 뒤에도 값이
+     * 완전히 평평해지지 않아(실제 제어도 목표 주변에서 흔들린다) 그래프가 죽지 않는다. 직전 값에
+     * 이미 노이즈가 포함돼 있지만 매 tick 목표 쪽으로 당겨지므로 누적 표류는 일어나지 않는다.
+     *
+     * @param previous 직전 측정값(없으면 호출측이 자연 생성값을 넣는다 — 첫 tick)
+     */
+    static double converge(SensorMetric metric, double previous, double target, long deviceId,
+                            LocalDateTime measuredAt) {
+        Params p = PARAMS.get(metric);
+        double moved = previous + (target - previous) * CONVERGENCE_RATE;
+        double noise = deterministicNoise(deviceId, measuredAt) * p.noiseAmplitude();
+        return Math.max(moved + noise, p.floor());
     }
 
     /**

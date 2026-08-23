@@ -20,6 +20,18 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /**
+     * CT005(대기 큐 낙관적 검증 실패)만 최신 큐를 함께 싣는다(contract §4.12 동시성 1). Spring은
+     * 가장 구체적인 예외 타입의 핸들러를 고르므로, 상위 타입인 {@link CustomException} 핸들러보다
+     * 이 핸들러가 우선 매치된다(선언 순서와 무관 — 타입 거리 기준).
+     */
+    @ExceptionHandler(ControlQueueConflictException.class)
+    public ResponseEntity<ControlQueueConflictResponse> handleControlQueueConflict(
+            ControlQueueConflictException e) {
+        return ResponseEntity.status(e.getErrorCode().getStatus())
+                .body(ControlQueueConflictResponse.of(e));
+    }
+
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<ErrorResponse> handleCustomException(CustomException e) {
         ErrorCode errorCode = e.getErrorCode();

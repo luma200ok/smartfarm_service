@@ -2,6 +2,9 @@ package com.smartfarm.service.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -15,6 +18,7 @@ import com.smartfarm.service.entity.SensorReading;
 import com.smartfarm.service.repository.DeviceRepository;
 import com.smartfarm.service.repository.RackLevelRepository;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -42,10 +46,25 @@ class SensorSimulatorServiceTest {
     @Mock
     private SensorSimulatorPersistenceService sensorSimulatorPersistenceService;
 
+    /**
+     * 제어 반영 입력(contract §4.12) — 이 테스트의 관심사는 상한·격리 로직이라 항상 빈 컨텍스트를
+     * 돌려주게 두고(= 목표값 없음 → 기존 자연 생성 경로), 제어 반영 자체는
+     * {@code SensorSimulatorControlIntegrationTest}가 실 데이터로 검증한다.
+     */
+    @Mock
+    private ControlSimulationContextProvider controlSimulationContextProvider;
+
+    @BeforeEach
+    void stubEmptyControlContext() {
+        lenient().when(controlSimulationContextProvider.forFarm(any(), any()))
+                .thenReturn(ControlSimulationContext.empty());
+    }
+
     @Test
     void tickCapsGenerationAcrossFarmsByGlobalBudget() {
         SensorSimulatorService sensorSimulatorService = new SensorSimulatorService(
-                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService);
+                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService,
+                controlSimulationContextProvider);
         ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerFarm", 100);
         ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerTick", 6);
 
@@ -54,7 +73,7 @@ class SensorSimulatorServiceTest {
         Device deviceA = sensorDevice(1L, 10L, fourMetrics); // farm 10 — id 오름차순 먼저 처리
         Device deviceB = sensorDevice(2L, 20L, fourMetrics); // farm 20 — 잔여 예산(2행) < 필요(4행)
 
-        when(deviceRepository.findByKindAndStatusNotOrderByIdAsc(DeviceKind.SENSOR, DeviceStatus.OFFLINE))
+        when(deviceRepository.findByKindAndStatusNotInOrderByIdAsc(eq(DeviceKind.SENSOR), anyCollection()))
                 .thenReturn(List.of(deviceA, deviceB));
 
         sensorSimulatorService.tick();
@@ -75,7 +94,8 @@ class SensorSimulatorServiceTest {
     @Test
     void tickSkipsRemainingFarmsEntirelyOnceGlobalBudgetIsFullyConsumed() {
         SensorSimulatorService sensorSimulatorService = new SensorSimulatorService(
-                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService);
+                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService,
+                controlSimulationContextProvider);
         ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerFarm", 100);
         ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerTick", 2);
 
@@ -83,7 +103,7 @@ class SensorSimulatorServiceTest {
         Device deviceA = sensorDevice(1L, 10L, twoMetrics); // 정확히 전역 예산(2행) 소진
         Device deviceB = sensorDevice(2L, 20L, twoMetrics); // 잔여 예산 0 — 호출조차 되지 않아야 함
 
-        when(deviceRepository.findByKindAndStatusNotOrderByIdAsc(DeviceKind.SENSOR, DeviceStatus.OFFLINE))
+        when(deviceRepository.findByKindAndStatusNotInOrderByIdAsc(eq(DeviceKind.SENSOR), anyCollection()))
                 .thenReturn(List.of(deviceA, deviceB));
 
         sensorSimulatorService.tick();
@@ -99,7 +119,8 @@ class SensorSimulatorServiceTest {
     @Test
     void tickContinuesToLaterFarmsWhenAnEarlierFarmSaveFailsWithDuplicateKey() {
         SensorSimulatorService sensorSimulatorService = new SensorSimulatorService(
-                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService);
+                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService,
+                controlSimulationContextProvider);
         ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerFarm", 100);
         ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerTick", 100);
 
@@ -107,7 +128,7 @@ class SensorSimulatorServiceTest {
         Device deviceA = sensorDevice(1L, 10L, oneMetric); // 먼저 처리 — 저장이 실패한다고 가정
         Device deviceB = sensorDevice(2L, 20L, oneMetric); // 뒤 순서 — 이 농장까지 계속 처리돼야 함
 
-        when(deviceRepository.findByKindAndStatusNotOrderByIdAsc(DeviceKind.SENSOR, DeviceStatus.OFFLINE))
+        when(deviceRepository.findByKindAndStatusNotInOrderByIdAsc(eq(DeviceKind.SENSOR), anyCollection()))
                 .thenReturn(List.of(deviceA, deviceB));
         // farmA 저장 시 V17 unique(device_id, metric, measured_at) 위반을 시뮬레이션(다중 인스턴스
         // 겹침·NTP 역방향 보정 등으로 인한 중복 tick) — catch 없이 두면 이 예외가 tick()의 for 루프를

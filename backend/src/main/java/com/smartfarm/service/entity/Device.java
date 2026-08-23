@@ -144,6 +144,16 @@ public class Device {
     }
 
     /**
+     * 제어 적용·비상 정지에 의한 상태 전이(contract §4.12) — {@link #update}는 PATCH 전용(부분 수정)
+     * 이라 제어 경로가 쓰기엔 넓다. 상태 하나만 바꾸는 좁은 진입점을 따로 둬, 제어가 실수로 위치·
+     * 지표 선언까지 건드릴 수 없게 한다. 호출측({@code ControlService})이 전이 가능 여부(통신 두절
+     * 장비 제외 등)를 이미 판정한 뒤 부른다.
+     */
+    public void changeStatus(DeviceStatus newStatus) {
+        this.status = newStatus;
+    }
+
+    /**
      * PATCH 부분 수정 — null 필드는 미변경(Farm#update와 동일 패턴). 위치 FK 3종도 동일 원칙이라
      * 전체 해제(모두 null로 되돌리기)는 1차 미지원(FarmUpdateRequest의 location 미지원과 동일 원칙).
      * 위치 3종은 호출측(DeviceService)이 부모 FK 자동 채움까지 반영한 <b>해석된 최종값</b>을
