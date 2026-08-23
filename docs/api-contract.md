@@ -322,6 +322,74 @@
 - **신규 ErrorCode 없음** — 검증 실패는 C001, 스코프 리소스 부재는 §4.10의 R001~R003 재사용. 데이터 없음은 오류가 아니라 빈 배열
 - **마이그레이션**: V15 `sensor_readings`(`source` 컬럼 포함) · **V17** purge용 `(measured_at)` 인덱스 + `(device_id, metric, measured_at)` unique
 
+## 4.12 제어 도메인 (2026-08-24 확정, 이슈 #100 — 디자인 프리뷰 갭 대응 사이클 3)
+
+**사이클 등급: Critical** — 적용 대기 큐의 일괄 커밋, 자동/수동 모드 전이, 비상 정지가 전부 상태 전이 + 동시성이다.
+
+### ⚠️ 시뮬레이션 전제
+실기기가 없으므로 제어는 **§4.11 가상 장비 시뮬레이터에 작용**한다. `docs/STATUS.md`의 "원격제어 제외(실기기 부재)" 결정은 §4.11과 동일하게 **시뮬레이션 전제로만 한정 해제**한다. 응답에 `simulated: true`를 실어 실제 기기를 제어하는 척하지 않는다.
+
+### 모델
+- **ControlMode** `{id, farmId, zoneId, mode(AUTO|MANUAL), updatedAt, updatedBy}` — **존당 1행**(unique). 미설정 존은 `AUTO` 기본으로 간주(행 생성 전에도 조회가 성립해야 한다)
+- **ControlSetpoint** `{id, farmId, zoneId, metric, targetValue, updatedAt, updatedBy}` — **존×지표당 1행**(unique). `metric`은 §4.11 `SensorMetric` 중 제어 가능한 것만(`TEMPERATURE|HUMIDITY|CO2|PPFD` — 프리뷰 목표값 4종). EC/PH/POWER는 제어 대상이 아니다
+- **ControlChange**(적용 대기 큐) `{id, farmId, zoneId, kind(SETPOINT|DEVICE), metric?, deviceId?, fromValue, toValue, status(PENDING|APPLIED|DISCARDED), createdBy, createdAt, appliedAt?, appliedBy?}` — 큐 = `status=PENDING` 목록
+  - ⚠️ **큐는 서버에 저장한다.** 프리뷰는 "로컬 큐"로 구현했으나 그건 목업 제약이다. 실제로는 새로고침·다중 사용자·다중 탭에서 큐가 보존·공유돼야 한다
+- **ControlApplyLog** `{id, farmId, zoneId, summary, itemCount, appliedBy, appliedAt}` — 적용 이력(프리뷰 "최근 적용")
+
+### 운전 모드와 허용 조작 (프리뷰 상호작용 절)
+| 모드 | 목표값 편집 | 장비 직접 토글 |
+|---|---|---|
+| `AUTO` | **허용** | **거부(CT003)** — 자동 제어가 장비를 관리한다 |
+| `MANUAL` | 거부(CT003) | **허용** |
+
+프리뷰의 "자동 운전 OFF 시 목표값 카드 비활성"이 이 표의 근거다.
+
+### 엔드포인트
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/zones/{zoneId}/control` | 멤버 | — | 200 `ControlStateResponse` (모드 + 목표값 4종 + 장비 상태 + 대기 큐 + 최근 이력) |
+| PUT | `/api/farms/{farmId}/zones/{zoneId}/control/mode` | 멤버(데모 차단) | `{mode}` | 200 `ControlStateResponse` |
+| POST | `/api/farms/{farmId}/zones/{zoneId}/control/changes` | 멤버(데모 차단) | `ControlChangeRequest` | 201 `ControlChangeResponse` (큐에 적재만 — **장비에 즉시 반영하지 않는다**) |
+| DELETE | `/api/farms/{farmId}/zones/{zoneId}/control/changes/{changeId}` | 작성자 본인 또는 OWNER(데모 차단) | — | 204 (개별 취소 → `DISCARDED`) |
+| DELETE | `/api/farms/{farmId}/zones/{zoneId}/control/changes` | 멤버(데모 차단) | — | 204 (전체 되돌리기) |
+| POST | `/api/farms/{farmId}/zones/{zoneId}/control/apply` | 멤버(데모 차단) | `{expectedChangeIds: [..]}` | 200 `ControlApplyResponse` |
+| POST | `/api/farms/{farmId}/control/emergency-stop` | OWNER(데모 차단) | — | 200 `EmergencyStopResponse` (농장 전체) |
+
+### ⚠️ 동시성 (Critical — 이 절이 이 사이클의 핵심)
+1. **일괄 적용의 낙관적 검증**: `apply`는 `expectedChangeIds`를 **필수**로 받는다. 현재 PENDING 집합과 다르면 **CT005로 거부**하고 최신 큐를 응답에 실어 재확인시킨다. 사용자 A가 큐를 보고 있는 사이 B가 항목을 추가·삭제했는데 A의 "적용"이 그것까지 함께 반영해버리는 사고를 막는다
+2. **적용은 단일 트랜잭션**: PENDING → APPLIED 전이, `ControlSetpoint`/`Device.status` 갱신, `ControlApplyLog` 기록이 **원자적**이어야 한다. 부분 적용 상태를 남기지 않는다
+3. **존 단위 직렬화**: 같은 존에 대한 `apply`/`emergency-stop`은 동시에 실행되면 안 된다. **존 행을 `@Lock(PESSIMISTIC_WRITE)`로 잠근다**(#91의 TOCTOU 교훈 — 읽고-쓰기 사이에 락이 없으면 검사 결과가 무효가 된다). 락 대상은 `ControlMode` 행(존당 1행이라 자연스러운 잠금 지점)
+4. **비상 정지 우선**: `emergency-stop`은 전 존의 장비를 OFF + 모드를 `MANUAL`로 내리고 **모든 PENDING 큐를 `DISCARDED`로 폐기**한다. 정지 후 남아있던 큐가 나중에 적용되면 안 된다
+5. 상태 전이는 **엔티티 메서드로 캡슐화**한다(`PrescriptionStatus.isTerminal()` 선례). `APPLIED`/`DISCARDED`는 종료 상태 — 재전이 금지
+
+### ⚠️ 계층·캐스케이드 (§4.10 상속)
+- `zoneId`·`deviceId`는 path/body 입력값 취급. §4.10의 계층 정합성 ①②③과 **소속 재확인 후 미소속 404** 규약을 그대로 따른다
+- **장비는 그 존 소속이어야 한다** — `DEVICE` 종류 변경의 `deviceId`가 대상 존 하위인지 검증(§4.10 자동 채움으로 삼중조가 완전하므로 `device.zoneId == zoneId` 비교로 충분)
+- **통신 두절 장비 조작 거부**: `device.status == OFFLINE`이면 큐 적재 시점에 **CT002로 거부**한다(적용 시점이 아니라 적재 시점 — 프리뷰가 "통신 두절 장비 클릭 시 안내"로 즉시 피드백한다)
+- **캐스케이드**: 존·랙·장비가 soft delete되면 그것을 참조하는 **PENDING 큐 항목은 `DISCARDED`로 폐기**한다. §4.10이 활성 장비 잔존 시 삭제를 R004로 막으므로 장비 경유 경로는 대부분 차단되지만, 큐가 참조하는 대상이 사라지는 경로를 열어두면 적용 시점에 고아 참조가 된다. `ControlSetpoint`는 존과 함께 soft delete하고, **`ControlApplyLog`는 감사 이력이므로 보존**한다
+
+### ⚠️ 시뮬레이터 연동 (§4.11과의 접점)
+적용된 제어가 **측정값에 실제로 반영되어야** 데모가 성립한다.
+- `ControlSetpoint.targetValue`가 §4.11 시뮬레이터의 **기저값(일주기 sin의 중심)을 대체**한다. 미설정 지표는 기존 상수 기저 유지
+- 수렴은 즉시가 아니라 **tick당 일정 비율**(예: 목표와 현재의 차이 × 0.2)로 근접시킨다 — 즉시 점프하면 그래프가 계단이 되어 시계열 화면이 부자연스러워진다
+- `Device.status == OFF`인 제어기(`kind=CONTROLLER`)가 있는 존은 해당 지표를 목표로 수렴시키지 않는다(제어기가 꺼졌으니 자연 표류)
+- ⚠️ **`source`는 여전히 `SIMULATED`다**(§4.11). 제어가 붙었다고 실측이 되는 게 아니다
+
+### 상한 (사이클 2 교훈 선반영)
+- **PENDING 큐 상한: 존당 50건**(초과 시 CT004). 무제한이면 `apply` 트랜잭션이 무한정 커진다
+- **`ControlApplyLog` 보존 90일** + purge. ⚠️ **purge 상한은 유입량 기준으로 산정하고 근거를 주석에 계산식으로 남긴다** — 사이클 2에서 `EnvSnapshotPurgeScheduler` 상수를 유입량 120배 차이에 그대로 복사해 P1이 났다. 적용 로그는 사용자 조작 기반이라 유입이 훨씬 적지만(하루 수백 건 수준), **그 산정 자체를 근거와 함께 남기는 것이 요구사항**이다
+
+### ErrorCode (신규)
+| 코드 | HTTP | 의미 |
+|---|---|---|
+| CT001 | 404 | 제어 변경 항목 없음(타 농장·타 존 소속 포함) |
+| CT002 | 409 | 통신 두절 장비는 조작할 수 없음 |
+| CT003 | 409 | 현재 운전 모드에서 허용되지 않는 조작(AUTO에서 장비 직접 토글 / MANUAL에서 목표값 편집) |
+| CT004 | 409 | 적용 대기 큐 상한 초과(존당 50건) |
+| CT005 | 409 | 대기 큐가 변경됨 — 최신 큐로 재확인 후 다시 적용(낙관적 검증 실패) |
+
+- **마이그레이션**: **V18** `control_modes`·`control_setpoints`·`control_changes`·`control_apply_logs`
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -367,6 +435,11 @@
 | R004 | 409 | 랙 구조 변경 불가(층 축소 시 하위 장비 잔존·랙 코드 중복) |
 | E001 | 404 | 장비 없음(타 농장 소속 포함) |
 | E002 | 409 | 장비 시리얼 중복(농장 내) |
+| CT001 | 404 | 제어 변경 항목 없음(타 농장·타 존 소속 포함) |
+| CT002 | 409 | 통신 두절 장비는 조작할 수 없음 |
+| CT003 | 409 | 현재 운전 모드에서 허용되지 않는 조작 |
+| CT004 | 409 | 적용 대기 큐 상한 초과(존당 50건) |
+| CT005 | 409 | 대기 큐가 변경됨 — 최신 큐로 재확인 후 재적용 |
 
 ## 6. 환경변수 · CORS
 
