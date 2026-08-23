@@ -60,7 +60,12 @@ export default function FarmChat({ farmId }: FarmChatProps) {
     if (submitting) return; // 중복 전송 방지
 
     const trimmed = question.trim();
-    if (trimmed.length < VALIDATION.chatQuestion.minLength || trimmed.length > VALIDATION.chatQuestion.maxLength) {
+    // 최소/최대를 나눠 안내한다 — 합쳐 두면 빈 입력에도 "500자 이하" 안내가 나가 원인과 반대로 읽힌다(리뷰 P2).
+    if (trimmed.length < VALIDATION.chatQuestion.minLength) {
+      setSendError("질문을 입력해주세요.");
+      return;
+    }
+    if (trimmed.length > VALIDATION.chatQuestion.maxLength) {
       setSendError(`질문은 ${VALIDATION.chatQuestion.maxLength}자 이하로 입력해주세요.`);
       return;
     }
