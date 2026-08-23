@@ -75,6 +75,13 @@ services:
     ports:
       # 홈서버 로컬 스모크 전용 바인딩 — 외부 노출은 cloudflared 터널이 담당(nginx는 127.0.0.1에만 publish)
       - "127.0.0.1:8088:80"
+    # shared-net 조인(#75) — 터널을 독립 스택으로 분리하기 위한 선행 조건.
+    # 지금은 cloudflared가 이 스택의 default 네트워크에 함께 있어서 nginx에 닿지만, 터널이 분리되면
+    # default를 잃는다. 그때 nginx가 shared-net에 없으면 터널이 nginx에 도달하지 못해 farm만 502가 된다
+    # (다른 도메인은 shared-net으로 직행하므로 멀쩡하다). 네트워크 추가일 뿐 제거가 아니라 기존 경로는 그대로다.
+    networks:
+      - default
+      - shared-net
     depends_on:
       backend:
         condition: service_healthy
