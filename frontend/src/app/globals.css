@@ -26,3 +26,198 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   디자인 시안 프리뷰 전용 토큰 (이슈 #83)
+   출처 = claude.ai/design `design_handoff_smartfarm_dfx/` 의 Design Tokens 절.
+   핸드오프는 라이트 전용이라 다크 값은 이 프로젝트가 새로 정의했다(대비 확보 목적).
+   `@theme inline` 이라 유틸리티가 var()를 그대로 참조 → .dark 재정의가 그대로 먹는다.
+   `/design-preview` 하위에서만 쓰며 기존 화면은 이 토큰을 쓰지 않는다.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* 표면 */
+  --dp-canvas: #f4f5f3;
+  --dp-bar: #14171a;
+  --dp-surface: #ffffff;
+  --dp-inset: #f6f7f5;
+  --dp-inset-alt: #fafbfa;
+  --dp-badge-neutral: #f0f2f0;
+
+  /* 텍스트 */
+  --dp-ink: #14171a;
+  --dp-body: #3d4247;
+  --dp-sub: #6b7076;
+  --dp-muted: #8a9098;
+  --dp-faint: #a5aaa6;
+
+  /* 경계 — 핸드오프 지침대로 색상 토큰이 아니라 알파를 쓴다 */
+  --dp-line: rgba(0, 0, 0, 0.08);
+  --dp-line-2: rgba(0, 0, 0, 0.09);
+  --dp-line-row: rgba(0, 0, 0, 0.06);
+  --dp-line-strong: rgba(0, 0, 0, 0.14);
+
+  /* 비활성 계열 */
+  --dp-idle: #e3e5e2;
+  --dp-off: #d5d8d4;
+  --dp-disabled: #c9cec9;
+  --dp-track: #e7e9e6;
+  --dp-bar-past: #dfe3df;
+
+  /* 그린 */
+  --dp-green: #1f8a4c;
+  --dp-green-soft: #2f9d5c;
+  --dp-green-mid: #a8d8bd;
+  --dp-green-target: #9fcfb2;
+  --dp-green-ink: #166b3b;
+  --dp-green-tint: #f2faf5;
+  --dp-green-tint-2: #eaf5ee;
+  --dp-green-line: #cfe8d9;
+  --dp-on-green: #ffffff;
+
+  /* 경보 */
+  --dp-red: #d1483c;
+  --dp-red-ink: #c23b2f;
+  --dp-red-deep: #a3352b;
+  --dp-red-sub: #8a5049;
+  --dp-red-tint: #fdf6f5;
+  --dp-red-tint-2: #fdf0ee;
+  --dp-red-line: #f0c9c4;
+  --dp-red-off: #e7d3d0;
+
+  /* 주의 */
+  --dp-amber: #e0a02c;
+  --dp-amber-ink: #c08a1e;
+  --dp-amber-deep: #a3761c;
+  --dp-amber-sub: #8a5a12;
+  --dp-amber-mid: #f0dcb8;
+  --dp-amber-tint: #fdf9f2;
+  --dp-amber-tint-2: #fdf3e6;
+  --dp-amber-line: #eddcbe;
+
+  /* 정보(습도·야간) · 중성 시리즈 */
+  --dp-blue: #8fb8e0;
+  --dp-blue-ink: #2f5f8f;
+  --dp-blue-tint: #eef4fa;
+  --dp-neutral: #7c8b96;
+}
+
+.dark {
+  --dp-canvas: #101314;
+  --dp-bar: #1c2124;
+  --dp-surface: #191d1f;
+  --dp-inset: #22272a;
+  --dp-inset-alt: #1f2426;
+  --dp-badge-neutral: #262b2d;
+
+  --dp-ink: #e9ecea;
+  --dp-body: #c2c8c5;
+  --dp-sub: #a8b0ad;
+  --dp-muted: #8f989b;
+  --dp-faint: #757d80;
+
+  --dp-line: rgba(255, 255, 255, 0.1);
+  --dp-line-2: rgba(255, 255, 255, 0.12);
+  --dp-line-row: rgba(255, 255, 255, 0.07);
+  --dp-line-strong: rgba(255, 255, 255, 0.2);
+
+  --dp-idle: #2e3436;
+  --dp-off: #343b3d;
+  --dp-disabled: #4a5254;
+  --dp-track: #2b3134;
+  --dp-bar-past: #2c3234;
+
+  --dp-green: #34a862;
+  --dp-green-soft: #2b8d53;
+  --dp-green-mid: #2f7a4c;
+  --dp-green-target: #4c9c6d;
+  --dp-green-ink: #7ddaa4;
+  --dp-green-tint: rgba(52, 168, 98, 0.12);
+  --dp-green-tint-2: rgba(52, 168, 98, 0.16);
+  --dp-green-line: rgba(52, 168, 98, 0.38);
+  --dp-on-green: #06130b;
+
+  --dp-red: #e2685c;
+  --dp-red-ink: #ff9086;
+  --dp-red-deep: #ffa79e;
+  --dp-red-sub: #d79b93;
+  --dp-red-tint: rgba(226, 104, 92, 0.12);
+  --dp-red-tint-2: rgba(226, 104, 92, 0.16);
+  --dp-red-line: rgba(226, 104, 92, 0.38);
+  --dp-red-off: rgba(226, 104, 92, 0.25);
+
+  --dp-amber: #d9a13c;
+  --dp-amber-ink: #e5b45c;
+  --dp-amber-deep: #edc178;
+  --dp-amber-sub: #e0b479;
+  --dp-amber-mid: #6b5426;
+  --dp-amber-tint: rgba(217, 161, 60, 0.12);
+  --dp-amber-tint-2: rgba(217, 161, 60, 0.16);
+  --dp-amber-line: rgba(217, 161, 60, 0.34);
+
+  --dp-blue: #8fb8e0;
+  --dp-blue-ink: #a9c9ea;
+  --dp-blue-tint: rgba(143, 184, 224, 0.14);
+  --dp-neutral: #93a1ab;
+}
+
+@theme inline {
+  --color-dp-canvas: var(--dp-canvas);
+  --color-dp-bar: var(--dp-bar);
+  --color-dp-surface: var(--dp-surface);
+  --color-dp-inset: var(--dp-inset);
+  --color-dp-inset-alt: var(--dp-inset-alt);
+  --color-dp-badge-neutral: var(--dp-badge-neutral);
+
+  --color-dp-ink: var(--dp-ink);
+  --color-dp-body: var(--dp-body);
+  --color-dp-sub: var(--dp-sub);
+  --color-dp-muted: var(--dp-muted);
+  --color-dp-faint: var(--dp-faint);
+
+  --color-dp-line: var(--dp-line);
+  --color-dp-line-2: var(--dp-line-2);
+  --color-dp-line-row: var(--dp-line-row);
+  --color-dp-line-strong: var(--dp-line-strong);
+
+  --color-dp-idle: var(--dp-idle);
+  --color-dp-off: var(--dp-off);
+  --color-dp-disabled: var(--dp-disabled);
+  --color-dp-track: var(--dp-track);
+  --color-dp-bar-past: var(--dp-bar-past);
+
+  --color-dp-green: var(--dp-green);
+  --color-dp-green-soft: var(--dp-green-soft);
+  --color-dp-green-mid: var(--dp-green-mid);
+  --color-dp-green-target: var(--dp-green-target);
+  --color-dp-green-ink: var(--dp-green-ink);
+  --color-dp-green-tint: var(--dp-green-tint);
+  --color-dp-green-tint-2: var(--dp-green-tint-2);
+  --color-dp-green-line: var(--dp-green-line);
+  --color-dp-on-green: var(--dp-on-green);
+
+  --color-dp-red: var(--dp-red);
+  --color-dp-red-ink: var(--dp-red-ink);
+  --color-dp-red-deep: var(--dp-red-deep);
+  --color-dp-red-sub: var(--dp-red-sub);
+  --color-dp-red-tint: var(--dp-red-tint);
+  --color-dp-red-tint-2: var(--dp-red-tint-2);
+  --color-dp-red-line: var(--dp-red-line);
+  --color-dp-red-off: var(--dp-red-off);
+
+  --color-dp-amber: var(--dp-amber);
+  --color-dp-amber-ink: var(--dp-amber-ink);
+  --color-dp-amber-deep: var(--dp-amber-deep);
+  --color-dp-amber-sub: var(--dp-amber-sub);
+  --color-dp-amber-mid: var(--dp-amber-mid);
+  --color-dp-amber-tint: var(--dp-amber-tint);
+  --color-dp-amber-tint-2: var(--dp-amber-tint-2);
+  --color-dp-amber-line: var(--dp-amber-line);
+
+  --color-dp-blue: var(--dp-blue);
+  --color-dp-blue-ink: var(--dp-blue-ink);
+  --color-dp-blue-tint: var(--dp-blue-tint);
+  --color-dp-neutral: var(--dp-neutral);
+
+  --font-dp-sans: Pretendard, "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
