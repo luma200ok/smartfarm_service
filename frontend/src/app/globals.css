@@ -26,3 +26,146 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   디자인 시안 프리뷰 전용 팔레트 (이슈 #83)
+   claude.ai/design `스마트팜 플랫폼.dc.html` 의 화이트+그린 시안 색을 토큰화한 것.
+   시안은 라이트 전용이라 다크 값은 이 프로젝트가 새로 정의했다(대비비 확보가 목적).
+   `@theme inline` 이라 유틸리티가 var()를 그대로 참조 → .dark 재정의가 그대로 먹는다.
+   `/design-preview` 하위에서만 쓰며 기존 화면은 이 토큰을 쓰지 않는다.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --dp-canvas: #f4f5f3;        /* 페이지 바탕 */
+  --dp-bar: #14171a;           /* 상단 글로벌 바 */
+  --dp-slate: #14171a;         /* 초록이 아닌 대분류 헤더(시안 1a의 04~06) */
+  --dp-on-slate: #ffffff;
+  --dp-surface: #ffffff;       /* 카드 */
+  --dp-inset: #f6f7f5;         /* 카드 안쪽 옅은 블록 */
+  --dp-inset-alt: #fafbfa;     /* 테이블 헤더 */
+  --dp-ink: #14171a;           /* 본문 강조 */
+  --dp-body: #3d4247;          /* 본문 */
+  --dp-muted: #8a9098;         /* 보조 */
+  --dp-faint: #a5aaa6;         /* placeholder */
+  --dp-line: rgba(0, 0, 0, 0.08);
+  --dp-line-strong: rgba(0, 0, 0, 0.14);
+  --dp-idle: #e3e5e2;          /* 미가동 셀 */
+  --dp-track: #e7e9e6;         /* 게이지 트랙 */
+
+  --dp-green: #1f8a4c;
+  --dp-green-soft: #2f9d5c;    /* 도면 셀 중간톤 */
+  --dp-green-ink: #166b3b;
+  --dp-green-tint: #f2faf5;
+  --dp-green-tint-2: #eaf5ee;
+  --dp-green-line: #cfe8d9;
+  --dp-on-green: #ffffff;
+
+  --dp-red: #d1483c;
+  --dp-red-ink: #c23b2f;
+  --dp-red-deep: #a3352b;
+  --dp-red-sub: #8a5049;
+  --dp-red-tint: #fdf6f5;
+  --dp-red-line: #f0c9c4;
+
+  --dp-amber: #e0a02c;
+  --dp-amber-ink: #c08a1e;
+  --dp-amber-deep: #a3761c;
+  --dp-amber-sub: #8a5a12;
+  --dp-amber-tint: #fdf9f2;
+  --dp-amber-line: #eddcbe;
+
+  --dp-blue: #8fb8e0;
+  --dp-blue-ink: #2f5f8f;
+  --dp-blue-tint: #eef4fa;
+}
+
+.dark {
+  --dp-canvas: #101314;
+  --dp-bar: #1c2124;
+  /* 다크에서는 카드 배경보다 확실히 밝아야 헤더로 읽힌다 */
+  --dp-slate: #394347;
+  --dp-on-slate: #f2f5f4;
+  --dp-surface: #191d1f;
+  --dp-inset: #22272a;
+  --dp-inset-alt: #1f2426;
+  --dp-ink: #e9ecea;
+  --dp-body: #c2c8c5;
+  --dp-muted: #8f989b;
+  --dp-faint: #757d80;
+  --dp-line: rgba(255, 255, 255, 0.1);
+  --dp-line-strong: rgba(255, 255, 255, 0.2);
+  --dp-idle: #2e3436;
+  --dp-track: #2b3134;
+
+  --dp-green: #34a862;
+  --dp-green-soft: #2b8d53;
+  --dp-green-ink: #7ddaa4;
+  --dp-green-tint: rgba(52, 168, 98, 0.12);
+  --dp-green-tint-2: rgba(52, 168, 98, 0.16);
+  --dp-green-line: rgba(52, 168, 98, 0.38);
+  --dp-on-green: #06130b;
+
+  --dp-red: #e2685c;
+  --dp-red-ink: #ff9086;
+  --dp-red-deep: #ffa79e;
+  --dp-red-sub: #d79b93;
+  --dp-red-tint: rgba(226, 104, 92, 0.12);
+  --dp-red-line: rgba(226, 104, 92, 0.38);
+
+  --dp-amber: #d9a13c;
+  --dp-amber-ink: #e5b45c;
+  --dp-amber-deep: #edc178;
+  --dp-amber-sub: #e0b479;
+  --dp-amber-tint: rgba(217, 161, 60, 0.12);
+  --dp-amber-line: rgba(217, 161, 60, 0.34);
+
+  --dp-blue: #8fb8e0;
+  --dp-blue-ink: #a9c9ea;
+  --dp-blue-tint: rgba(143, 184, 224, 0.14);
+}
+
+@theme inline {
+  --color-dp-canvas: var(--dp-canvas);
+  --color-dp-bar: var(--dp-bar);
+  --color-dp-slate: var(--dp-slate);
+  --color-dp-on-slate: var(--dp-on-slate);
+  --color-dp-surface: var(--dp-surface);
+  --color-dp-inset: var(--dp-inset);
+  --color-dp-inset-alt: var(--dp-inset-alt);
+  --color-dp-ink: var(--dp-ink);
+  --color-dp-body: var(--dp-body);
+  --color-dp-muted: var(--dp-muted);
+  --color-dp-faint: var(--dp-faint);
+  --color-dp-line: var(--dp-line);
+  --color-dp-line-strong: var(--dp-line-strong);
+  --color-dp-idle: var(--dp-idle);
+  --color-dp-track: var(--dp-track);
+
+  --color-dp-green: var(--dp-green);
+  --color-dp-green-soft: var(--dp-green-soft);
+  --color-dp-green-ink: var(--dp-green-ink);
+  --color-dp-green-tint: var(--dp-green-tint);
+  --color-dp-green-tint-2: var(--dp-green-tint-2);
+  --color-dp-green-line: var(--dp-green-line);
+  --color-dp-on-green: var(--dp-on-green);
+
+  --color-dp-red: var(--dp-red);
+  --color-dp-red-ink: var(--dp-red-ink);
+  --color-dp-red-deep: var(--dp-red-deep);
+  --color-dp-red-sub: var(--dp-red-sub);
+  --color-dp-red-tint: var(--dp-red-tint);
+  --color-dp-red-line: var(--dp-red-line);
+
+  --color-dp-amber: var(--dp-amber);
+  --color-dp-amber-ink: var(--dp-amber-ink);
+  --color-dp-amber-deep: var(--dp-amber-deep);
+  --color-dp-amber-sub: var(--dp-amber-sub);
+  --color-dp-amber-tint: var(--dp-amber-tint);
+  --color-dp-amber-line: var(--dp-amber-line);
+
+  --color-dp-blue: var(--dp-blue);
+  --color-dp-blue-ink: var(--dp-blue-ink);
+  --color-dp-blue-tint: var(--dp-blue-tint);
+
+  --font-dp-sans: Pretendard, "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
