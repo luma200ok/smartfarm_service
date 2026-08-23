@@ -33,8 +33,13 @@ export const ENDPOINTS = {
     logs: (farmId: number | string) => `/api/farms/${farmId}/logs`,
     logDetail: (farmId: number | string, logId: number | string) => `/api/farms/${farmId}/logs/${logId}`,
     chat: (farmId: number | string) => `/api/farms/${farmId}/chat`,
+    nutrientCalculate: (farmId: number | string) => `/api/farms/${farmId}/nutrient-recipes/calculate`,
+    nutrientRecipes: (farmId: number | string) => `/api/farms/${farmId}/nutrient-recipes`,
+    nutrientRecipeDetail: (farmId: number | string, recipeId: number | string) =>
+      `/api/farms/${farmId}/nutrient-recipes/${recipeId}`,
   },
   invitations: {
     accept: "/api/invitations/accept",
   },
+  nutrientPresets: "/api/nutrient-presets",
 } as const;
