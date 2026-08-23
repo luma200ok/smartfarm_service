@@ -60,7 +60,7 @@ export default function NutrientCalculationResult({ calculation, onSaveClick }: 
       <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <div>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">예상 EC</p>
-          <p className="font-medium text-zinc-900 dark:text-zinc-50">{calculation.estimatedEc.toFixed(2)} mS/cm</p>
+          <p className="font-medium text-zinc-900 dark:text-zinc-50">{calculation.estimatedEc.toFixed(2)} dS/m</p>
         </div>
         <div>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">양이온</p>
@@ -82,7 +82,8 @@ export default function NutrientCalculationResult({ calculation, onSaveClick }: 
         </div>
       </div>
       <p className="text-xs text-zinc-400 dark:text-zinc-500">
-        EC는 근사값입니다. 이온 밸런스 편차는 17~25% 내외가 일반적인 정상 범위입니다.
+        EC는 근사값입니다(단위 dS/m, 수치는 mS/cm과 동일). 이온 밸런스 편차는 17~25% 내외가 일반적인
+        정상 범위입니다.
       </p>
 
       {calculation.warnings.length > 0 && (

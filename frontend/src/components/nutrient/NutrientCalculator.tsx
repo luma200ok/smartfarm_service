@@ -57,14 +57,23 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 계산 결과가 화면의 현재 입력값과 다른 상태(stale)로 남지 않도록, 폼이 바뀌는 모든 경로에서
+  // 기존 결과를 무효화한다(리뷰 픽스 #65 P2 — 저장 버튼이 stale 배합표와 함께 활성인 상태 금지).
+  function invalidateCalculation() {
+    setCalculation(null);
+  }
+
   function handleStageChange(next: NutrientStage) {
     form.setStage(next);
     const preset = presets.find((p) => p.stage === next);
     if (preset) form.applyPresetTarget(preset.target);
+    invalidateCalculation();
   }
 
   async function handleCalculate() {
     setCalcError(null);
+    // 실패 시에도 이전 성공 결과가 남지 않도록 먼저 비운다(리뷰 픽스 #65 P2).
+    invalidateCalculation();
     const request = form.buildRequest();
     if (!request) {
       setCalcError("모든 목표 농도·탱크 용량·농축배율을 입력해주세요.");
@@ -115,11 +124,20 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
         stage={form.stage}
         onStageChange={handleStageChange}
         target={form.target}
-        onTargetChange={form.setTarget}
+        onTargetChange={(t) => {
+          form.setTarget(t);
+          invalidateCalculation();
+        }}
         tankVolumeL={form.tankVolumeL}
-        onTankVolumeLChange={form.setTankVolumeL}
+        onTankVolumeLChange={(v) => {
+          form.setTankVolumeL(v);
+          invalidateCalculation();
+        }}
         concentrationFactor={form.concentrationFactor}
-        onConcentrationFactorChange={form.setConcentrationFactor}
+        onConcentrationFactorChange={(v) => {
+          form.setConcentrationFactor(v);
+          invalidateCalculation();
+        }}
         sourceWaterCa={form.sourceWaterCa}
         sourceWaterMg={form.sourceWaterMg}
         sourceWaterEc={form.sourceWaterEc}
@@ -127,6 +145,7 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
           if (field === "ca") form.setSourceWaterCa(v);
           else if (field === "mg") form.setSourceWaterMg(v);
           else form.setSourceWaterEc(v);
+          invalidateCalculation();
         }}
       />
 

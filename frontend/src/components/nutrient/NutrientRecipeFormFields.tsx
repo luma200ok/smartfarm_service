@@ -152,7 +152,7 @@ export default function NutrientRecipeFormFields({
           />
           <FormField
             id="nutrient-source-water-ec"
-            label="원수 EC(mS/cm)"
+            label="원수 EC(dS/m)"
             type="number"
             step="0.01"
             min={0}
