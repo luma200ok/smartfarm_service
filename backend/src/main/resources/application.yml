@@ -33,11 +33,12 @@ spring:
 
   task:
     scheduling:
-      # @Scheduled 빈 4개(EnvironmentSnapshotPoller·EnvSnapshotPurgeScheduler·
-      # RefreshTokenPurgeScheduler·PrescriptionSweeper)가 기본 단일 스레드를 공유한다(리뷰 P3) —
-      # 60s 폴러가 임계치 웹훅을 동기 발송하는 동안(최대 5s 타임아웃) 다른 스케줄러 주기가 밀리지
-      # 않도록 풀을 2로 늘린다.
-      pool-size: 2
+      # @Scheduled 빈 6개(EnvironmentSnapshotPoller·EnvSnapshotPurgeScheduler·
+      # RefreshTokenPurgeScheduler·PrescriptionSweeper·SensorSimulatorScheduler(#90)·
+      # SensorReadingPurgeScheduler(#90))가 기본 단일 스레드를 공유한다(리뷰 P3) — 60s 폴러가
+      # 임계치 웹훅을 동기 발송하는 동안(최대 5s 타임아웃) 다른 스케줄러 주기가 밀리지 않도록
+      # 풀을 3으로 늘린다(#90 — 시뮬레이터 tick까지 추가돼 2로는 여유가 부족).
+      pool-size: 3
 
 server:
   port: 8085
@@ -114,6 +115,27 @@ env-snapshot:
 # 타임아웃만 기능별로 분리한다).
 chat:
   read-timeout: 120s
+
+# 가상 장비 시뮬레이터(contract §4.11, 이슈 #90) — 실기기 부재를 시뮬레이션으로 한정 해제.
+# false면 운영에서 실기기 연동 시 사용 — 빈 폴러가 도는 게 아니라 빈 자체가 안 뜨게
+# @ConditionalOnProperty로 등록을 막는다(SensorSimulatorScheduler).
+smartfarm:
+  simulator:
+    enabled: ${SMARTFARM_SIMULATOR_ENABLED:true}
+
+# 가상 장비 시뮬레이터 tick 주기 + 농장당 상한(contract §4.11) — 상한 초과분은 생성하지 않고
+# WARN 로그만 남긴다(조용히 자르지 않는다).
+sensor-simulator:
+  tick-initial-delay: PT60S
+  tick-fixed-delay: PT60S
+  max-per-farm: 200
+
+# sensor_readings 90일 보존 퍼지(SensorReadingPurgeScheduler, contract §4.11) —
+# EnvSnapshotPurgeScheduler와 동일 패턴(배치 삭제, 1일 1회)
+sensor-reading:
+  purge-initial-delay: P1D
+  purge-fixed-delay: P1D
+  purge-batch-size: 1000
 
 kma:
   base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0
