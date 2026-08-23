@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Card, CardTitle, Chip } from "@/components/design-preview/ui";
+import { Card, CardTitle, Chip } from "@/components/monitoring/ui";
 import SimulatedBadge from "@/components/monitoring/SimulatedBadge";
 import { ENV_HISTORY_RANGE_LABELS, READING_CELL_STATE_LABELS, READING_METRIC_LIMIT, SENSOR_METRIC_LABELS } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";

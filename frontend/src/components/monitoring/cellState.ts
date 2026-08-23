@@ -1,5 +1,5 @@
 // 백엔드 ReadingCellState("OK"|"WARNING"|"CRITICAL"|"IDLE", contract §4.11)를
-// design-preview/ui.tsx의 RackGrid가 쓰는 CellState(소문자, "ok-soft" 포함)로 매핑.
+// components/monitoring/ui.tsx의 RackGrid가 쓰는 CellState(소문자, "ok-soft" 포함)로 매핑.
 // RackGrid·RackLegend는 그대로 재사용하고(handoff 요건 — 공통 셸 재사용, 복붙 금지) 값만 변환한다.
 import type { PreviewCellState as CellState } from "@/types";
 import type { ReadingCellState } from "@/types";

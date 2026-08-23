@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, StatusBadge } from "@/components/design-preview/ui";
+import { Card, StatusBadge } from "@/components/monitoring/ui";
 import type { PreviewSeverity as Severity } from "@/types";
 import { getDeviceSummary } from "@/lib/api/devices";
 import { getZoneTree } from "@/lib/api/zones";

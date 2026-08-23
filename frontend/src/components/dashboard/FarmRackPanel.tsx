@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { PreviewCellState as CellState } from "@/types";
-import { Card, CardTitle, Chip, RackGrid, RackLegend } from "@/components/design-preview/ui";
+import { Card, CardTitle, Chip, RackGrid, RackLegend } from "@/components/monitoring/ui";
 import SimulatedBadge from "@/components/monitoring/SimulatedBadge";
 import { toCellState } from "@/components/monitoring/cellState";
 import { READING_CELL_STATE_LABELS, SENSOR_METRIC_LABELS } from "@/constants";
