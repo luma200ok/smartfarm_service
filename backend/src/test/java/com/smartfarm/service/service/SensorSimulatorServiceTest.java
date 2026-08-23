@@ -2,6 +2,7 @@ package com.smartfarm.service.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -92,6 +94,37 @@ class SensorSimulatorServiceTest {
         // 빈 트랜잭션 생략) — farmA 1번만 호출돼야 한다.
         verify(sensorSimulatorPersistenceService, times(1)).saveForFarm(captor.capture());
         assertThat(captor.getValue()).hasSize(2);
+    }
+
+    @Test
+    void tickContinuesToLaterFarmsWhenAnEarlierFarmSaveFailsWithDuplicateKey() {
+        SensorSimulatorService sensorSimulatorService = new SensorSimulatorService(
+                deviceRepository, rackLevelRepository, sensorSimulatorPersistenceService);
+        ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerFarm", 100);
+        ReflectionTestUtils.setField(sensorSimulatorService, "maxRowsPerTick", 100);
+
+        List<SensorMetric> oneMetric = List.of(SensorMetric.TEMPERATURE);
+        Device deviceA = sensorDevice(1L, 10L, oneMetric); // 먼저 처리 — 저장이 실패한다고 가정
+        Device deviceB = sensorDevice(2L, 20L, oneMetric); // 뒤 순서 — 이 농장까지 계속 처리돼야 함
+
+        when(deviceRepository.findByKindAndStatusNotOrderByIdAsc(DeviceKind.SENSOR, DeviceStatus.OFFLINE))
+                .thenReturn(List.of(deviceA, deviceB));
+        // farmA 저장 시 V17 unique(device_id, metric, measured_at) 위반을 시뮬레이션(다중 인스턴스
+        // 겹침·NTP 역방향 보정 등으로 인한 중복 tick) — catch 없이 두면 이 예외가 tick()의 for 루프를
+        // 그대로 뚫고 나가 farmB(뒤 순서)가 통째로 유실된다(사이클 2 리뷰 P2-B).
+        doThrow(new DataIntegrityViolationException("duplicate key"))
+                .doNothing()
+                .when(sensorSimulatorPersistenceService).saveForFarm(any());
+
+        sensorSimulatorService.tick();
+
+        // farmA 실패로 예외를 던졌어도 farmB는 여전히 저장 시도된다(농장 간 격리가 실제로 동작함을
+        // 검증하는 유일한 테스트 — SensorSimulatorPersistenceService를 별도 빈으로 뗀 이유 자체).
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SensorReading>> captor = ArgumentCaptor.forClass(List.class);
+        verify(sensorSimulatorPersistenceService, times(2)).saveForFarm(captor.capture());
+        assertThat(captor.getAllValues().get(1)).hasSize(1);
+        assertThat(captor.getAllValues().get(1).get(0).getFarmId()).isEqualTo(20L);
     }
 
     private Device sensorDevice(long id, long farmId, List<SensorMetric> metrics) {

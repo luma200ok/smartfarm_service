@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -84,7 +85,21 @@ public class SensorSimulatorService {
             int farmCap = Math.min(maxRowsPerFarm, remainingGlobalRows);
             List<SensorReading> readings = generateForFarm(farmId, entry.getValue(), levelsById, measuredAt, farmCap);
             remainingGlobalRows -= readings.size();
-            sensorSimulatorPersistenceService.saveForFarm(readings);
+            // 농장 단위 예외 격리(사이클 2 리뷰 P2-B, 두 리뷰어 독립 발견) — SensorReading은
+            // GenerationType.IDENTITY라 saveAll이 즉시 INSERT를 날린다. V17 unique(device_id,
+            // metric, measured_at) 위반 시(다중 인스턴스 겹침·NTP 역방향 보정·향후 수평 확장으로
+            // 같은 분에 중복 tick) DataIntegrityViolationException이 여기서 올라오는데, catch 없이
+            // 두면 이 for 루프 자체가 즉시 끊겨 아직 처리 안 된 "뒤 순서 농장 전부"가 이번 틱에서
+            // 유실된다(스케줄러가 최종적으로 삼키지만 그때는 이미 늦었다) — 앞서 커밋된 농장만 살고
+            // 그 뒤 농장은 이유도 안 남기고 사라지는 문제였다. 이 농장만 건너뛰고 다음 농장은
+            // 계속 처리한다(SensorSimulatorPersistenceService를 별도 빈으로 분리한 이유 자체가
+            // "농장 간 격리"이므로, 이 catch가 없으면 그 격리는 절반만 참이다).
+            try {
+                sensorSimulatorPersistenceService.saveForFarm(readings);
+            } catch (DataIntegrityViolationException e) {
+                log.warn("농장 {} 시뮬레이터 저장 실패(중복 적재 추정, V17 unique 위반) — 이 농장만 건너뜀",
+                        farmId, e);
+            }
         }
     }
 
