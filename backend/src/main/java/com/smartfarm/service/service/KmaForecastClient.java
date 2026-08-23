@@ -61,20 +61,29 @@ public class KmaForecastClient {
         this.clock = clock;
     }
 
+    /**
+     * 공공데이터포털 인증키(디코딩 키)에는 {@code +}·{@code =}가 흔한데, {@code +}는 쿼리에서 합법 문자라
+     * UriBuilder가 그대로 두고 서버는 이를 공백으로 해석해 인증이 깨진다. 그래서 키만 직접 퍼센트
+     * 인코딩한 쿼리 문자열을 만들어 {@link java.net.URI}로 넘긴다(URI를 직접 주면 재인코딩되지 않아
+     * 이중 인코딩도 없다).
+     */
+    private java.net.URI buildForecastUri(BaseSlot slot) {
+        String encodedKey = java.net.URLEncoder.encode(
+                kmaProperties.serviceKey(), java.nio.charset.StandardCharsets.UTF_8);
+        String query = "serviceKey=" + encodedKey
+                + "&pageNo=1&numOfRows=1000&dataType=JSON"
+                + "&base_date=" + slot.baseDate()
+                + "&base_time=" + slot.baseTime()
+                + "&nx=" + kmaProperties.gridNx()
+                + "&ny=" + kmaProperties.gridNy();
+        return java.net.URI.create(kmaProperties.baseUrl() + "/getVilageFcst?" + query);
+    }
+
     public ForecastResponse fetchForecast() {
         try {
             BaseSlot slot = resolveBaseSlot();
             KmaForecastEnvelope envelope = kmaRestClient.get()
-                    .uri(uriBuilder -> uriBuilder.path("/getVilageFcst")
-                            .queryParam("serviceKey", kmaProperties.serviceKey())
-                            .queryParam("pageNo", 1)
-                            .queryParam("numOfRows", 1000)
-                            .queryParam("dataType", "JSON")
-                            .queryParam("base_date", slot.baseDate())
-                            .queryParam("base_time", slot.baseTime())
-                            .queryParam("nx", kmaProperties.gridNx())
-                            .queryParam("ny", kmaProperties.gridNy())
-                            .build())
+                    .uri(buildForecastUri(slot))
                     .retrieve()
                     .onStatus(status -> status.isError(),
                             (req, res) -> {
