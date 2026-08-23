@@ -3,9 +3,10 @@
 #
 # 네트워크 구성:
 #   - default(내부): backend <-> frontend <-> nginx <-> cloudflared 컨테이너 간 통신
-#   - shared-net(외부, 사전 생성 필요: `docker network create shared-net`): backend만 조인
+#   - shared-net(외부, 사전 생성 필요: `docker network create shared-net`): backend·cloudflared 조인
 #     — 호스트에 이미 떠 있는 db-postgres(PostgreSQL)·smartfarm-ai(AI 서버) 컨테이너 접근용.
 #     README.md 체크리스트대로 db-postgres 쪽도 shared-net에 조인돼 있어야 backend가 붙을 수 있다.
+#     cloudflared는 smartfarm-ai 스택의 streamlit을 터널로 직접 서빙하려고 조인한다(#67).
 #
 # TLS는 이 스택에서 종단하지 않는다 — cloudflared(Cloudflare Tunnel)가 종단하고 nginx는 평문 80만 처리한다.
 
@@ -34,6 +35,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       AI_SERVER_URL: ${AI_SERVER_URL}
+      # KMA 단기예보(#56) — 키는 smartfarm-ai 스택과 동일한 값을 재사용(발급처 하나). 미설정이면
+      # 예보 API만 W001이고 다른 기능은 정상 동작한다.
+      KMA_SERVICE_KEY: ${KMA_SERVICE_KEY}
+      KMA_GRID_NX: ${KMA_GRID_NX}
+      KMA_GRID_NY: ${KMA_GRID_NY}
       # 홈서버는 ollama·smartfarm-ai와 자원을 공유 — 기존 systemd 유닛(deploy/*.service)과 동일하게 512m 캡 유지
       JAVA_OPTS: -Xmx512m
     volumes:
@@ -82,5 +88,10 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     command: tunnel --no-autoupdate run
+    # shared-net 조인(#67) — smartfarm-ai 스택의 streamlit 컨테이너를 터널로 직접 서빙하기 위함
+    # (Public Hostname smartfarm-ai.luma200ok.com → http://smartfarm-ai-streamlit:8501).
+    networks:
+      - default
+      - shared-net
     depends_on:
       - nginx
