@@ -4,10 +4,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.smartfarm.service.dto.AcceptInvitationRequest;
+import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.LoginRequest;
+import com.smartfarm.service.dto.RackRequest;
 import com.smartfarm.service.dto.SignupRequest;
+import com.smartfarm.service.dto.ZoneRequest;
 import com.smartfarm.service.entity.CropType;
+import com.smartfarm.service.entity.DeviceKind;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
@@ -84,6 +88,62 @@ public abstract class FarmTestSupport extends IntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andReturn();
         return readJson(result).get("id").asLong();
+    }
+
+    /** 존 생성(contract §4.10) — 랙·장비 테스트의 공통 픽스처. */
+    protected long createZone(String ownerToken, long farmId, String name) throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/farms/" + farmId + "/zones")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ZoneRequest(name, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
+    /** 랙 생성(존 하위, contract §4.10) — 장비 테스트의 공통 픽스처. */
+    protected long createRack(String ownerToken, long farmId, long zoneId, String code, int levelCount)
+            throws Exception {
+        MvcResult result = mockMvc.perform(
+                        MockMvcRequestBuilders.post("/api/farms/" + farmId + "/zones/" + zoneId + "/racks")
+                                .header("Authorization", "Bearer " + ownerToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(new RackRequest(code, levelCount, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
+    /** 존·랙·층 중 지정한 위치에 장비를 등록한다(contract §4.10) — R004 삭제 거부 등 공통 픽스처. */
+    protected long createDevice(String ownerToken, long farmId, Long zoneId, Long rackId, Long rackLevelId,
+                                 String name) throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/farms/" + farmId + "/devices")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new DeviceRequest(
+                                zoneId, rackId, rackLevelId, name, DeviceKind.SENSOR,
+                                null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return readJson(result).get("id").asLong();
+    }
+
+    /** 데모 계정 로그인(contract §4.5, 이슈 #49) — access token 반환. */
+    protected String demoAccountLogin() throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.post("/api/auth/demo-login"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return readJson(result).get("accessToken").asText();
+    }
+
+    /** 데모 계정이 이미 보유한 시드 농장 id(첫 번째) — 데모 계정은 존·랙 생성 자체가 막혀 있어
+     * 이 픽스처 농장을 대상으로 파괴적 작업 차단(A007) 테스트를 수행한다. */
+    protected long demoAccountFarmId(String demoToken) throws Exception {
+        MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get("/api/farms")
+                        .header("Authorization", "Bearer " + demoToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        return readJson(result).get(0).get("id").asLong();
     }
 
     protected JsonNode readJson(MvcResult result) throws Exception {

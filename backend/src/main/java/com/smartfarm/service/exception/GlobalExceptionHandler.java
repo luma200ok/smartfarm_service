@@ -1,5 +1,6 @@
 package com.smartfarm.service.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -45,9 +46,18 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException.class,
             // 필수 @RequestParam 누락(예: /api/nutrient-presets?cropType=… — 이슈 #64) — 이 핸들러가
             // 없으면 일반 Exception 핸들러로 떨어져 500 C002로 잘못 응답한다.
-            MissingServletRequestParameterException.class
+            MissingServletRequestParameterException.class,
+            // @Validated 클래스의 @RequestParam 제약 위반(예: DeviceController#listDevices의
+            // q @Size — 리뷰 P3 #89). MethodArgumentNotValidException과 달리 @RequestBody가 아닌
+            // 파라미터 제약 위반이라 별도 예외 타입으로 온다 — 없으면 500 C002로 잘못 응답한다.
+            ConstraintViolationException.class
     })
     public ResponseEntity<ErrorResponse> handleBadRequest(Exception e) {
+        // 응답 본문은 C001 정형 메시지로 고정(정보 노출 방지 — 현행 유지). 다만 이 핸들러는
+        // MissingServletRequestParameterException 등 클라이언트 실수뿐 아니라, 향후 @Validated
+        // 서비스 빈에서 내부 호출자가 제약을 위반하는 서버측 프로그래밍 오류도 여기로 떨어질 수
+        // 있어(리뷰 P3 #89) 서버 로그에만 원인을 남긴다.
+        log.warn("Bad request: {}", e.getMessage());
         return ResponseEntity.status(ErrorCode.C001.getStatus())
                 .body(ErrorResponse.of(ErrorCode.C001));
     }
