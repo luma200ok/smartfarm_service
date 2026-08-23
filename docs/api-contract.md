@@ -285,7 +285,10 @@
 - **`source` 컬럼**(`SIMULATED | DEVICE`): 시뮬레이터를 끄고 실기기를 붙이면 한 테이블에 두 출처가 섞인다. **행 단위로 출처를 남기지 않으면 사후 구분이 불가능**하므로 컬럼으로 둔다. 응답의 `simulated`는 조회 범위 내 `source`의 집계 결과이지 전역 플래그가 아니다
 - `metric` enum: `TEMPERATURE | HUMIDITY | CO2 | EC | PH | PPFD | POWER` (프리뷰 데이터 화면 항목 7종)
 - 인덱스: `(farm_id, metric, measured_at desc)`, `(rack_level_id, metric, measured_at desc)`
-- **보존 90일** + 일 1회 purge 스케줄러 (`EnvSnapshotPurgeScheduler` 패턴 재사용)
+- **보존 90일** + purge 스케줄러 (`EnvSnapshotPurgeScheduler` **구조**는 재사용하되 **상수는 재산정한다**)
+- ⚠️ **purge 처리량 ≥ 유입량**(2026-08-23 사이클 2 리뷰 반영 — 계약 초판이 "패턴 그대로"라고만 적어 상수까지 복사됐다): `env_snapshots`의 유입은 60s × 1행 = **1,440행/일**이라 배치 20×1000=20,000행/일로 14배 여유였다. `sensor_readings`는 유입이 **120~432배**(농장당 최대 300행/틱 × 1440틱)라 같은 상수로는 **보존 90일이 절대 성립하지 않고 매일 순증**한다. 삭제 상한은 반드시 `max-rows-per-tick × 1440 × 예상 농장수 × 2` 이상으로 잡고, **산정 근거를 코드 주석에 계산식으로 남긴다**. 대안: purge 주기 단축 또는 `measured_at` 월 단위 파티셔닝 + `DROP PARTITION`(시계열 정석, vacuum 부담도 해소)
+- **purge 전용 인덱스**: `(measured_at)` 단독 인덱스가 필요하다 — 조회용 복합 인덱스 2종은 선행 컬럼이 달라 `WHERE measured_at < :cutoff`에 쓸 수 없다(V9가 `idx_env_snapshots_captured_at` 단독을 둔 이유와 동일)
+- **중복 적재 차단**: `(device_id, metric, measured_at)` unique — 다중 인스턴스나 `fixedDelay` 드리프트로 같은 분에 두 번 tick하면 `device_avg` CTE가 중복을 **오류 없이 조용히 평균에 흡수**한다
 
 ### ⚠️ 가상 장비 시뮬레이터 (실기기 부재)
 실기기·실센서가 없으므로 측정값은 **백엔드가 생성한다**. `docs/STATUS.md`의 기존 "원격제어·EC/pH 실시간 제외(실기기 부재)" 결정을 **시뮬레이션 전제로 한정 해제**한다.
@@ -295,6 +298,8 @@
 - `smartfarm.simulator.enabled` 플래그(기본 true, 운영에서 실기기 연동 시 false). **비활성 시 폴러 자체가 뜨지 않는다**
 - ⚠️ **적재량 상한**(#91 교훈 선반영 + 사이클 2 정정): 상한은 **센서 대수가 아니라 1틱당 생성 행 수**로 센다 — 센서 대수로 세면 장비당 지표 수만큼 곱해져 추정이 빗나간다(초판이 이 실수를 했다: 센서 200개 상한을 두고 행 수는 1,400행/틱이 됐다). **농장당 1틱 최대 300행**, 초과분은 생성하지 않고 **WARN 로그**(조용히 잘라내지 않는다).
   - 참고 추정: 프리뷰 규모(12랙×5층=60층, 층당 온습도 센서 1대=2지표) → 120행/틱 → 60s·90일 = **15.5M행**. 지표 선언 없이 7종 복합 프로브로 두면 같은 규모가 54M행이 된다
+  - ⚠️ **전역 상한도 필요하다**(사이클 2 리뷰 반영): 농장당 상한만으로는 **농장 수만큼 곱해진다.** 농장 생성 상한이 아직 없으므로(#91) 계정 1개로 농장을 대량 생성하면 일회성 쓰기가 **영구적·자율적 백그라운드 쓰기로 증폭**된다. 1틱 전체 생성 행 수에 전역 상한을 둔다. ⚠️ 이로써 **#91이 페이지네이션·생성 상한을 유예하며 든 근거("자기 테넌트에서 스스로 부풀려야 성립하고 현 규모에선 실현되지 않는다")는 무효**가 됐다 — #91의 위험 등급을 상향한다
+  - 시뮬레이터 tick은 **농장 단위로 트랜잭션을 끊는다** — 전 농장 장비와 생성 행을 한 트랜잭션·한 힙에 올리지 않는다
 - 응답 DTO에 `simulated: true` 를 실어 프론트가 화면에 시뮬레이션임을 표기할 수 있게 한다 — 실데이터인 척하지 않는다
 
 ### 엔드포인트
@@ -307,13 +312,15 @@
 - **다운샘플**: 24h=원본(60s) / 7d=30분 평균 / 30d=2시간 평균 — **§4.6 규칙 그대로 재사용**(DB 집계, 빈 구간은 점 생략)
 - **ReadingSeriesResponse** `{range, scope, simulated, series: [{metric, unit, points: [{at, value}]}]}`
 - **LevelSummaryResponse** `{rackId, code, range, simulated, levels: [{levelNo, label, metrics: [{metric, unit, average, deviationPercent, state}]}]}` — 층×지표 그리드(2026-08-23 사이클 2에서 계약 승격). 요청에 `metric` 파라미터가 없으므로 층마다 보유 지표 전부를 싣는다. 프리뷰 데이터 화면의 층별 비교표(층 / 온도 / 습도 / EC / PPFD / 편차)와 1:1 대응
-- **ReadingMatrixResponse** `{metric, unit, simulated, racks: [{rackId, code, levels: [{levelNo, value?, state}]}]}` — `state`: `OK | WARNING | CRITICAL | IDLE`(프리뷰 `CellState`와 1:1). 판정 기준은 `farm_env_thresholds`가 아직 온·습도만 다루므로 **1차는 지표별 상수 기본범위**를 쓰고, 임계치 확장은 사이클 3(알람)으로 미룬다
+- **ReadingMatrixResponse** `{metric, unit, simulated, racks: [{rackId, code, levels: [{levelNo, value?, measuredAt?, state}]}]}` — `state`: `OK | WARNING | CRITICAL | IDLE`(프리뷰 `CellState`와 1:1).
+  - ⚠️ **신선도 상한**(사이클 2 리뷰 반영 — 초판 누락): 최신값이라도 **tick 주기 × 5보다 오래됐으면 `IDLE`**로 떨어뜨리고 값을 현재값으로 렌더하지 않는다. 장비를 철거해도 readings는 보존되므로(§4.10), 상한이 없으면 **두 달 전 값이 "지금 22°C, 정상"으로 표시**되어 센서 부재 자체를 인지할 수 없다. `measuredAt`도 함께 실어 프론트가 판단할 수 있게 한다
+- ⚠️ **`scope=farm`과 soft delete된 구조**: zone/rack/level 스코프는 `findByIdAndFarmId`가 삭제 구조를 404로 막지만, `scope=farm`은 `farm_id`만으로 직접 집계하므로 **삭제된 층의 과거 이력이 농장 평균에 계속 섞인다.** 동일 테넌트라 정보 노출은 아니나 "랙을 지웠는데 차트가 안 변한다"가 된다 — **활성 구조로 조인해 제외**한다(`latest`·`level-summary`와 동작을 일치시킨다) 판정 기준은 `farm_env_thresholds`가 아직 온·습도만 다루므로 **1차는 지표별 상수 기본범위**를 쓰고, 임계치 확장은 사이클 3(알람)으로 미룬다
 - ⚠️ **스코프 파라미터도 리소스 소속을 검증한다**(사이클 1 P3 반복 방지): `scope=zone:{id}`·`rack:{id}`·`level:{id}`의 id와 `?zoneId=`·`?rackId=`는 **query 파라미터라도 path와 동일하게 취급**한다 — 농장 소속을 확인하고 미소속은 **404(R001~R003)**. 빈 배열로 뭉개지 않는다(사이클 1의 `listDevices` `zoneId`가 정확히 이 불일치로 지적됐다). `scope` 문자열 형식 위반은 C001
 - ⚠️ **집계의 이중성 정의**: 한 층에 같은 metric 센서가 여러 대 있을 수 있다. 집계는 **① 같은 시각 버킷 내 device 간 평균 → ② 시간 버킷 평균** 순서로 한다(순서를 안 정하면 센서 대수가 많은 층에 가중치가 붙는다). `level-summary`의 "층별 평균"도 동일
 - ⚠️ **응답 크기 상한**: `series`는 24h 원본이 metric당 최대 1440점 × 4 metric = 5760점이다. **metric 4개 상한은 이미 있으나 스코프 상한이 없다** — `scope=farm`이면 전 층이 섞인다. `scope=farm`은 **층 간 평균 1계열로 축약**하고, 층별 개별 계열이 필요하면 `level-summary`를 쓴다. `level-summary`는 `rackId` **필수**(생략 시 C001 — 농장 전체 층을 한 번에 반환하지 않는다)
 - **unit 매핑**(상수, 서버가 내려준다): `TEMPERATURE=°C · HUMIDITY=% · CO2=ppm · EC=dS/m · PH=pH · PPFD=µmol/m²/s · POWER=kW`
 - **신규 ErrorCode 없음** — 검증 실패는 C001, 스코프 리소스 부재는 §4.10의 R001~R003 재사용. 데이터 없음은 오류가 아니라 빈 배열
-- **마이그레이션**: V15 `sensor_readings`(`source` 컬럼 포함)
+- **마이그레이션**: V15 `sensor_readings`(`source` 컬럼 포함) · **V17** purge용 `(measured_at)` 인덱스 + `(device_id, metric, measured_at)` unique
 
 ## 5. ErrorCode 체계
 
