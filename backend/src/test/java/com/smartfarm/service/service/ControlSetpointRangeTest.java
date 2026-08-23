@@ -2,7 +2,9 @@ package com.smartfarm.service.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.smartfarm.service.dto.ControlApplyRequest;
 import com.smartfarm.service.entity.SensorMetric;
+import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -27,6 +29,19 @@ class ControlSetpointRangeTest {
     void controllableMetricsMatchContract() {
         assertThat(ControlService.CONTROLLABLE_METRICS).containsExactly(
                 SensorMetric.TEMPERATURE, SensorMetric.HUMIDITY, SensorMetric.CO2, SensorMetric.PPFD);
+    }
+
+    @Test
+    @DisplayName("apply 요청의 @Size 상한은 존당 큐 상한과 같아야 한다 — 큐 상한만 올리면 정상 큐가 400으로 막힌다")
+    void applyRequestSizeLimitMatchesQueueCap() throws Exception {
+        // @Size의 @Target에 RECORD_COMPONENT가 없어 레코드 컴포넌트에는 남지 않는다 — 필드로 전파된
+        // 애노테이션을 읽는다(Bean Validation이 실제로 읽는 위치와 같다).
+        Size size = ControlApplyRequest.class.getDeclaredField("expectedChangeIds").getAnnotation(Size.class);
+
+        assertThat(size).as("expectedChangeIds에는 크기 상한이 필요하다(대용량 배열 힙 고갈 차단)").isNotNull();
+        assertThat((long) size.max())
+                .as("ControlService.MAX_PENDING_PER_ZONE을 바꾸면 이 @Size도 함께 바꿔야 한다")
+                .isEqualTo(ControlService.MAX_PENDING_PER_ZONE);
     }
 
     @Test

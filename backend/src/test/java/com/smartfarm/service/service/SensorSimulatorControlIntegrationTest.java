@@ -116,6 +116,53 @@ class SensorSimulatorControlIntegrationTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("제어기가 없는 존도 비상 정지(MANUAL) 후에는 목표로 수렴하지 않는다 — 끌 제어기가 없어도 정지가 성립한다")
+    void zoneWithoutControllerStopsConvergingAfterEmergencyStop() {
+        Fixture fixture = fixture("제어기없음");
+        long sensorId = createSensor(fixture, "온도센서");
+        seedPreviousReading(fixture, sensorId, 10.0);
+        applySetpoint(fixture, SensorMetric.TEMPERATURE, 30.0);
+
+        // 제어기가 하나도 없으므로 비상 정지가 끌 장비는 0대 — 모드만 MANUAL로 내려간다.
+        controlService.emergencyStop(fixture.farmId(), fixture.ownerId());
+        sensorSimulatorService.tick();
+
+        assertConvergesTowardNaturalNotTarget(sensorId);
+    }
+
+    @Test
+    @DisplayName("제어기가 OFFLINE인 존도 비상 정지 후에는 목표로 수렴하지 않는다 — 정지 대상에서 빠져도 성립한다")
+    void zoneWithOfflineControllerStopsConvergingAfterEmergencyStop() {
+        Fixture fixture = fixture("제어기두절");
+        long sensorId = createSensor(fixture, "온도센서");
+        long controllerId = createController(fixture, "순환팬");
+        seedPreviousReading(fixture, sensorId, 10.0);
+        applySetpoint(fixture, SensorMetric.TEMPERATURE, 30.0);
+        // 통신 두절 제어기는 OFF로 덮지 않으므로(장애 사실 보존) 비상 정지 대상에서 빠진다.
+        deviceService.updateDevice(fixture.farmId(), fixture.ownerId(), controllerId, new DeviceRequest(
+                null, null, null, null, null, null, null, DeviceStatus.OFFLINE, null, null, null));
+
+        controlService.emergencyStop(fixture.farmId(), fixture.ownerId());
+        sensorSimulatorService.tick();
+
+        assertThat(deviceRepository.findById(controllerId).orElseThrow().getStatus())
+                .isEqualTo(DeviceStatus.OFFLINE);
+        assertConvergesTowardNaturalNotTarget(sensorId);
+    }
+
+    /** 목표(30)로 끌려가지 않고 직전 값(10)에서 자연값 쪽으로 한 걸음 표류했는지. */
+    private void assertConvergesTowardNaturalNotTarget(long sensorId) {
+        SensorReading reading = latestReading(sensorId);
+        double natural = SensorSimulationProfile.simulate(
+                SensorMetric.TEMPERATURE, 1, sensorId, reading.getMeasuredAt());
+        double expected = SensorSimulationProfile.converge(
+                SensorMetric.TEMPERATURE, 10.0, natural, sensorId, reading.getMeasuredAt());
+        assertThat(reading.getValue())
+                .as("비상 정지 후에도 목표로 수렴하면 UI는 '정지 완료'인데 그래프만 끌려간다")
+                .isEqualTo(expected, within(1e-9));
+    }
+
+    @Test
     @DisplayName("비상 정지 후에도 센서는 계속 측정한다 — 제어기만 OFF, 측정 스트림은 살아 있다(리뷰 P1)")
     void sensorsKeepMeasuringAfterEmergencyStop() {
         Fixture fixture = fixture("정지후측정");

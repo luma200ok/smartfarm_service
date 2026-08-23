@@ -457,6 +457,28 @@ class ControlApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("비상 정지: 정지 대상이 하나도 없어도 감사 이력 1행을 남긴다 — 호출 사실이 사라지면 안 된다")
+    void emergencyStopWithNoEffectStillWritesAuditLog() throws Exception {
+        String token = signupAndLogin("제어-무영향정지");
+        long farmId = createFarm(token, "무영향정지 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        // 제어기도 대기 항목도 없다 — 정지 대상 0.
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/control/emergency-stop")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stoppedDeviceCount").value(0))
+                .andExpect(jsonPath("$.discardedChangeCount").value(0));
+
+        JsonNode state = readJson(getControlState(token, farmId, zoneId));
+        assertThat(state.get("recentApplyLogs"))
+                .as("영향 0이라고 기록을 생략하면 '정지를 눌렀는가'를 사후에 확인할 수 없다")
+                .hasSize(1);
+        assertThat(state.get("recentApplyLogs").get(0).get("itemCount").asInt()).isZero();
+        assertThat(state.get("recentApplyLogs").get(0).get("summary").asText()).contains("비상 정지");
+    }
+
+    @Test
     @DisplayName("비상 정지는 OWNER만 — 일반 멤버는 403 F003")
     void emergencyStopRequiresOwner() throws Exception {
         String ownerToken = signupAndLogin("제어-정지주인");
