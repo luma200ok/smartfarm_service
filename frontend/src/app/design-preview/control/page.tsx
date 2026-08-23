@@ -7,6 +7,7 @@ import {
   CONTROL_LAST_CHANGE,
   CONTROL_ZONES,
   DEVICE_TOGGLES,
+  formatSetpoint,
   PENDING_CHANGES,
   SETPOINTS,
   UNREAD_ALARMS,
@@ -97,7 +98,7 @@ export default function DesignPreviewControlPage() {
                 </span>
               </div>
               <div className="mt-3 mb-1 flex items-baseline gap-2">
-                <span className="text-[26px] leading-none font-bold text-dp-ink">{sp.format(values[sp.key])}</span>
+                <span className="text-[26px] leading-none font-bold text-dp-ink">{formatSetpoint(sp.key, values[sp.key])}</span>
                 <span className="text-[12px] leading-none font-medium text-dp-muted">{sp.target}</span>
               </div>
               <div className="mt-3">

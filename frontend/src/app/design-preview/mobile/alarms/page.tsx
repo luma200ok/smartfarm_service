@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MobileFrame } from "@/components/design-preview/MobileFrame";
+import type { Severity } from "@/components/design-preview/mock";
 import { M_ALARM_FILTERS, M_ALARMS } from "@/components/design-preview/mock";
 
 // 화면 M3 — 모바일 알람. 핸드오프 `Mobile`.
@@ -20,8 +21,14 @@ const SEVERITY_TEXT = {
   done: "text-dp-muted",
 } as const;
 
+/** 필터 칩 순서와 등급 매핑 — 0번은 전체 */
+const FILTER_SEVERITY: (Severity | null)[] = [null, "critical", "warning", "done"];
+
 export default function MobileAlarmsPage() {
   const [filter, setFilter] = useState(0);
+  // PC 알람 화면과 동작을 맞춘다 — 칩이 활성 스타일만 바뀌고 목록은 그대로이던 문제(리뷰 지적).
+  const severity = FILTER_SEVERITY[filter];
+  const visible = severity ? M_ALARMS.filter((a) => a.severity === severity) : M_ALARMS;
 
   return (
     <MobileFrame
@@ -57,7 +64,12 @@ export default function MobileAlarmsPage() {
         </div>
       }
     >
-      {M_ALARMS.map((alarm, i) => (
+      {visible.length === 0 ? (
+        <p className="px-2 py-8 text-center text-[12.5px] leading-none text-dp-muted">
+          해당 등급의 알람이 없습니다.
+        </p>
+      ) : null}
+      {visible.map((alarm, i) => (
         <div
           key={alarm.title}
           className={`rounded-[10px] border-l-[3px] bg-dp-surface px-[15px] py-3.5 ${LEFT_BAR[alarm.severity]} ${

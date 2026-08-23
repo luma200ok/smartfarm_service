@@ -67,6 +67,9 @@ export default function MobileHomePage() {
               className={`mt-1.5 text-[20px] leading-none font-bold ${kpi.alert ? "text-dp-red-ink" : "text-dp-ink"}`}
             >
               {kpi.value}
+              {/* 시안은 이상값을 색으로만 구분한다. 색을 못 보는 사용자를 위해 상태를 텍스트로도 싣는다
+                  (시각 표기는 시안 확정 사항이라 임의로 바꾸지 않음 — 아이콘/라벨 추가는 디자인 확인 필요) */}
+              {kpi.alert ? <span className="sr-only"> 목표 초과</span> : null}
             </div>
           </Card>
         ))}

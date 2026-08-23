@@ -2,13 +2,20 @@
 
 import { useState } from "react";
 import { MobileApplyBar, MobileFrame } from "@/components/design-preview/MobileFrame";
-import { CONTROL_ZONES, M_CONTROL_DEVICES, M_CONTROL_SECONDARY, SETPOINTS } from "@/components/design-preview/mock";
+import {
+  CONTROL_ZONES,
+  formatSetpoint,
+  M_CONTROL_DEVICES,
+  M_CONTROL_SECONDARY,
+  SETPOINTS,
+} from "@/components/design-preview/mock";
 import { Card, Gauge, Toggle } from "@/components/design-preview/ui";
 
 // 화면 M2 — 모바일 제어. 핸드오프 `Mobile`.
 // 온도만 큰 카드(값 30px, 진행 바 6px, −/+ 전폭)로 강조하고 나머지는 2열 요약 카드.
 // 적용 버튼은 하단 고정 바에 두고 되돌리기 : n건 적용 = 1 : 1.4.
-const TEMP = SETPOINTS[0];
+// 배열 순서가 아니라 key로 찾는다 — SETPOINTS 순서가 바뀌어도 온도 카드가 조용히 틀어지지 않게.
+const TEMP = SETPOINTS.find((s) => s.key === "temp") ?? SETPOINTS[0];
 
 export default function MobileControlPage() {
   const [zone, setZone] = useState(CONTROL_ZONES[0]);
@@ -61,7 +68,7 @@ export default function MobileControlPage() {
           <span className="text-[11.5px] leading-none font-medium text-dp-green">정상</span>
         </div>
         <div className="mt-3 mb-1 flex items-baseline gap-2.5">
-          <span className="text-[30px] leading-none font-bold text-dp-ink">{temp.toFixed(1)}°</span>
+          <span className="text-[30px] leading-none font-bold text-dp-ink">{formatSetpoint(TEMP.key, temp)}</span>
           <span className="text-[12.5px] leading-none font-medium text-dp-muted">{TEMP.target}</span>
         </div>
         <div className="mt-3.5">
@@ -125,6 +132,8 @@ export default function MobileControlPage() {
             >
               {device.state}
             </span>
+            {/* PC 제어 화면은 blocked(클릭 시 안내 문구)를 쓰지만, 모바일에는 안내를 띄울 자리가
+                없어 완전 비활성(disabled)으로 둔다 — 상태 텍스트 "통신 없음"이 이유를 대신한다. */}
             <Toggle
               on={devices[device.key]}
               size="touch"

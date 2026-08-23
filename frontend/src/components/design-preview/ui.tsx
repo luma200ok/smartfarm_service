@@ -320,7 +320,9 @@ const CELL_LABEL: Record<CellState, string> = {
 /**
  * 셀 = 랙 1개 층. 색은 목표 대비 편차.
  * 좁은 폭에서는 셀을 줄이는 대신 가로 스크롤을 허용하고 최소 변 길이 14px를 지킨다
- * (핸드오프 Responsive 원칙). 색만으로 상태를 구분하지 않도록 각 셀에 텍스트 상태를 함께 싣는다.
+ * (핸드오프 Responsive 원칙).
+ * 색만으로 상태를 구분하지 않도록 각 셀에 텍스트 상태를 싣는다 — 다만 role 없는 div에 붙인
+ * aria-label은 스크린리더가 이름 계산을 하지 않으므로 role="img"를 함께 준다.
  */
 export function RackGrid({
   cells,
@@ -356,6 +358,7 @@ export function RackGrid({
           return (
             <div
               key={`${r}-${c}`}
+              role="img"
               title={`${columns[c]} · ${cells.length - r}층 · ${CELL_LABEL[state]}`}
               aria-label={`${columns[c]} ${cells.length - r}층 ${CELL_LABEL[state]}`}
               className={`${CELL_BG[state]} ${cellClass} ${

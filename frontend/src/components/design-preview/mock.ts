@@ -247,19 +247,32 @@ export interface Setpoint {
   status: string;
   statusTone: "ok" | "muted";
   value: number;
-  format: (v: number) => string;
   step: number;
   target: string;
   fill: number;
   marker: number;
 }
 
+/** 전부 JSON 직렬화 가능한 순수 데이터 — 실 API 응답으로 그대로 맞바꿀 수 있다. */
 export const SETPOINTS: Setpoint[] = [
-  { key: "temp", label: "온도", status: "정상", statusTone: "ok", value: 23.8, format: (v) => `${v.toFixed(1)}°`, step: 0.1, target: "목표 24.0", fill: 62, marker: 66 },
-  { key: "humidity", label: "습도", status: "정상", statusTone: "ok", value: 68, format: (v) => `${Math.round(v)}%`, step: 1, target: "목표 65~75", fill: 54, marker: 58 },
-  { key: "co2", label: "CO₂", status: "시비 중", statusTone: "ok", value: 1020, format: (v) => Math.round(v).toLocaleString("ko-KR"), step: 10, target: "목표 1,000", fill: 71, marker: 69 },
-  { key: "ppfd", label: "광량 PPFD", status: "점등", statusTone: "muted", value: 218, format: (v) => `${Math.round(v)}`, step: 1, target: "목표 220", fill: 58, marker: 60 },
+  { key: "temp", label: "온도", status: "정상", statusTone: "ok", value: 23.8, step: 0.1, target: "목표 24.0", fill: 62, marker: 66 },
+  { key: "humidity", label: "습도", status: "정상", statusTone: "ok", value: 68, step: 1, target: "목표 65~75", fill: 54, marker: 58 },
+  { key: "co2", label: "CO₂", status: "시비 중", statusTone: "ok", value: 1020, step: 10, target: "목표 1,000", fill: 71, marker: 69 },
+  { key: "ppfd", label: "광량 PPFD", status: "점등", statusTone: "muted", value: 218, step: 1, target: "목표 220", fill: 58, marker: 60 },
 ];
+
+// 표시 포맷은 데이터가 아니라 표시 로직이므로 SETPOINTS 밖에 둔다.
+// (데이터에 함수를 박아두면 API 응답으로 교체할 때 그대로 못 쓴다)
+const SETPOINT_FORMATTERS: Record<string, (v: number) => string> = {
+  temp: (v) => `${v.toFixed(1)}°`,
+  humidity: (v) => `${Math.round(v)}%`,
+  co2: (v) => Math.round(v).toLocaleString("ko-KR"),
+  ppfd: (v) => `${Math.round(v)}`,
+};
+
+export function formatSetpoint(key: string, value: number): string {
+  return (SETPOINT_FORMATTERS[key] ?? ((v: number) => String(v)))(value);
+}
 
 export interface DeviceToggle {
   key: string;

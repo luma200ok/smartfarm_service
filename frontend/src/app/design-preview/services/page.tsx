@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Screen, ScreenBody, TopBar } from "@/components/design-preview/chrome";
 import type { ChatTurn } from "@/components/design-preview/mock";
 import {
@@ -24,6 +24,10 @@ export default function DesignPreviewServicesPage() {
   const [turns, setTurns] = useState<ChatTurn[]>(CHAT_OPENING);
   const [used, setUsed] = useState<string[]>([]);
   const [awaiting, setAwaiting] = useState(false);
+  const replyTimer = useRef<number | undefined>(undefined);
+
+  // 응답 대기 중 라우트를 옮기면 언마운트된 트리에 setState가 붙는다 — 타이머를 정리한다.
+  useEffect(() => () => window.clearTimeout(replyTimer.current), []);
 
   function ask(label: string) {
     const suggestion = CHAT_SUGGESTIONS.find((s) => s.label === label);
@@ -32,7 +36,7 @@ export default function DesignPreviewServicesPage() {
     setUsed((prev) => [...prev, label]);
     setAwaiting(true);
     // 응답 대기 상태를 눈으로 볼 수 있게만 짧게 지연시킨다(목업).
-    window.setTimeout(() => {
+    replyTimer.current = window.setTimeout(() => {
       setTurns((prev) => [...prev, suggestion.reply]);
       setAwaiting(false);
     }, 600);

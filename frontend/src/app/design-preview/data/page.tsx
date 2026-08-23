@@ -17,6 +17,7 @@ import {
   SAVED_ANALYSES,
   UNREAD_ALARMS,
 } from "@/components/design-preview/mock";
+import type { Metric } from "@/components/design-preview/mock";
 import type { Line } from "@/components/design-preview/ui";
 import {
   AxisLabels,
@@ -35,7 +36,7 @@ import {
 // 항목 칩은 다중 선택이고 최대 4개(초과 시 안내).
 // 시계열은 프로토타입 SVG 좌표를 그대로 쓰는 목업이라 기간을 바꿔도 데이터는 동일하다.
 
-const CHIP_TONE: Record<string, string> = {
+const CHIP_TONE: Record<Metric["tone"], string> = {
   green: "border-dp-green bg-dp-green-tint-2 text-dp-green-ink",
   blue: "border-dp-blue bg-dp-blue-tint text-dp-blue-ink",
   amber: "border-dp-amber bg-dp-amber-tint-2 text-dp-amber-sub",
@@ -47,9 +48,12 @@ export default function DesignPreviewDataPage() {
   const [selected, setSelected] = useState<string[]>(DATA_DEFAULT_METRICS);
   const [limitNotice, setLimitNotice] = useState(false);
 
-  const shown = DATA_METRICS.filter((m) => m.series && selected.includes(m.key));
+  // filter 콜백을 타입 프레디킷으로 써서 series 가 string 으로 좁혀지게 한다(as 캐스팅 제거).
+  const shown = DATA_METRICS.filter(
+    (m): m is Metric & { series: string } => Boolean(m.series) && selected.includes(m.key),
+  );
   const lines: Line[] = shown.map((m) => ({
-    points: m.series as string,
+    points: m.series,
     tone: m.tone,
     width: m.width,
     dashed: m.dashed,
