@@ -41,7 +41,14 @@ public enum ErrorCode {
     P001(HttpStatus.NOT_FOUND, "P001", "처방 이력을 찾을 수 없습니다."),
     P002(HttpStatus.INTERNAL_SERVER_ERROR, "P002", "처방 생성에 실패했습니다."),
     P003(HttpStatus.TOO_MANY_REQUESTS, "P003", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요."),
-    P004(HttpStatus.TOO_MANY_REQUESTS, "P004", "처방 대기 한도를 초과했습니다. 진행 중인 처방 완료 후 다시 시도해주세요.");
+    P004(HttpStatus.TOO_MANY_REQUESTS, "P004", "처방 대기 한도를 초과했습니다. 진행 중인 처방 완료 후 다시 시도해주세요."),
+
+    // Farm Log
+    L001(HttpStatus.NOT_FOUND, "L001", "작업일지를 찾을 수 없습니다."),
+    L002(HttpStatus.FORBIDDEN, "L002", "작업일지 수정/삭제 권한이 없습니다."),
+
+    // Weather Forecast
+    W001(HttpStatus.BAD_GATEWAY, "W001", "날씨예보 조회에 실패했습니다.");
 
     private final HttpStatus status;
     private final String code;
