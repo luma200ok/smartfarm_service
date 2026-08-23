@@ -241,17 +241,14 @@ class SensorReadingRepositoryTest extends FarmTestSupport {
         List<ReadingLevelAverageProjection> result = sensorReadingRepository.findLevelSummaryAggregated(
                 farmId, rackId, measuredAt.minusHours(1));
 
-        assertThat(result).hasSize(2);
-        assertThat(result).anySatisfy(row -> {
-            if (row.getMetric().equals(SensorMetric.TEMPERATURE.name())) {
-                assertThat(row.getAverage()).isEqualTo(22.4);
-            }
-        });
-        assertThat(result).anySatisfy(row -> {
-            if (row.getMetric().equals(SensorMetric.CO2.name())) {
-                assertThat(row.getAverage()).isEqualTo(650.0);
-            }
-        });
+        // anySatisfy는 하나라도 예외를 안 던지면 통과라 if를 안 타는 행이 있으면 아무것도 검증하지
+        // 않고 그냥 초록이 된다(사이클 2 리뷰 P3-B — TEMPERATURE 평균이 CO2와 섞여 336.2가 돼도
+        // 잡아내지 못했다). extracting+containsExactlyInAnyOrder로 두 행 모두 명시 검증한다.
+        assertThat(result)
+                .extracting(ReadingLevelAverageProjection::getMetric, ReadingLevelAverageProjection::getAverage)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(SensorMetric.TEMPERATURE.name(), 22.4),
+                        org.assertj.core.groups.Tuple.tuple(SensorMetric.CO2.name(), 650.0));
     }
 
     private long levelIdOf(String ownerToken, long farmId, long zoneId, long rackId) throws Exception {
