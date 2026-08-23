@@ -247,7 +247,9 @@
 | DELETE | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | — | 204 |
 
 - **ZoneTreeResponse** `{zones: [{id, name, displayOrder, racks: [{id, code, levelCount, displayOrder, levels: [{id, levelNo, label}]}]}]}`
-- **DeviceSummaryResponse** `{total, normal, warning, faultOrOffline, calibrationDueSoon, byModel: [{name, kind, count, status}]}` — `calibrationDueSoon`=30일 이내
+- **DeviceSummaryResponse** `{total, normal, warning, faultOrOffline, off, calibrationDueSoon, byModel: [{name, kind, count, status}]}` — `calibrationDueSoon`=30일 이내
+  - ⚠️ **`off` 필드는 2026-08-24 사이클 3에서 추가**(리뷰 반영): 없으면 비상 정지 직후 `{total:60, normal:0, warning:0, faultOrOffline:0}`이 되어 **농장 전체가 정지했는데 화면에는 "이상 없음"으로 읽힌다**(렌더 버그와 구분 불가). `total = normal + warning + faultOrOffline + off`가 성립해야 한다
+- ⚠️ **`PATCH /devices/{deviceId}`의 `status`로 `OFF`를 설정할 수 없다**(C001, 2026-08-24 사이클 3 리뷰 반영): `OFF`는 §4.12가 정의한 **제어 조작의 결과**이지 레지스트리 편집 대상이 아니다. PATCH 경로에는 모드 게이트(CT003)·대기 큐 2단계·존 단위 락·감사 이력이 **전부 없어서**, 허용하면 비상 정지를 걸어둔 장비를 감사 없이 되살릴 수 있고 §4.12 동시성 3(존 단위 직렬화)이 우회된다. 끄기/켜기는 제어 경로로만 한다
 - **`levelCount` 축소 시**: 잘려나가는 층에 장비가 매달려 있으면 **R004로 거부**(조용한 데이터 유실 방지). 측정 이력만 있는 경우는 층을 soft delete하고 이력은 보존
 - **구조 삭제 시에도 동일 규칙**(2026-08-23 리뷰 반영 — 계약 초판 누락): 랙·존 삭제도 하위에 활성 장비가 있으면 **R004로 거부**한다. 초판은 `levelCount` 축소에만 R004를 걸어, `DELETE /racks/{id}`가 같은 결과를 검사 없이 통과하는 우회로가 있었다(장비가 soft delete된 층을 참조한 채 살아남아 랙 도면에서는 사라지고 `devices/summary` 집계에는 계속 잡힘)
 - **장비 위치 FK 3종의 부모-자식 정합성**(2026-08-23 리뷰 반영 — 계약 초판 누락): `zoneId`/`rackId`/`rackLevelId`는 각각 농장 소속인 것만으로 부족하고 **서로의 계층 관계가 일치해야 한다**. 규칙은 **쌍 2개가 아니라 전이까지 3개**다(2차 리뷰 반영 — 1차 보정도 쌍만 적어 불완전했다): ① `rack.zoneId == zoneId` ② `level.rackId == rackId` ③ **전이** — `rackId`를 생략해도 `level → rack → zone`을 따라가 `zoneId`와 대조한다. ③이 없으면 `{zoneId: A동, rackId: null, rackLevelId: B동 랙의 층}`이 두 쌍 검사를 모두 skip하고 통과한다(`rackId == null`이면 ①은 안 돌고 ②는 가드에 막힘). 불일치는 C001. PATCH는 부분 수정이므로 **요청값과 기존 엔티티를 병합한 최종 상태**로 검증한다. ⚠️ §4.11의 `SensorReading`이 이 3종을 device에서 유도해 비정규화하므로, 모순된 삼중조는 측정값 테이블로 그대로 복제되어 랙×층 매트릭스 집계를 오염시킨다
@@ -361,7 +363,8 @@
 1. **일괄 적용의 낙관적 검증**: `apply`는 `expectedChangeIds`를 **필수**로 받는다. 현재 PENDING 집합과 다르면 **CT005로 거부**하고 최신 큐를 응답에 실어 재확인시킨다. 사용자 A가 큐를 보고 있는 사이 B가 항목을 추가·삭제했는데 A의 "적용"이 그것까지 함께 반영해버리는 사고를 막는다
 2. **적용은 단일 트랜잭션**: PENDING → APPLIED 전이, `ControlSetpoint`/`Device.status` 갱신, `ControlApplyLog` 기록이 **원자적**이어야 한다. 부분 적용 상태를 남기지 않는다
 3. **존 단위 직렬화**: 같은 존에 대한 `apply`/`emergency-stop`은 동시에 실행되면 안 된다. **존 행을 `@Lock(PESSIMISTIC_WRITE)`로 잠근다**(#91의 TOCTOU 교훈 — 읽고-쓰기 사이에 락이 없으면 검사 결과가 무효가 된다). 락 대상은 `ControlMode` 행(존당 1행이라 자연스러운 잠금 지점)
-4. **비상 정지 우선**: `emergency-stop`은 전 존의 장비를 OFF + 모드를 `MANUAL`로 내리고 **모든 PENDING 큐를 `DISCARDED`로 폐기**한다. 정지 후 남아있던 큐가 나중에 적용되면 안 된다
+4. **비상 정지 우선**: `emergency-stop`은 전 존의 **`kind=CONTROLLER` 장비만** OFF + 모드를 `MANUAL`로 내리고 **모든 PENDING 큐를 `DISCARDED`로 폐기**한다. 정지 후 남아있던 큐가 나중에 적용되면 안 된다
+   - ⚠️ **센서·게이트웨이는 끄지 않는다**(2026-08-24 리뷰 반영 — 계약 초판이 `kind`를 구분하지 않아 **자기모순**이었다). 초판대로 전 장비를 끄면 §4.11 시뮬레이터가 OFF 센서를 tick 대상에서 제외하므로 **농장 전체 측정 스트림이 영구 정지**하고 벌크 복구 경로도 없다. 무엇보다 이 절의 시뮬레이터 연동이 "OFF인 제어기가 있는 존은 **자연 표류**"라고 쓰는데, **표류하려면 센서가 계속 측정해야 한다**. 정지의 목적은 액추에이터를 멈추는 것이지 관측을 멈추는 것이 아니다
 5. 상태 전이는 **엔티티 메서드로 캡슐화**한다(`PrescriptionStatus.isTerminal()` 선례). `APPLIED`/`DISCARDED`는 종료 상태 — 재전이 금지
 
 ### ⚠️ 계층·캐스케이드 (§4.10 상속)
@@ -387,6 +390,10 @@
 - **개별 취소의 권한 위반**은 전용 CT 코드를 두지 않고 기존 **A005**(403)를 쓴다
 - **랙 삭제 캐스케이드는 불필요**: 큐가 참조하는 대상은 존·장비뿐이고, §4.10 R004가 활성 장비 잔존 랙의 삭제를 막으므로 폐기 대상이 생기지 않는다
 - **존 soft delete 시 `control_modes` 행은 남긴다**: 그 행이 존 단위 잠금 지점이라 지우면 락 대상이 사라진다. 존 id는 재사용되지 않고 전 API 표면이 R001로 막으므로 도달 불가하다
+
+### ⚠️ 후속으로 남긴 결정 (2026-08-24 리뷰)
+- **`WARNING`/`FAULT`가 OFF로 덮이면 복원되지 않는다**: 이 코드베이스에는 `status`를 관측으로 재도출하는 경로가 없어(수동 PATCH가 유일) 비상 정지 1회로 장애 정보가 소실되고 `faultOrOffline`이 0이 된다 — 정지 직후가 장애 파악이 가장 필요한 순간이다. `control_changes.fromValue`에 이전 상태가 이미 저장되므로 켜기 시 복원이 가능하나 정책 결정이 필요해 **후속 이슈로 분리**한다
+- **큐 폐기의 행위자 미기록**: `ControlChange`에 `discardedBy`/`discardedAt`이 없어, 전체 되돌리기·모드 변경 연쇄 폐기로 **타인의 항목을 지운 주체를 추적할 수 없다**. 모델 필드 추가라 후속
 
 ### ErrorCode (신규)
 | 코드 | HTTP | 의미 |
