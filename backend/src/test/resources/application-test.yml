@@ -65,9 +65,10 @@ sensor-simulator:
   tick-initial-delay: PT1H
   tick-fixed-delay: PT1H
   max-rows-per-farm: 5
-  # 전역 상한(사이클 2 리뷰 P2-4)은 기본 컨텍스트에서 여유 있게 둬(기존 테스트 최대 6행) 농장당
-  # 상한만 걸리게 하고, 전역 상한 자체는 SensorSimulatorGlobalCapIntegrationTest가 별도
-  # 프로퍼티(@TestPropertySource)로 낮춰 전용 컨텍스트에서 검증한다.
+  # 전역 상한(사이클 2 리뷰 P2-4)은 이 공유 컨텍스트에서 여유 있게 둬(기존 테스트 최대 6행) 농장당
+  # 상한만 걸리게 한다. 전역 상한 로직 자체는 SensorSimulatorServiceTest(Mockito 순수 단위 테스트)가
+  # 검증한다 — deviceRepository 조회가 전 농장 대상이라 통합 테스트로는 다른(비-트랜잭션) 테스트가
+  # 남긴 실 데이터에 예산이 먼저 소진돼 순서 의존적으로 깨지는 문제가 있었다.
   max-rows-per-tick: 100
 
 # sensor_readings 퍼지도 동일 원칙 — 자동 발화 차단 + 작은 배치 크기로 반복 검증.
