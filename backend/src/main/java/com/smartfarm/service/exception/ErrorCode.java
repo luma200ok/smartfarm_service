@@ -48,7 +48,11 @@ public enum ErrorCode {
     L002(HttpStatus.FORBIDDEN, "L002", "작업일지 수정/삭제 권한이 없습니다."),
 
     // Weather Forecast
-    W001(HttpStatus.BAD_GATEWAY, "W001", "날씨예보 조회에 실패했습니다.");
+    W001(HttpStatus.BAD_GATEWAY, "W001", "날씨예보 조회에 실패했습니다."),
+
+    // Chat
+    CH001(HttpStatus.BAD_GATEWAY, "CH001", "챗 응답에 실패했습니다. 잠시 후 다시 시도해주세요."),
+    CH002(HttpStatus.TOO_MANY_REQUESTS, "CH002", "AI 서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String code;
