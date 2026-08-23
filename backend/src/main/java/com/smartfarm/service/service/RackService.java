@@ -97,8 +97,25 @@ public class RackService {
         farmAccessGuard.requireOwner(farmId, userId);
         Rack rack = findRackOrThrow(farmId, rackId);
 
-        rackLevelRepository.deleteAll(rackLevelRepository.findByRackIdOrderByLevelNoAsc(rack.getId()));
+        List<RackLevel> levels = rackLevelRepository.findByRackIdOrderByLevelNoAsc(rack.getId());
+        ensureNoActiveDevices(rack, levels);
+
+        rackLevelRepository.deleteAll(levels);
         rackRepository.delete(rack);
+    }
+
+    /**
+     * 랙 삭제 전 하위 활성 장비 존재 확인(리뷰 P1 #89, contract §4.10 "구조 삭제 시에도 동일 규칙") —
+     * levelCount 축소와 동일하게 랙을 통째로 지울 때도 검사 없이 통과하면 안 된다. 랙 직속(rackId)과
+     * 그 랙의 층(rackLevelId) 양쪽 다 확인해야 샌다(장비 위치 FK가 둘 다일 수 있음).
+     */
+    private void ensureNoActiveDevices(Rack rack, List<RackLevel> levels) {
+        List<Long> levelIds = levels.stream().map(RackLevel::getId).toList();
+        boolean hasActiveDevices = deviceRepository.existsByRackId(rack.getId())
+                || (!levelIds.isEmpty() && deviceRepository.existsByRackLevelIdIn(levelIds));
+        if (hasActiveDevices) {
+            throw new CustomException(ErrorCode.R004);
+        }
     }
 
     /**

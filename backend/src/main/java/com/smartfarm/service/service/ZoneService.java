@@ -9,6 +9,7 @@ import com.smartfarm.service.entity.RackLevel;
 import com.smartfarm.service.entity.Zone;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
+import com.smartfarm.service.repository.DeviceRepository;
 import com.smartfarm.service.repository.RackLevelRepository;
 import com.smartfarm.service.repository.RackRepository;
 import com.smartfarm.service.repository.ZoneRepository;
@@ -31,6 +32,7 @@ public class ZoneService {
     private final ZoneRepository zoneRepository;
     private final RackRepository rackRepository;
     private final RackLevelRepository rackLevelRepository;
+    private final DeviceRepository deviceRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
 
@@ -85,11 +87,30 @@ public class ZoneService {
         Zone zone = findZoneOrThrow(farmId, zoneId);
 
         List<Rack> racks = rackRepository.findByZoneIdOrderByDisplayOrderAscIdAsc(zoneId);
-        for (Rack rack : racks) {
-            rackLevelRepository.deleteAll(rackLevelRepository.findByRackIdOrderByLevelNoAsc(rack.getId()));
-        }
+        List<Long> rackIds = racks.stream().map(Rack::getId).toList();
+        List<RackLevel> levels = rackIds.isEmpty()
+                ? List.of()
+                : rackLevelRepository.findByRackIdInOrderByLevelNoAsc(rackIds);
+        ensureNoActiveDevices(zone, rackIds, levels);
+
+        rackLevelRepository.deleteAll(levels);
         rackRepository.deleteAll(racks);
         zoneRepository.delete(zone);
+    }
+
+    /**
+     * 존 삭제 전 하위 활성 장비 존재 확인(리뷰 P1 #89, contract §4.10 "구조 삭제 시에도 동일 규칙") —
+     * 장비 위치 FK 3종(zoneId 직속·rackId 직속·rackLevelId) 전부 확인해야 샌다. 하나만 보면 예를 들어
+     * 존에 직접 매단 게이트웨이(zoneId만 채움)를 놓치고 존이 삭제된다.
+     */
+    private void ensureNoActiveDevices(Zone zone, List<Long> rackIds, List<RackLevel> levels) {
+        List<Long> levelIds = levels.stream().map(RackLevel::getId).toList();
+        boolean hasActiveDevices = deviceRepository.existsByZoneId(zone.getId())
+                || (!rackIds.isEmpty() && deviceRepository.existsByRackIdIn(rackIds))
+                || (!levelIds.isEmpty() && deviceRepository.existsByRackLevelIdIn(levelIds));
+        if (hasActiveDevices) {
+            throw new CustomException(ErrorCode.R004);
+        }
     }
 
     /** 존이 해당 farm 소속인지 재확인(cross-tenant IDOR 차단) — 미소속·미존재는 동일하게 R001. */
