@@ -2,11 +2,20 @@
 # 실행 위치: 이 파일이 있는 deploy/home/ 디렉터리 (.env는 같은 디렉터리에 둔다, .env.example 참고)
 #
 # 네트워크 구성:
-#   - default(내부): backend <-> frontend <-> nginx 컨테이너 간 통신
+#   - default(내부): smartfarm-backend <-> smartfarm-frontend <-> smartfarm-nginx 간 통신
 #   - shared-net(외부, 사전 생성 필요: `docker network create shared-net`): backend·nginx 조인
 #     — backend: 호스트에 이미 떠 있는 db-postgres(PostgreSQL)·smartfarm-ai(AI 서버) 컨테이너 접근용.
 #     README.md 체크리스트대로 db-postgres 쪽도 shared-net에 조인돼 있어야 backend가 붙을 수 있다.
 #     — nginx: 독립 스택의 터널이 shared-net으로만 nginx에 도달하기 때문이다(#75). 아래 nginx 주석 참고.
+#
+# ⚠️ 서비스 키가 전부 `smartfarm-` 접두사인 이유 (#97) — compose 는 서비스가 조인하는 **모든**
+#    네트워크에 **서비스 키를 별칭으로 게시**한다. `backend`·`nginx` 같은 일반명을 공유망 shared-net
+#    (홈서버 전 스택 공용)에 올리면, 다른 스택이 같은 이름을 올리는 순간 도커 DNS 가 두 컨테이너
+#    사이에서 라운드로빈한다.
+#    2026-08-23 실제로 하자첵이 자기 `frontend` 를 shared-net 에 조인하자 아래 nginx.conf 의
+#    `http://frontend:3000` 조회가 하자첵으로 붙어 farm.luma200ok.com 이 502 가 됐다.
+#    ⚠️ `aliases:` 로는 못 막는다 — 별칭은 대체가 아니라 **추가**라 서비스 키가 그대로 남는다(실측).
+#    (규칙: luma200ok/home-infra#15)
 #
 # TLS는 이 스택에서 종단하지 않는다 — Cloudflare Tunnel이 종단하고 nginx는 평문 80만 처리한다.
 # 터널 컨테이너는 이 스택에 없다(#75) — luma200ok/home-infra 의 tunnel 스택이 소유한다.
@@ -20,7 +29,7 @@ networks:
     external: true
 
 services:
-  backend:
+  smartfarm-backend:
     build:
       context: ../../backend
       dockerfile: Dockerfile
@@ -72,7 +81,17 @@ services:
         limits:
           memory: 1.5G
 
-  frontend:
+    # 디스크 상한(luma200ok/home-infra#16) — 호스트에 /etc/docker/daemon.json 이 없어
+    # json-file 이 **무제한**으로 쌓이는 상태다(2026-08-23 실측). restart: unless-stopped 와
+    # 겹치면 크래시 루프가 루트 파티션을 채우고, 그때는 메모리 상한과 똑같이 무관한 스택까지
+    # 동반 장애가 난다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  smartfarm-frontend:
     build:
       context: ../../frontend
       dockerfile: Dockerfile
@@ -80,7 +99,7 @@ services:
         NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
     restart: unless-stopped
     depends_on:
-      backend:
+      smartfarm-backend:
         condition: service_healthy
     # 메모리 상한(home-infra#9) — 실측 RSS 40MiB(Next.js 프로덕션 서버, 정적 자산 위주).
     # 여유를 넉넉히 두어 512M — 트래픽 급증 시 Node 힙·캐시 증가를 흡수하면서도 무한대(0=무제한)는 피한다.
@@ -89,7 +108,17 @@ services:
         limits:
           memory: 512M
 
-  nginx:
+    # 디스크 상한(luma200ok/home-infra#16) — 호스트에 /etc/docker/daemon.json 이 없어
+    # json-file 이 **무제한**으로 쌓이는 상태다(2026-08-23 실측). restart: unless-stopped 와
+    # 겹치면 크래시 루프가 루트 파티션을 채우고, 그때는 메모리 상한과 똑같이 무관한 스택까지
+    # 동반 장애가 난다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  smartfarm-nginx:
     image: nginx:alpine
     restart: unless-stopped
     volumes:
@@ -102,12 +131,19 @@ services:
     # 따라서 터널이 nginx에 도달하는 경로는 shared-net 하나뿐이다. 다른 도메인은 각 컨테이너로 직행하므로
     # 이 조인이 빠져도 멀쩡하고, smartfarm만 죽는다 — 원인을 찾기 어려운 형태의 장애다.
     networks:
-      - default
-      - shared-net
+      default:
+      shared-net:
+        aliases:
+          # ⚠️ 한시적 호환 별칭 — 터널 인그레스가 아직 `http://nginx:80` 을 가리킨다.
+          #    서비스 키를 바꾸면 그 이름이 사라져 대시보드를 손대기 전까지 farm 이 502 가 된다.
+          #    인그레스를 http://smartfarm-nginx:80 으로 옮긴 뒤 이 줄을 지운다(#97).
+          #    그때까지는 공유망에 `nginx` 일반명이 남아 있으므로, 다른 스택이 nginx 를
+          #    올리지 않도록 주의할 것.
+          - nginx
     depends_on:
-      backend:
+      smartfarm-backend:
         condition: service_healthy
-      frontend:
+      smartfarm-frontend:
         condition: service_healthy
     # 메모리 상한(home-infra#9) — 실측 RSS 5MiB(nginx:alpine, 단순 리버스 프록시 설정).
     # 자체 사용량은 매우 낮지만 커넥션 버퍼링·워커 프로세스 여유를 위해 256M으로 설정(0=무제한 회피).
@@ -115,3 +151,13 @@ services:
       resources:
         limits:
           memory: 256M
+
+    # 디스크 상한(luma200ok/home-infra#16) — 호스트에 /etc/docker/daemon.json 이 없어
+    # json-file 이 **무제한**으로 쌓이는 상태다(2026-08-23 실측). restart: unless-stopped 와
+    # 겹치면 크래시 루프가 루트 파티션을 채우고, 그때는 메모리 상한과 똑같이 무관한 스택까지
+    # 동반 장애가 난다.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
