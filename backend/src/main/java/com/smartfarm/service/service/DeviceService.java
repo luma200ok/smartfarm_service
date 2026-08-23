@@ -188,9 +188,12 @@ public class DeviceService {
 
     /**
      * 위치 FK 3종이 제공된 경우 (1) 그 리소스가 이 농장 소속인지 재확인(cross-tenant IDOR 차단),
-     * (2) 서로의 계층 관계가 일치하는지 확인한다(rack.zoneId==zoneId, level.rackId==rackId —
-     * contract §4.10 리뷰 반영). 불일치 시 C001 — §4.11 SensorReading이 이 3종을 device에서
-     * 유도해 비정규화하므로, 모순된 삼중조를 여기서 막지 않으면 측정값 테이블까지 오염된다.
+     * (2) 서로의 계층 관계가 일치하는지 확인한다 — 쌍 2개(① rack.zoneId==zoneId ② level.rackId==
+     * rackId)만으로는 부족하다(2차 리뷰 반영, contract §4.10): {@code rackId}를 생략하면 두 쌍
+     * 검사가 전부 skip돼 {@code {zoneId: A동, rackId: null, rackLevelId: B동 랙의 층}}이 통과해
+     * 버린다. ③ **전이** 검사로 {@code rackId}가 없어도 level → rack → zone을 따라가 zoneId와
+     * 대조한다. 불일치 시 C001 — §4.11 SensorReading이 이 3종을 device에서 유도해 비정규화하므로,
+     * 모순된 삼중조를 여기서 막지 않으면 측정값 테이블까지 오염된다.
      */
     private void validateLocation(Long farmId, Long zoneId, Long rackId, Long rackLevelId) {
         if (zoneId != null) {
@@ -211,6 +214,15 @@ public class DeviceService {
                     .orElseThrow(() -> new CustomException(ErrorCode.R003));
             if (rackId != null && !level.getRackId().equals(rackId)) {
                 throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 층이 지정한 랙 소속이 아닙니다.");
+            }
+            // 전이 검사(③) — rackId가 생략된 경우만 추가 조회(rackId가 있었으면 위 ①에서 이미
+            // rack.zoneId==zoneId를 확인했으므로 중복 조회하지 않는다).
+            if (zoneId != null && rackId == null) {
+                Rack levelRack = rackRepository.findByIdAndFarmId(level.getRackId(), farmId)
+                        .orElseThrow(() -> new CustomException(ErrorCode.R002));
+                if (!levelRack.getZoneId().equals(zoneId)) {
+                    throw new CustomException(ErrorCode.C001, "장비 위치가 어긋납니다 — 층이 지정한 존 소속이 아닙니다.");
+                }
             }
         }
     }
