@@ -241,7 +241,7 @@
 | PATCH | `/api/farms/{farmId}/racks/{rackId}` | OWNER(데모 차단) | `{code?, levelCount?, displayOrder?}` | 200 `RackResponse` |
 | DELETE | `/api/farms/{farmId}/racks/{rackId}` | OWNER(데모 차단) | — | 204 (하위 층 함께 soft delete). **하위에 장비 잔존 시 R004 거부** |
 | GET | `/api/farms/{farmId}/devices` | 멤버 | `?kind=&status=&q=&zoneId=` (q=장비명 부분일치) | 200 `DeviceListResponse` |
-| GET | `/api/farms/{farmId}/devices/summary` | 멤버 | — | 200 `DeviceSummaryResponse` (KPI 4종 + 제품군별 집계) |
+| GET | `/api/farms/{farmId}/devices/summary` | 멤버 | — | 200 `DeviceSummaryResponse` (KPI 5종 + 제품군별 집계) |
 | POST | `/api/farms/{farmId}/devices` | OWNER(데모 차단) | `DeviceRequest` | 201 `DeviceResponse` |
 | PATCH | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | `DeviceRequest`(부분) | 200 `DeviceResponse` |
 | DELETE | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | — | 204 |
@@ -297,7 +297,8 @@
 ### ⚠️ 가상 장비 시뮬레이터 (실기기 부재)
 실기기·실센서가 없으므로 측정값은 **백엔드가 생성한다**. `docs/STATUS.md`의 기존 "원격제어·EC/pH 실시간 제외(실기기 부재)" 결정을 **시뮬레이션 전제로 한정 해제**한다.
 
-- `@Scheduled(fixedDelay=60s)` — `kind=SENSOR`이고 `status != OFFLINE`인 장비마다 1틱 생성. **생성 지표는 그 장비의 `metrics` 선언분만**(§4.10) — 전 지표를 일괄 생성하지 않는다
+- `@Scheduled(fixedDelay=60s)` — `kind=SENSOR`이고 `status`가 **`OFFLINE`·`OFF`가 아닌** 장비마다 1틱 생성. **생성 지표는 그 장비의 `metrics` 선언분만**(§4.10) — 전 지표를 일괄 생성하지 않는다
+  - ⚠️ **`OFF` 제외는 §4.12-4(비상 정지가 제어기만 끈다)와 짝을 이룰 때만 안전하다**(2026-08-24 리뷰 반영 — 초판은 `OFFLINE`만 적어 실제 동작과 어긋났다). 둘 중 하나만 바꾸면 **농장 전체 측정 스트림이 영구 정지**한다(비상 정지가 센서까지 끄는데 시뮬레이터가 OFF 센서를 제외하는 조합). 어느 한쪽을 손댈 때 반드시 다른 쪽을 함께 검토할 것
 - 값 = **일주기 기저(sin) + 층별 오프셋 + 결정적 노이즈**. 노이즈 시드는 `(deviceId, measuredAt 분)` 해시 — 재기동해도 파형이 튀지 않고, 테스트에서 재현 가능
 - `smartfarm.simulator.enabled` 플래그(기본 true, 운영에서 실기기 연동 시 false). **비활성 시 폴러 자체가 뜨지 않는다**
 - ⚠️ **적재량 상한**(#91 교훈 선반영 + 사이클 2 정정): 상한은 **센서 대수가 아니라 1틱당 생성 행 수**로 센다 — 센서 대수로 세면 장비당 지표 수만큼 곱해져 추정이 빗나간다(초판이 이 실수를 했다: 센서 200개 상한을 두고 행 수는 1,400행/틱이 됐다). **농장당 1틱 최대 300행**, 초과분은 생성하지 않고 **WARN 로그**(조용히 잘라내지 않는다).
