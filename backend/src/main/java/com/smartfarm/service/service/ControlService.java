@@ -420,7 +420,10 @@ public class ControlService {
      * 있던 집합이 정확히 같아야 한다. 다르면 <b>최신 큐를 실어</b> CT005로 거부한다.
      */
     private void verifyExpectedQueue(List<ControlChange> pending, List<Long> expectedChangeIds) {
-        if (expectedChangeIds.contains(null)) {
+        // ⚠️ contains(null)을 쓰지 않는다 — 불변 리스트(List.of)는 contains(null)에서 NPE를 던진다
+        // (사이클 2 DeviceService#validateMetrics의 Set.of 함정과 동일한 부류). 잘못된 입력에 500이
+        // 나가면 실패 안전 위반이므로 null 검사 자체가 널 안전해야 한다.
+        if (expectedChangeIds.stream().anyMatch(Objects::isNull)) {
             throw new CustomException(ErrorCode.C001, "적용 대상 대기 항목 id에 null을 포함할 수 없습니다.");
         }
         Set<Long> current = pending.stream().map(ControlChange::getId).collect(Collectors.toCollection(LinkedHashSet::new));
