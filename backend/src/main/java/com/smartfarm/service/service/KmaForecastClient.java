@@ -89,11 +89,16 @@ public class KmaForecastClient {
                     .retrieve()
                     .onStatus(status -> status.isError(),
                             (req, res) -> {
+                                // 요청 URI(res에는 없지만 req.getURI()에는 서비스키 쿼리파라미터가 실린다)는
+                                // 절대 로그에 남기지 않는다 — HTTP 상태 코드만 남긴다.
+                                log.warn("KMA 단기예보 조회 실패(HTTP {})", res.getStatusCode().value());
                                 throw new CustomException(ErrorCode.W001);
                             })
                     .body(KmaForecastEnvelope.class);
 
             if (!isSuccessful(envelope)) {
+                log.warn("KMA 단기예보 응답 실패(resultCode={}, resultMsg={})",
+                        extractResultCode(envelope), extractResultMsg(envelope));
                 throw new CustomException(ErrorCode.W001);
             }
             return toForecastResponse(envelope);
@@ -118,6 +123,19 @@ public class KmaForecastClient {
                 && envelope.response() != null
                 && envelope.response().header() != null
                 && "00".equals(envelope.response().header().resultCode());
+    }
+
+    /** 실패 로깅 전용 — header가 없는 이례적 응답이면 null(서비스키는 포함되지 않는 필드만 사용). */
+    private String extractResultCode(KmaForecastEnvelope envelope) {
+        return hasHeader(envelope) ? envelope.response().header().resultCode() : null;
+    }
+
+    private String extractResultMsg(KmaForecastEnvelope envelope) {
+        return hasHeader(envelope) ? envelope.response().header().resultMsg() : null;
+    }
+
+    private boolean hasHeader(KmaForecastEnvelope envelope) {
+        return envelope != null && envelope.response() != null && envelope.response().header() != null;
     }
 
     private ForecastResponse toForecastResponse(KmaForecastEnvelope envelope) {
