@@ -34,6 +34,7 @@ public class ChatService {
     private final FarmAccessGuard farmAccessGuard;
     private final AiChatClient aiChatClient;
     private final ChatRateLimiter chatRateLimiter;
+    private final ChatConcurrencyGuard chatConcurrencyGuard;
     private final ObjectMapper objectMapper;
 
     /**
@@ -46,13 +47,25 @@ public class ChatService {
     public ChatMessageResponse createChat(Long farmId, Long userId, ChatRequest request) {
         farmAccessGuard.requireMember(farmId, userId);
 
-        // 레이트리밋(handoff #54) — DB 왕복이 있는 처방 접수 상한(P004)과 달리 인메모리 카운터.
-        // ai-server 호출 전에 걸러 무의미한 LLM 호출을 막는다.
-        if (!chatRateLimiter.tryAcquire(farmId)) {
+        // 레이트리밋(handoff #54 + 보안 리뷰 P1-B) — 농장 단위 + 사용자 단위 둘 다 통과해야 한다.
+        // DB 왕복이 있는 처방 접수 상한(P004)과 달리 인메모리 카운터. ai-server 호출 전에 걸러
+        // 무의미한 LLM 호출을 막는다.
+        if (!chatRateLimiter.tryAcquire(farmId, userId)) {
             throw new CustomException(ErrorCode.CH002);
         }
 
-        AiChatResponse aiResponse = aiChatClient.chat(request.question(), "svc:farm:" + farmId);
+        // 전역 동시성 가드(보안 리뷰 P1-A) — 농장·사용자 수와 무관하게 backend가 동시에 붙잡는
+        // 챗 스레드를 상한선으로 묶는다. non-blocking tryAcquire만 사용(대기하면 스레드를 점유한
+        // 채로 쌓여 풀 고갈 방어 의미가 없다). 슬롯은 ai-server 호출 구간에만 걸어 최대한 짧게 쥔다.
+        if (!chatConcurrencyGuard.tryAcquire()) {
+            throw new CustomException(ErrorCode.CH002);
+        }
+        AiChatResponse aiResponse;
+        try {
+            aiResponse = aiChatClient.chat(request.question(), "svc:farm:" + farmId);
+        } finally {
+            chatConcurrencyGuard.release();
+        }
 
         ChatMessage saved = chatMessageRepository.save(ChatMessage.builder()
                 .farmId(farmId)
