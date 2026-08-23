@@ -116,7 +116,7 @@ chat:
   read-timeout: 120s
 
 kma:
-  base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService2.0
+  base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0
   # 기본값 필수(핫픽스 #73) — env 미설정 시 placeholder 해석 실패/빈 문자열 Integer 변환으로
   # 애플리케이션 기동 자체가 깨진다. 예보는 부가 기능이므로 미설정이면 조용히 W001로 degrade해야 한다.
   service-key: ${KMA_SERVICE_KEY:}
