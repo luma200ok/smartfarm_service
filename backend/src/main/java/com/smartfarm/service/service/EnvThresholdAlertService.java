@@ -75,10 +75,25 @@ public class EnvThresholdAlertService {
         // 보고 이미 내부에서 처리한다(아래 notifyBreach 호출부 변경 불필요).
         List<FarmEnvThreshold> thresholds = farmEnvThresholdRepository.findEnabled();
         for (FarmEnvThreshold threshold : thresholds) {
-            evaluateMetric(threshold, EnvMetric.INDOOR_TEMP, indoor.temp(),
-                    threshold.getIndoorTempMin(), threshold.getIndoorTempMax());
-            evaluateMetric(threshold, EnvMetric.INDOOR_HUMIDITY, indoor.humidity(),
-                    threshold.getIndoorHumidityMin(), threshold.getIndoorHumidityMax());
+            // 농장 단위 예외 격리(이슈 #116 리뷰 회귀-A, SensorSimulatorService의 농장 단위 격리
+            // catch와 동일 원칙) — evaluateMetric → evaluateDirection 경로는 alarmEventService의
+            // 쓰기 메서드(recordBreach/autoResolveIfOpen)를 호출하는데, 그중 recordAlarmBreach 내부
+            // DataIntegrityViolationException 외에도 autoResolveIfOpen이 @Version 낙관적 락 충돌
+            // (사용자가 같은 이벤트를 동시에 acknowledge/resolve)로 ObjectOptimisticLockingFailureException을
+            // 던질 수 있다. 이 catch가 없으면 그 예외가 evaluate()의 for 루프를 끊고
+            // EnvironmentSnapshotPoller.poll의 catch(Exception)까지 전파돼, 아직 평가되지 않은
+            // "뒤 순서 농장 전부"가 이번 틱에서 알람·웹훅 모두 유실된다(P1-B와 동일한 실패 양태).
+            // 개별 호출부(recordAlarmBreach)만 감싸는 걸로는 autoResolveIfOpen·farmRepository.findById
+            // 등 이 루프 바디의 나머지 호출을 못 덮으므로, 루프 바디 전체를 이 농장 단위로 격리한다.
+            try {
+                evaluateMetric(threshold, EnvMetric.INDOOR_TEMP, indoor.temp(),
+                        threshold.getIndoorTempMin(), threshold.getIndoorTempMax());
+                evaluateMetric(threshold, EnvMetric.INDOOR_HUMIDITY, indoor.humidity(),
+                        threshold.getIndoorHumidityMin(), threshold.getIndoorHumidityMax());
+            } catch (Exception e) {
+                log.warn("농장 {} 임계치 평가 실패 — 이 농장만 건너뜀: {}", threshold.getFarmId(),
+                        e.getClass().getSimpleName());
+            }
         }
     }
 
@@ -139,10 +154,10 @@ public class EnvThresholdAlertService {
      * 보장하지만(같은 farm×metricKey 조합 미해결 이벤트 존재 시 no-op), 그 조회-후-저장 자체가
      * 원자적이지 않아 동시 브리치 레이스에서는 DB의 partial unique index(V19, 2차 방어선)가
      * {@link DataIntegrityViolationException}을 던질 수 있다. {@code recordBreach}의 트랜잭션이
-     * 이미 rollback-only로 마킹된 지점(그 내부)이 아니라 여기서 잡아야 한다 — 그렇지 않으면
-     * evaluateDirection → evaluate()의 for 루프를 타고 올라가 {@code EnvironmentSnapshotPoller}의
-     * catch(Exception)까지 전파되며, 그 사이 아직 평가되지 않은 "뒤 순서 농장 전부"가 이번 틱에서
-     * 알람·웹훅 모두 유실된다(SensorSimulatorService의 농장 단위 격리 catch와 동일한 이유).
+     * 이미 rollback-only로 마킹된 지점(그 내부)이 아니라 여기서 잡는다. {@code evaluate()}의 for
+     * 루프 바디 전체도 농장 단위로 격리돼 있어(이슈 #116 리뷰 회귀-A) 이 catch가 없어도 다른 농장
+     * 유실까지는 막히지만, 이 자리에서 먼저 잡아야 "멱등 2차 방어선 흡수"와 "그 밖의 예상 밖 오류"를
+     * 로그 레벨(debug vs warn)로 구분할 수 있다.
      * severity는 현재 CRITICAL/WARNING을 구분하는 별도 기준이 없어 전부 WARNING으로 기록한다
      * (후속 이슈 — 항목별/이탈폭별 등급 분화).
      */

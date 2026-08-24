@@ -29,6 +29,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -39,6 +40,7 @@ import org.springframework.web.client.RestClient;
 class EnvThresholdAlertServiceUnitTest {
 
     private static final long FARM_ID = 1L;
+    private static final long FARM_ID_2 = 2L;
 
     private final FarmEnvThresholdRepository thresholdRepository = mock(FarmEnvThresholdRepository.class);
     private final FarmRepository farmRepository = mock(FarmRepository.class);
@@ -312,6 +314,36 @@ class EnvThresholdAlertServiceUnitTest {
         // 리셋으로 previousConsecutive는 이미 0이었지만, 그와 무관하게 자동 해소를 시도해야 한다 —
         // 옛 로직(previousConsecutive>0일 때만 호출)이면 이 시나리오에서 영원히 호출되지 않는다.
         verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "INDOOR_TEMP_HIGH");
+    }
+
+    @Test
+    @DisplayName("회귀-A: 한 농장의 autoResolveIfOpen이 낙관적 락 충돌로 예외를 던져도 evaluate()는 "
+            + "멈추지 않고 뒤 순서 농장 평가를 계속 진행한다(이슈 #116 리뷰 — evaluate() 루프 바디를 "
+            + "농장 단위로 격리, recordAlarmBreach만 감싸던 개별 방어로는 autoResolveIfOpen 예외가 "
+            + "여전히 for 루프를 끊었던 P1-B와 동일한 유실 경로)")
+    void oneFarmAutoResolveFailureDoesNotBlockLaterFarms() {
+        FarmEnvThreshold farm1Threshold = thresholdEnabled(20.0, 30.0); // FARM_ID — 정상 범위로 유지
+        FarmEnvThreshold farm2Threshold = FarmEnvThreshold.builder()
+                .farmId(FARM_ID_2)
+                .enabled(true)
+                .indoorTempMin(20.0)
+                .indoorTempMax(24.0) // farm1보다 좁혀서 같은 indoor 값에 이탈하도록
+                .build();
+        when(thresholdRepository.findEnabled()).thenReturn(List.of(farm1Threshold, farm2Threshold));
+        when(farmRepository.findById(FARM_ID_2)).thenReturn(Optional.of(farm()));
+        // farm1은 정상 범위라 매 틱 autoResolveIfOpen이 호출되는데, 동시 acknowledge/resolve로 인한
+        // 낙관적 락 충돌을 흉내내 예외를 던지게 한다.
+        doThrow(new ObjectOptimisticLockingFailureException("AlarmEvent", FARM_ID))
+                .when(alarmEventService).autoResolveIfOpen(eq(FARM_ID), any());
+
+        assertThatCode(() -> {
+            service.evaluate(new Indoor(25.0, 50.0, true)); // farm1 정상(예외 발생·흡수), farm2 1틱 이탈
+            service.evaluate(new Indoor(25.0, 50.0, true)); // farm1 다시 예외, farm2 2틱 — 확정
+        }).doesNotThrowAnyException();
+
+        // farm1의 예외와 무관하게 farm2는 정상적으로 연속 2틱 이탈이 누적돼 알람 이벤트가 기록된다.
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID_2), any(), any(),
+                eq("INDOOR_TEMP_HIGH"), any(), any(), any());
     }
 
     /** 30분 쿨다운 만료를 실시간 대기 없이 재현하기 위한 수동 진행 Clock. */
