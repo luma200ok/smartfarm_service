@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import { WEATHER_SKY_LABELS } from "@/constants";
 import { getForecast } from "@/lib/api/environment";
 import type { ForecastPoint, ForecastResponse, WeatherSky } from "@/types";
@@ -33,6 +34,7 @@ function formatPop(pop: number | null | undefined): string {
 // 날씨예보 위젯(contract §4.8, 이슈 #57) — 향후 24h·1시간 간격 KMA 단기예보를
 // 가로 스크롤 카드 목록으로 보여준다. 서버 키 미등록 등으로 W001(502)이 자주
 // 발생할 수 있는 경로라 실패 시 화면을 깨뜨리지 않고 안내 문구로 대체한다.
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109).
 export default function ForecastWidget({ farmId }: ForecastWidgetProps) {
   const [data, setData] = useState<ForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,44 +65,34 @@ export default function ForecastWidget({ farmId }: ForecastWidgetProps) {
   }, [farmId]);
 
   if (loading) {
-    return (
-      <section className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        예보 불러오는 중...
-      </section>
-    );
+    return <Card className="p-4 text-sm text-dp-sub">예보 불러오는 중...</Card>;
   }
 
   if (unavailable || !data || data.points.length === 0) {
-    return (
-      <section className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        예보를 불러올 수 없습니다.
-      </section>
-    );
+    return <Card className="p-4 text-sm text-dp-sub">예보를 불러올 수 없습니다.</Card>;
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">날씨예보</h3>
-        <span className="text-xs text-zinc-400 dark:text-zinc-500">
-          {new Date(data.updatedAt).toLocaleString("ko-KR")} 기준
-        </span>
+        <CardTitle>날씨예보</CardTitle>
+        <span className="text-xs text-dp-faint">{new Date(data.updatedAt).toLocaleString("ko-KR")} 기준</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {data.points.map((point: ForecastPoint) => (
           <div
             key={point.time}
-            className="flex min-w-[64px] shrink-0 flex-col items-center gap-1 rounded-md bg-zinc-50 px-2 py-2 text-center dark:bg-zinc-900"
+            className="flex min-w-[64px] shrink-0 flex-col items-center gap-1 rounded-md bg-dp-inset px-2 py-2 text-center"
           >
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">{formatHour(point.time)}</span>
+            <span className="text-xs text-dp-faint">{formatHour(point.time)}</span>
             <span className="text-lg leading-none" title={point.sky ? WEATHER_SKY_LABELS[point.sky] : undefined}>
               {point.sky ? SKY_ICONS[point.sky] : "-"}
             </span>
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{formatTemp(point.temp)}</span>
-            <span className="text-xs text-blue-600 dark:text-blue-400">{formatPop(point.pop)}</span>
+            <span className="text-sm font-medium text-dp-ink">{formatTemp(point.temp)}</span>
+            <span className="text-xs text-dp-blue-ink">{formatPop(point.pop)}</span>
           </div>
         ))}
       </div>
-    </section>
+    </Card>
   );
 }
