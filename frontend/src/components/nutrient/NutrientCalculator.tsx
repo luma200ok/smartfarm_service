@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import NutrientCalculationResult from "./NutrientCalculationResult";
 import NutrientRecipeFormFields from "./NutrientRecipeFormFields";
 import { useNutrientRecipeForm } from "./useNutrientRecipeForm";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import FormField from "@/components/ui/FormField";
 import Modal from "@/components/ui/Modal";
 import { resolveErrorMessage, resolveNutrientCalculationErrorMessage } from "@/lib/api/errorMessage";
@@ -112,13 +113,15 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <Card className="flex flex-col gap-4 px-4 py-4">
       <div>
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">양액 배합 계산기</h2>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">작물: 토마토 (1차 범위 고정)</p>
+        <h2>
+          <CardTitle size="lg">양액 배합 계산기</CardTitle>
+        </h2>
+        <p className="mt-1 text-xs text-dp-muted">작물: 토마토 (1차 범위 고정)</p>
       </div>
 
-      {presetsError && <p className="text-sm text-red-600 dark:text-red-400">{presetsError}</p>}
+      {presetsError && <p className="text-sm text-dp-red-ink">{presetsError}</p>}
 
       <NutrientRecipeFormFields
         stage={form.stage}
@@ -149,13 +152,13 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
         }}
       />
 
-      {calcError && <p className="text-sm text-red-600 dark:text-red-400">{calcError}</p>}
+      {calcError && <p className="text-sm text-dp-red-ink">{calcError}</p>}
 
       <button
         type="button"
         onClick={handleCalculate}
         disabled={calculating}
-        className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
       >
         {calculating ? "계산 중..." : "계산"}
       </button>
@@ -172,25 +175,25 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+          {saveError && <p className="text-sm text-dp-red-ink">{saveError}</p>}
           <div className="flex gap-2">
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
             >
               {saving ? "저장 중..." : "저장"}
             </button>
             <button
               type="button"
               onClick={() => setSaveOpen(false)}
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
+              className="rounded-md border border-dp-line-strong px-4 py-2 text-sm text-dp-body"
             >
               취소
             </button>
           </div>
         </form>
       </Modal>
-    </section>
+    </Card>
   );
 }

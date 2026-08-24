@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import NutrientCalculationResult from "./NutrientCalculationResult";
 import NutrientRecipeFormFields, { type NutrientTargetFieldsState } from "./NutrientRecipeFormFields";
 import { useNutrientRecipeForm } from "./useNutrientRecipeForm";
+import { StatusBadge } from "@/components/monitoring/ui";
 import FormField from "@/components/ui/FormField";
 import { NUTRIENT_STAGE_LABELS } from "@/constants";
 import { getMe } from "@/lib/api/auth";
@@ -98,7 +99,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
 
   if (notFound) {
     return (
-      <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="px-6 py-6 text-sm text-dp-muted">
         양액 레시피를 찾을 수 없습니다.{" "}
         <Link href={`/farms/${farmId}/nutrient`} className="underline">
           목록으로
@@ -108,11 +109,11 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
   }
 
   if (loadError) {
-    return <p className="px-6 py-6 text-sm text-red-600 dark:text-red-400">{loadError}</p>;
+    return <p className="px-6 py-6 text-sm text-dp-red-ink">{loadError}</p>;
   }
 
   if (!recipe) {
-    return <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>;
+    return <p className="px-6 py-6 text-sm text-dp-muted">불러오는 중...</p>;
   }
 
   const isAuthor = myUserId !== null && recipe.createdBy === myUserId;
@@ -159,10 +160,8 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
     <div className="flex flex-col gap-6 px-6 py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{recipe.name}</h2>
-          <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-            {NUTRIENT_STAGE_LABELS[recipe.stage] ?? recipe.stage}
-          </span>
+          <h2 className="text-lg font-semibold text-dp-ink">{recipe.name}</h2>
+          <StatusBadge label={NUTRIENT_STAGE_LABELS[recipe.stage] ?? recipe.stage} tone="neutral" />
         </div>
         {(canEdit || canDelete) && !editing && (
           <div className="flex gap-2 text-sm">
@@ -170,7 +169,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="text-zinc-500 hover:underline dark:text-zinc-400"
+                className="text-dp-sub hover:text-dp-ink hover:underline"
               >
                 수정
               </button>
@@ -180,7 +179,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
                 type="button"
                 disabled={deleting}
                 onClick={handleDelete}
-                className="text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
+                className="text-dp-red-ink hover:underline disabled:opacity-60"
               >
                 삭제
               </button>
@@ -189,9 +188,9 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
         )}
       </div>
 
-      {deleteError && <p className="text-sm text-red-600 dark:text-red-400">{deleteError}</p>}
+      {deleteError && <p className="text-sm text-dp-red-ink">{deleteError}</p>}
 
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+      <p className="text-xs text-dp-muted">
         탱크 {recipe.tankVolumeL}L · 농축배율 {recipe.concentrationFactor}배
         {recipe.sourceWater &&
           (recipe.sourceWater.ca != null || recipe.sourceWater.mg != null || recipe.sourceWater.ec != null) && (
@@ -200,10 +199,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
       </p>
 
       {editing ? (
-        <form
-          onSubmit={handleSave}
-          className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
-        >
+        <form onSubmit={handleSave} className="flex flex-col gap-4 rounded-[10px] border border-dp-line bg-dp-surface p-4">
           <FormField
             id="nutrient-edit-name"
             label="레시피 이름"
@@ -230,12 +226,12 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
               else form.setSourceWaterEc(v);
             }}
           />
-          {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+          {saveError && <p className="text-sm text-dp-red-ink">{saveError}</p>}
           <div className="flex gap-2">
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
             >
               {saving ? "저장 중..." : "저장"}
             </button>
@@ -245,7 +241,7 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
                 setEditing(false);
                 applyRecipe(recipe);
               }}
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
+              className="rounded-md border border-dp-line-strong px-4 py-2 text-sm text-dp-body"
             >
               취소
             </button>
