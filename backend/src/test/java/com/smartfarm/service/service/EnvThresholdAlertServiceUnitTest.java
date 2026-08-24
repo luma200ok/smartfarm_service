@@ -1,7 +1,9 @@
 package com.smartfarm.service.service;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 /**
  * {@link EnvThresholdAlertService} 단위 테스트(contract §4.6) — 연속 2틱 발동·농장×항목×방향별
@@ -219,6 +222,29 @@ class EnvThresholdAlertServiceUnitTest {
         service.evaluate(new Indoor(25.0, 50.0, true)); // 정상 복귀
 
         verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "INDOOR_TEMP_HIGH");
+    }
+
+    @Test
+    @DisplayName("P1-B: 멱등성 2차 방어선(partial unique index) 위반은 스케줄러 틱을 끊지 않고 흡수한다"
+            + "(이슈 #116 리뷰 — recordBreach가 DataIntegrityViolationException을 던져도 evaluate는 "
+            + "정상 완료하고 웹훅 발송까지 이어진다)")
+    void dataIntegrityViolationOnRecordBreachIsSwallowed() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+        doThrow(new DataIntegrityViolationException("ux_alarm_events_open_farm_metric 위반(레이스 가정)"))
+                .when(alarmEventService).recordBreach(eq(FARM_ID), any(), any(), eq("INDOOR_TEMP_HIGH"),
+                        any(), any(), any());
+
+        assertThatCode(() -> {
+            service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
+            service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — recordBreach가 예외를 던짐
+        }).doesNotThrowAnyException();
+
+        // 알람 이벤트 저장은 실패했지만, 뒤이은 웹훅 발송(같은 evaluateDirection 호출)은 정상 진행돼야
+        // 한다 — recordAlarmBreach의 catch가 evaluateDirection 이후 로직을 끊지 않는다는 뜻.
+        verify(notifier, times(1)).notifyBreach(any(), eq(EnvMetric.INDOOR_TEMP), eq(EnvDirection.HIGH),
+                eq(36.0), eq(30.0));
     }
 
     @Test
