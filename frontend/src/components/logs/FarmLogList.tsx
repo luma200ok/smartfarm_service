@@ -157,41 +157,41 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
             const canDelete = isAuthor || isOwner;
             return (
               <li key={log.id}>
-              <Card className="flex flex-col gap-1.5 px-4 py-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-dp-ink">{log.logDate}</span>
-                    <StatusBadge label={FARM_LOG_TYPE_LABELS[log.type] ?? log.type} tone="neutral" />
-                  </div>
-                  {(canEdit || canDelete) && (
-                    <div className="flex gap-2 text-xs">
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormError(null);
-                            setEditTarget(log);
-                          }}
-                          className="text-dp-sub hover:text-dp-ink hover:underline"
-                        >
-                          수정
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          type="button"
-                          disabled={busyId === log.id}
-                          onClick={() => handleDelete(log)}
-                          className="text-dp-red-ink hover:underline disabled:opacity-60"
-                        >
-                          삭제
-                        </button>
-                      )}
+                <Card className="flex flex-col gap-1.5 px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-dp-ink">{log.logDate}</span>
+                      <StatusBadge label={FARM_LOG_TYPE_LABELS[log.type] ?? log.type} tone="neutral" />
                     </div>
-                  )}
-                </div>
-                {log.memo && <p className="whitespace-pre-wrap text-dp-sub">{log.memo}</p>}
-              </Card>
+                    {(canEdit || canDelete) && (
+                      <div className="flex gap-2 text-xs">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormError(null);
+                              setEditTarget(log);
+                            }}
+                            className="text-dp-sub hover:text-dp-ink hover:underline"
+                          >
+                            수정
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            disabled={busyId === log.id}
+                            onClick={() => handleDelete(log)}
+                            className="text-dp-red-ink hover:underline disabled:opacity-60"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {log.memo && <p className="whitespace-pre-wrap text-dp-sub">{log.memo}</p>}
+                </Card>
               </li>
             );
           })}
