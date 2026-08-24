@@ -26,8 +26,32 @@ public interface AlarmEventRepository extends JpaRepository<AlarmEvent, Long>, A
     Optional<AlarmEvent> findOpenEventByFarmAndMetric(@Param("farmId") Long farmId,
                                                        @Param("metricKey") String metricKey);
 
-    /** 통계(stats) 대상 — 최근 N일 내 발생한 이벤트 전체(집계는 서비스 계층에서 메모리 연산). */
+    /**
+     * stats 화면 밖에서도 쓰일 수 있는 범용 조회 — 필요 시 엔티티 그대로 쓴다. stats(집계 전용)는
+     * 전량 로딩을 피하려고 {@link #countBySeverityAfter}/{@link #avgAcknowledgeMinutesAfter}로
+     * DB 집계한다(이슈 #116 리뷰 P2-C).
+     */
     List<AlarmEvent> findByFarmIdAndOccurredAtAfter(Long farmId, LocalDateTime since);
+
+    /**
+     * stats — severity별 건수를 DB에서 집계한다(이슈 #116 리뷰 P2-C, 엔티티 전량 로딩 회피).
+     * 네이티브 쿼리 컬럼 별칭을 프로젝션 getter 프로퍼티명과 동일하게 큰따옴표로 고정한다
+     * (EnvSnapshotBucketProjection 선례와 동일 원칙 — camelCase 변환 추측에 기대지 않음).
+     */
+    @Query(value = "SELECT severity AS \"severity\", COUNT(*) AS \"eventCount\" FROM alarm_events "
+            + "WHERE farm_id = :farmId AND occurred_at > :since GROUP BY severity",
+            nativeQuery = true)
+    List<AlarmSeverityCountProjection> countBySeverityAfter(@Param("farmId") Long farmId,
+                                                             @Param("since") LocalDateTime since);
+
+    /**
+     * stats — 평균 확인 소요시간(분, occurredAt→acknowledgedAt). acknowledgedAt이 없는(미확인)
+     * 이벤트는 제외. 대상 이벤트가 하나도 없으면 SQL AVG는 NULL을 반환하고 그대로 null에 매핑된다.
+     */
+    @Query(value = "SELECT AVG(EXTRACT(EPOCH FROM (acknowledged_at - occurred_at)) / 60.0) FROM alarm_events "
+            + "WHERE farm_id = :farmId AND occurred_at > :since AND acknowledged_at IS NOT NULL",
+            nativeQuery = true)
+    Double avgAcknowledgeMinutesAfter(@Param("farmId") Long farmId, @Param("since") LocalDateTime since);
 
     /** TopBar 배지용 경량 카운트 — 엔티티 로드 없이 개수만 조회. */
     long countByFarmIdAndStatus(Long farmId, AlarmEventStatus status);

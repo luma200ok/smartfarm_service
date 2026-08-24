@@ -17,9 +17,12 @@ import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.AlarmEventLogRepository;
 import com.smartfarm.service.repository.AlarmEventRepository;
+import com.smartfarm.service.repository.AlarmSeverityCountProjection;
 import com.smartfarm.service.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -109,11 +112,22 @@ public class AlarmEventService {
         return AlarmEventDetailResponse.of(event, logs);
     }
 
+    /**
+     * severity별 건수·평균 확인 소요시간을 전량 로딩 없이 DB에서 직접 집계한다(이슈 #116 리뷰
+     * P2-C). 컨트롤러의 {@code @Min(1) @Max(90)}가 days 범위를 이미 검증하므로 여기서는 그 값을
+     * 그대로 신뢰해 since를 계산한다.
+     */
     public AlarmStatsResponse stats(Long farmId, Long userId, int days) {
         farmAccessGuard.requireMember(farmId, userId);
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        List<AlarmEvent> events = alarmEventRepository.findByFarmIdAndOccurredAtAfter(farmId, since);
-        return AlarmStatsResponse.of(days, events);
+
+        Map<AlarmSeverity, Long> countBySeverity = new EnumMap<>(AlarmSeverity.class);
+        for (AlarmSeverityCountProjection row : alarmEventRepository.countBySeverityAfter(farmId, since)) {
+            countBySeverity.put(AlarmSeverity.valueOf(row.getSeverity()), row.getEventCount());
+        }
+        Double avgAcknowledgeMinutes = alarmEventRepository.avgAcknowledgeMinutesAfter(farmId, since);
+
+        return AlarmStatsResponse.of(days, countBySeverity, avgAcknowledgeMinutes);
     }
 
     public AlarmUnacknowledgedCountResponse unacknowledgedCount(Long farmId, Long userId) {

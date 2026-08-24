@@ -290,6 +290,34 @@ class AlarmEventApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("P2-C: stats days=0은 하한(1) 미달로 400 C001을 반환한다"
+            + "(음수·0은 since가 미래라 조용히 빈 통계가 되므로 서버 검증 필요)")
+    void statsDaysBelowMinimumReturnsBadRequest() throws Exception {
+        String token = signupAndLogin("알람농부-통계하한");
+        long farmId = createFarm(token, "통계하한농장");
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/alarm-events/stats")
+                        .param("days", "0")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("P2-C: stats days=999는 상한(90) 초과로 400 C001을 반환한다"
+            + "(극단값은 LocalDateTime.now().minusDays(days)에서 DateTimeException → 미처리 500을 유발할 수 있음)")
+    void statsDaysAboveMaximumReturnsBadRequest() throws Exception {
+        String token = signupAndLogin("알람농부-통계상한");
+        long farmId = createFarm(token, "통계상한농장");
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/alarm-events/stats")
+                        .param("days", "999")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("unacknowledged-count는 UNACKNOWLEDGED 상태 건수만 반환한다")
     void unacknowledgedCountReturnsOnlyUnacknowledged() throws Exception {
         String token = signupAndLogin("알람농부-배지");
