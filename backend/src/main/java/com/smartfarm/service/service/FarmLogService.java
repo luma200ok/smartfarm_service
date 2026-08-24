@@ -71,7 +71,7 @@ public class FarmLogService {
         FarmAccessGuard.FarmAccess access = farmAccessGuard.requireOperator(farmId, userId);
         FarmLog log = findLogOrThrow(farmId, logId);
         boolean isAuthor = log.getAuthor().equals(userId);
-        boolean isAdmin = access.membership().getRole() == FarmRole.ADMIN;
+        boolean isAdmin = access.membership().getRole().atLeast(FarmRole.ADMIN);
         if (!isAuthor && !isAdmin) {
             throw new CustomException(ErrorCode.L002);
         }

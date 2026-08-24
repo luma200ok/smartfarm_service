@@ -219,7 +219,7 @@ public class ControlService {
         if (!change.getZoneId().equals(zoneId) || change.getStatus() != ControlChangeStatus.PENDING) {
             throw new CustomException(ErrorCode.CT001);
         }
-        boolean admin = access.membership().getRole() == FarmRole.ADMIN;
+        boolean admin = access.membership().getRole().atLeast(FarmRole.ADMIN);
         if (!admin && !change.getCreatedBy().equals(userId)) {
             throw new CustomException(ErrorCode.A005);
         }

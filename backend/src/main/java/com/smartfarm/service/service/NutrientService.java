@@ -127,7 +127,7 @@ public class NutrientService {
         FarmAccessGuard.FarmAccess access = farmAccessGuard.requireOperator(farmId, userId);
         NutrientRecipe recipe = findRecipeOrThrow(farmId, recipeId);
         boolean isAuthor = recipe.getAuthor().equals(userId);
-        boolean isAdmin = access.membership().getRole() == FarmRole.ADMIN;
+        boolean isAdmin = access.membership().getRole().atLeast(FarmRole.ADMIN);
         if (!isAuthor && !isAdmin) {
             throw new CustomException(ErrorCode.N002);
         }

@@ -1,5 +1,6 @@
 package com.smartfarm.service.dto;
 
+import com.smartfarm.service.entity.FarmMember;
 import com.smartfarm.service.entity.FarmRole;
 import java.time.LocalDateTime;
 
@@ -28,7 +29,7 @@ public record MemberResponse(
         this(memberId, userId, nickname, role, role == FarmRole.PENDING, joinedAt);
     }
 
-    public static MemberResponse from(com.smartfarm.service.entity.FarmMember member, String nickname) {
+    public static MemberResponse from(FarmMember member, String nickname) {
         return new MemberResponse(member.getId(), member.getUserId(), nickname, member.getRole(),
                 member.getJoinedAt());
     }
