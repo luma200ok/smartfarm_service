@@ -87,7 +87,13 @@ public enum ErrorCode {
 
     // Alarm Event (알람 이벤트 도메인 — 이슈 #116)
     AL001(HttpStatus.NOT_FOUND, "AL001", "알람 이벤트를 찾을 수 없습니다."),
-    AL002(HttpStatus.CONFLICT, "AL002", "현재 상태에서는 처리할 수 없는 알람입니다.");
+    AL002(HttpStatus.CONFLICT, "AL002", "현재 상태에서는 처리할 수 없는 알람입니다."),
+
+    // Alarm Rule (알람 규칙 확장 — 이슈 #118)
+    ALR001(HttpStatus.NOT_FOUND, "ALR001", "알람 규칙을 찾을 수 없습니다."),
+    ALR002(HttpStatus.CONFLICT, "ALR002", "농장당 알람 규칙 상한을 초과했습니다."),
+    ALR003(HttpStatus.BAD_REQUEST, "ALR003", "비교 조건과 임계값 구성이 올바르지 않습니다."),
+    ALR004(HttpStatus.CONFLICT, "ALR004", "환경 임계치 설정에서 만들어진 규칙은 임계치 설정 API로만 변경할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;

@@ -103,6 +103,59 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
                                                            @Param("rackLevelIds") List<Long> rackLevelIds);
 
     /**
+     * 알람 규칙 평가용 <b>스코프 단위 최신값</b>(이슈 #118) — {@link #findLatestPerLevel}과 동일한
+     * 두 단계 구조(① 스코프 안의 가장 최근 tick을 찾고 ② 그 tick 안에서 device 간 평균)를 쓰되,
+     * 층 축을 접고 scope 필터(zone/rack/level 중 하나 또는 전부 null=farm)를 파라미터로 받는다.
+     * 기존 {@code findLatestPerLevel}은 층 id 목록을 <b>필수로</b> 받아 층 단위로만 답하므로,
+     * farm/zone/rack 스코프 규칙이나 층에 매달리지 않은 센서(zone 직속 등)를 평가할 수 없다 —
+     * 층 목록을 매 틱 조회해 우회하면 규칙 하나당 쿼리가 여러 개로 늘고 그 센서들은 여전히 누락된다.
+     *
+     * <p>⚠️ {@code findLatestPerLevel}과 같은 이유로 <b>바깥 SELECT에도 {@code farm_id}/
+     * {@code metric} 술어를 반드시 둔다</b>(사이클 2 리뷰 P1-1) — CTE만 좁히고 바깥이 그 좁힘을
+     * 상속하지 않으면 같은 tick의 <b>모든 지표</b>가 섞여 평균된다(시뮬레이터가 한 device의 전
+     * metric을 동일 분단위 {@code measuredAt}으로 쓰므로 정상 운영에서 100% 발생).
+     *
+     * <p>⚠️ {@code findSeriesAggregated}와 같은 이유로 <b>soft delete된 층의 측정값은 제외</b>한다
+     * (사이클 2 리뷰 P2-3) — 삭제된 층의 마지막 값이 스코프 최신값으로 잡혀 알람이 발동/유지되는
+     * 것을 막는다. {@code rack_level_id}가 null인 읽기(존 직속 센서 등)도 살려야 하므로 INNER가
+     * 아니라 LEFT JOIN이다.
+     *
+     * <p>{@code since}는 신선도 하한이다 — 이보다 오래된 값만 있으면 <b>결과가 비어</b> 호출측이
+     * "관측 부재"로 판정해 평가를 건너뛴다(오래된 값으로 알람을 발동/해소하지 않기 위함).
+     */
+    @Query(value = """
+            WITH latest_tick AS (
+                SELECT max(sr.measured_at) AS at
+                FROM sensor_readings sr
+                LEFT JOIN rack_levels rl ON rl.id = sr.rack_level_id
+                WHERE sr.farm_id = :farmId
+                  AND sr.metric = :metric
+                  AND sr.measured_at >= :since
+                  AND (sr.rack_level_id IS NULL OR rl.deleted_at IS NULL)
+                  AND (CAST(:zoneId AS BIGINT) IS NULL OR sr.zone_id = :zoneId)
+                  AND (CAST(:rackId AS BIGINT) IS NULL OR sr.rack_id = :rackId)
+                  AND (CAST(:rackLevelId AS BIGINT) IS NULL OR sr.rack_level_id = :rackLevelId)
+            )
+            SELECT avg(sr.value) AS "value", max(sr.measured_at) AS "measuredAt"
+            FROM sensor_readings sr
+            LEFT JOIN rack_levels rl ON rl.id = sr.rack_level_id
+            JOIN latest_tick lt ON sr.measured_at = lt.at
+            WHERE sr.farm_id = :farmId
+              AND sr.metric = :metric
+              AND (sr.rack_level_id IS NULL OR rl.deleted_at IS NULL)
+              AND (CAST(:zoneId AS BIGINT) IS NULL OR sr.zone_id = :zoneId)
+              AND (CAST(:rackId AS BIGINT) IS NULL OR sr.rack_id = :rackId)
+              AND (CAST(:rackLevelId AS BIGINT) IS NULL OR sr.rack_level_id = :rackLevelId)
+            HAVING count(*) > 0
+            """, nativeQuery = true)
+    List<ReadingScopeLatestProjection> findLatestInScope(@Param("farmId") Long farmId,
+                                                          @Param("metric") String metric,
+                                                          @Param("since") LocalDateTime since,
+                                                          @Param("zoneId") Long zoneId,
+                                                          @Param("rackId") Long rackId,
+                                                          @Param("rackLevelId") Long rackLevelId);
+
+    /**
      * {@code /readings/level-summary} 층별×지표별 평균(contract §4.11) — series와 동일한 두 단계
      * 순서(device 간 평균 → 시간 평균)를 쓰되, 층 축은 유지한 채(rack_level_id로 GROUP BY 계속)
      * 시간축만 range 전체로 접어 층 하나당 값 하나를 낸다. metric 파라미터가 없어(계약 — rackId만

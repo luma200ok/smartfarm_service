@@ -45,6 +45,22 @@ public interface DeviceRepository extends JpaRepository<Device, Long>, DeviceRep
     /** 요약(DeviceSummaryResponse) 계산용 — 농장 규모상 전체 로드 후 서비스 계층에서 집계. */
     List<Device> findByFarmId(Long farmId);
 
+    // ── DEVICE_HEARTBEAT 알람 규칙의 스코프별 평가 대상(이슈 #118) ──────────────────
+    // 스코프 4종을 nullable 파라미터 하나로 합치지 않고 파생 쿼리 4개로 나눈 이유는 SensorReadingRepository의
+    // "스코프별 파생 쿼리 4종" 주석과 같다(스코프는 호출 전에 정확히 하나로 해석돼 있다). @SQLRestriction
+    // 덕에 soft delete된 장비는 전부 자동 제외된다 — 삭제한 장비가 영구 통신 두절로 잡히면 안 된다.
+    // 존/랙 스코프에 랙·층 소속 장비까지 잡히는 것은 §4.10 "부모 FK 자동 채움"으로 저장되는 위치
+    // 삼중조가 항상 완전하기 때문이다(층에 매단 센서도 zoneId·rackId가 채워져 있다).
+
+    /** FARM 스코프(id 오름차순 고정 — 평가 순서가 결정적이어야 테스트 재현이 가능). */
+    List<Device> findByFarmIdOrderByIdAsc(Long farmId);
+
+    /** RACK 스코프. (ZONE 스코프는 제어 도메인과 공유하는 {@link #findByZoneIdOrderByIdAsc}를 쓴다.) */
+    List<Device> findByRackIdOrderByIdAsc(Long rackId);
+
+    /** LEVEL 스코프. */
+    List<Device> findByRackLevelIdOrderByIdAsc(Long rackLevelId);
+
     /** levelCount 축소 시 잘려나가는 층들에 장비가 매달려 있는지 확인(R004 판정용). */
     boolean existsByRackLevelIdIn(List<Long> rackLevelIds);
 
