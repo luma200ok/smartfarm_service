@@ -22,6 +22,15 @@ export function isTooManyRequests(err: unknown): boolean {
   return err instanceof ApiError && err.status === 429;
 }
 
+// F008(가입 승인 대기 중) — PENDING 멤버가 farm-scoped 엔드포인트를 호출하면 항상 이 코드를
+// 받는다(FarmAccessGuard#requireMember, 이슈 #122). status만으로는 F002(멤버 아님)와
+// 구분되지 않으므로 code로 판정한다. 화면은 이 값을 별도 처리하지 않아도 resolveErrorMessage가
+// ERROR_MESSAGES.F008 안내 문구를 자동으로 반환하지만, 전용 안내 UI를 그려야 하는 화면
+// (예: 초대 수락 직후)은 이 헬퍼로 명시적으로 분기한다.
+export function isPendingApproval(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "F008";
+}
+
 // P004(처방 대기 한도 초과)는 P003(AI 서버 혼잡)과 같은 429이지만 의미가 다르다 —
 // 재시도 유도가 아니라 한도 안내로 별도 렌더해야 하므로 status가 아닌 code로 구분한다.
 export function isPrescriptionLimitExceeded(err: unknown): boolean {
