@@ -1,6 +1,8 @@
 package com.smartfarm.service.service;
 
 import com.smartfarm.service.dto.AiEnvironmentResponse;
+import com.smartfarm.service.entity.AlarmSeverity;
+import com.smartfarm.service.entity.AlarmSourceType;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.FarmEnvThreshold;
 import com.smartfarm.service.repository.FarmEnvThresholdRepository;
@@ -8,11 +10,14 @@ import com.smartfarm.service.repository.FarmRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -23,6 +28,7 @@ import org.springframework.stereotype.Component;
  * <p>단일 스케줄러 스레드가 순차 호출하므로 별도 락은 필요 없다({@link ConcurrentHashMap}은
  * 안전망일 뿐 실질적 동시 접근은 없다).
  */
+@Slf4j
 @Component
 public class EnvThresholdAlertService {
 
@@ -32,6 +38,7 @@ public class EnvThresholdAlertService {
     private final FarmEnvThresholdRepository farmEnvThresholdRepository;
     private final FarmRepository farmRepository;
     private final EnvThresholdWebhookNotifier notifier;
+    private final AlarmEventService alarmEventService;
     private final Clock clock;
 
     private final ConcurrentHashMap<AlertKey, AlertState> states = new ConcurrentHashMap<>();
@@ -39,18 +46,21 @@ public class EnvThresholdAlertService {
     @Autowired
     public EnvThresholdAlertService(FarmEnvThresholdRepository farmEnvThresholdRepository,
                                      FarmRepository farmRepository,
-                                     EnvThresholdWebhookNotifier notifier) {
-        this(farmEnvThresholdRepository, farmRepository, notifier, Clock.systemDefaultZone());
+                                     EnvThresholdWebhookNotifier notifier,
+                                     AlarmEventService alarmEventService) {
+        this(farmEnvThresholdRepository, farmRepository, notifier, alarmEventService, Clock.systemDefaultZone());
     }
 
     /** 테스트 전용 — 30분 쿨다운 만료를 실시간 대기 없이 검증하기 위해 Clock을 주입한다(package-private). */
     EnvThresholdAlertService(FarmEnvThresholdRepository farmEnvThresholdRepository,
                               FarmRepository farmRepository,
                               EnvThresholdWebhookNotifier notifier,
+                              AlarmEventService alarmEventService,
                               Clock clock) {
         this.farmEnvThresholdRepository = farmEnvThresholdRepository;
         this.farmRepository = farmRepository;
         this.notifier = notifier;
+        this.alarmEventService = alarmEventService;
         this.clock = clock;
     }
 
@@ -58,12 +68,32 @@ public class EnvThresholdAlertService {
         if (indoor == null) {
             return;
         }
-        List<FarmEnvThreshold> thresholds = farmEnvThresholdRepository.findEnabledWithWebhookConfigured();
+        // 알람 이벤트(영속 기록)와 웹훅(알림 채널)은 다른 관심사다(이슈 #116 리뷰 P2-B) — 임계치가
+        // enabled=true인 농장 전체를 평가 대상으로 삼는다(웹훅 URL 설정 여부 무관). 웹훅 URL을
+        // 아직 안 넣은 농장도 알람 이벤트는 정상적으로 쌓여야 대시보드가 빈 화면이 되지 않는다.
+        // 웹훅 발송 스킵은 EnvThresholdWebhookNotifier#notifyBreach가 개별 farm의 webhookUrl==null을
+        // 보고 이미 내부에서 처리한다(아래 notifyBreach 호출부 변경 불필요).
+        List<FarmEnvThreshold> thresholds = farmEnvThresholdRepository.findEnabled();
         for (FarmEnvThreshold threshold : thresholds) {
-            evaluateMetric(threshold, EnvMetric.INDOOR_TEMP, indoor.temp(),
-                    threshold.getIndoorTempMin(), threshold.getIndoorTempMax());
-            evaluateMetric(threshold, EnvMetric.INDOOR_HUMIDITY, indoor.humidity(),
-                    threshold.getIndoorHumidityMin(), threshold.getIndoorHumidityMax());
+            // 농장 단위 예외 격리(이슈 #116 리뷰 회귀-A, SensorSimulatorService의 농장 단위 격리
+            // catch와 동일 원칙) — evaluateMetric → evaluateDirection 경로는 alarmEventService의
+            // 쓰기 메서드(recordBreach/autoResolveIfOpen)를 호출하는데, 그중 recordAlarmBreach 내부
+            // DataIntegrityViolationException 외에도 autoResolveIfOpen이 @Version 낙관적 락 충돌
+            // (사용자가 같은 이벤트를 동시에 acknowledge/resolve)로 ObjectOptimisticLockingFailureException을
+            // 던질 수 있다. 이 catch가 없으면 그 예외가 evaluate()의 for 루프를 끊고
+            // EnvironmentSnapshotPoller.poll의 catch(Exception)까지 전파돼, 아직 평가되지 않은
+            // "뒤 순서 농장 전부"가 이번 틱에서 알람·웹훅 모두 유실된다(P1-B와 동일한 실패 양태).
+            // 개별 호출부(recordAlarmBreach)만 감싸는 걸로는 autoResolveIfOpen·farmRepository.findById
+            // 등 이 루프 바디의 나머지 호출을 못 덮으므로, 루프 바디 전체를 이 농장 단위로 격리한다.
+            try {
+                evaluateMetric(threshold, EnvMetric.INDOOR_TEMP, indoor.temp(),
+                        threshold.getIndoorTempMin(), threshold.getIndoorTempMax());
+                evaluateMetric(threshold, EnvMetric.INDOOR_HUMIDITY, indoor.humidity(),
+                        threshold.getIndoorHumidityMin(), threshold.getIndoorHumidityMax());
+            } catch (Exception e) {
+                log.warn("농장 {} 임계치 평가 실패 — 이 농장만 건너뜀: {}", threshold.getFarmId(),
+                        e.getClass().getSimpleName());
+            }
         }
     }
 
@@ -85,13 +115,28 @@ public class EnvThresholdAlertService {
         AlertState state = states.computeIfAbsent(key, k -> new AlertState());
 
         if (!breached) {
+            // 인메모리 연속 카운트(previousConsecutive)만으로 "열린 알람이 없다"고 단정할 수 없다
+            // (이슈 #116 리뷰 P2-A) — states는 ConcurrentHashMap이라 앱 재시작이나
+            // EnvThresholdService.updateThresholds()의 resetFarm 호출(설정을 저장할 때마다 발생 —
+            // 앱 재시작보다 훨씬 흔하다)로 카운트가 0으로 리셋될 수 있는데, 그 시점에도 DB엔 여전히
+            // 열린 이벤트가 남아 있을 수 있다. 그 상태로 정상 틱이 와도 과거 로직처럼
+            // previousConsecutive==0이라며 조회를 건너뛰면 그 이벤트는 사용자가 수동 resolve할
+            // 때까지 유령 알람으로 영구 고착된다. 따라서 인메모리 카운트와 무관하게 정상 틱마다
+            // DB 상태를 직접 확인해 자동 해소를 시도한다 — (farm_id, status) 인덱스 히트에
+            // 농장×지표2종×방향2 규모라 쿼리 비용은 미미하고, autoResolveIfOpen 자체도 열린 이벤트가
+            // 없으면 no-op이라 안전하다.
             state.consecutiveBreaches.set(0);
+            alarmEventService.autoResolveIfOpen(threshold.getFarmId(), metricKeyOf(metric, direction));
             return;
         }
         int consecutive = state.consecutiveBreaches.incrementAndGet();
         if (consecutive < CONSECUTIVE_THRESHOLD) {
             return;
         }
+
+        // 알람 이벤트 생성은 웹훅 쿨다운과 무관하게(멱등이라 안전) 연속 임계치 확정 시점에 시도한다
+        // — 웹훅 쿨다운은 알림 스팸 방지용 rate limit이지 알람 존재 자체를 막을 이유는 아니다.
+        recordAlarmBreach(threshold, metric, direction, value, boundary);
 
         Instant now = Instant.now(clock);
         Instant lastNotifiedAt = state.lastNotifiedAt.get();
@@ -102,6 +147,37 @@ public class EnvThresholdAlertService {
 
         farmRepository.findById(threshold.getFarmId())
                 .ifPresent(farm -> notifier.notifyBreach(farm, metric, direction, value, boundary));
+    }
+
+    /**
+     * 알람 이벤트 생성 훅(이슈 #116) — {@link AlarmEventService#recordBreach}가 1차로 멱등을
+     * 보장하지만(같은 farm×metricKey 조합 미해결 이벤트 존재 시 no-op), 그 조회-후-저장 자체가
+     * 원자적이지 않아 동시 브리치 레이스에서는 DB의 partial unique index(V19, 2차 방어선)가
+     * {@link DataIntegrityViolationException}을 던질 수 있다. {@code recordBreach}의 트랜잭션이
+     * 이미 rollback-only로 마킹된 지점(그 내부)이 아니라 여기서 잡는다. {@code evaluate()}의 for
+     * 루프 바디 전체도 농장 단위로 격리돼 있어(이슈 #116 리뷰 회귀-A) 이 catch가 없어도 다른 농장
+     * 유실까지는 막히지만, 이 자리에서 먼저 잡아야 "멱등 2차 방어선 흡수"와 "그 밖의 예상 밖 오류"를
+     * 로그 레벨(debug vs warn)로 구분할 수 있다.
+     * severity는 현재 CRITICAL/WARNING을 구분하는 별도 기준이 없어 전부 WARNING으로 기록한다
+     * (후속 이슈 — 항목별/이탈폭별 등급 분화).
+     */
+    private void recordAlarmBreach(FarmEnvThreshold threshold, EnvMetric metric, EnvDirection direction,
+                                    double value, double boundary) {
+        String message = metric.label() + " " + direction.label()
+                + " (현재 " + value + metric.unit() + " / 기준 " + boundary + metric.unit() + ")";
+        Long farmId = threshold.getFarmId();
+        String metricKey = metricKeyOf(metric, direction);
+        try {
+            alarmEventService.recordBreach(farmId, AlarmSeverity.WARNING, AlarmSourceType.ENV_THRESHOLD,
+                    metricKey, message, LocalDateTime.now(clock), threshold.getId());
+        } catch (DataIntegrityViolationException e) {
+            log.debug("알람 이벤트 중복 생성(멱등 2차 방어선) — 무시: farm={}, metric={}", farmId, metricKey);
+        }
+    }
+
+    /** farm×항목×방향 조합을 표현하는 alarm_events.metric_key 값(예: INDOOR_TEMP_HIGH, 이슈 #116). */
+    private static String metricKeyOf(EnvMetric metric, EnvDirection direction) {
+        return metric.name() + "_" + direction.name();
     }
 
     /** 테스트 격리용 — 싱글턴 빈이라 통합 테스트 간 상태가 새지 않도록 초기화한다. */

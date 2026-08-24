@@ -13,6 +13,15 @@ public enum ErrorCode {
     C002(HttpStatus.INTERNAL_SERVER_ERROR, "C002", "내부 서버 오류가 발생했습니다."),
     C003(HttpStatus.NOT_FOUND, "C003", "존재하지 않는 경로입니다."),
     C004(HttpStatus.METHOD_NOT_ALLOWED, "C004", "허용되지 않는 메서드입니다."),
+    /**
+     * JPA {@code @Version} 낙관적 락 충돌(이슈 #116 리뷰 P3) — {@code GlobalExceptionHandler}가
+     * 앱 전체의 {@code ObjectOptimisticLockingFailureException}을 잡아 매핑하는 공통 코드다. 알람
+     * 이벤트 도메인(acknowledge/resolve 동시 처리)에서 처음 필요해졌지만 핸들러 자체는 특정
+     * 도메인에 묶이지 않으므로 도메인 prefix(AL) 대신 Common prefix를 쓴다 — 예: {@code Device}는
+     * {@code @DynamicUpdate} 컬럼 덮어쓰기 문제의 후속으로 {@code @Version} 도입이 예정돼 있는데
+     * (Device 엔티티 클래스 주석 참고), 그 경우도 이 공통 코드로 응답해야 한다.
+     */
+    C005(HttpStatus.CONFLICT, "C005", "다른 사용자가 먼저 처리했습니다. 새로고침 후 다시 시도해주세요."),
 
     // Auth
     A001(HttpStatus.CONFLICT, "A001", "이미 사용 중인 이메일입니다."),
@@ -74,7 +83,11 @@ public enum ErrorCode {
     CT002(HttpStatus.CONFLICT, "CT002", "통신이 두절된 장비는 조작할 수 없습니다."),
     CT003(HttpStatus.CONFLICT, "CT003", "현재 운전 모드에서 허용되지 않는 조작입니다."),
     CT004(HttpStatus.CONFLICT, "CT004", "적용 대기 큐 상한(존당 50건)을 초과했습니다."),
-    CT005(HttpStatus.CONFLICT, "CT005", "대기 큐가 변경되었습니다. 최신 큐를 확인한 뒤 다시 적용해주세요.");
+    CT005(HttpStatus.CONFLICT, "CT005", "대기 큐가 변경되었습니다. 최신 큐를 확인한 뒤 다시 적용해주세요."),
+
+    // Alarm Event (알람 이벤트 도메인 — 이슈 #116)
+    AL001(HttpStatus.NOT_FOUND, "AL001", "알람 이벤트를 찾을 수 없습니다."),
+    AL002(HttpStatus.CONFLICT, "AL002", "현재 상태에서는 처리할 수 없는 알람입니다.");
 
     private final HttpStatus status;
     private final String code;
