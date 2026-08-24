@@ -50,6 +50,11 @@ function resolveInitialLocation(
 export default function DeviceForm({ tree, initial, submitting, error, submitLabel, onSubmit, onCancel }: DeviceFormProps) {
   const [initialLocation] = useState(() => resolveInitialLocation(initial, tree));
 
+  // 제어로 꺼진(OFF) 장비는 상태를 레지스트리 편집으로 바꿀 수 없다(contract §4.10 — 이미 OFF인
+  // 장비는 status가 생략된 PATCH만 허용). STATUS_OPTIONS에 OFF가 없어 그대로 두면 select가
+  // "정상"으로 보이면서 실제로는 NORMAL을 요청해 서버가 C001로 거부한다 — 상태 필드 자체를 숨기고
+  // 제출 payload에서 생략한다.
+  const isOffDevice = initial?.status === "OFF";
   const [name, setName] = useState(initial?.name ?? "");
   const [kind, setKind] = useState<DeviceKind>(initial?.kind ?? "SENSOR");
   const [model, setModel] = useState(initial?.model ?? "");
@@ -79,7 +84,6 @@ export default function DeviceForm({ tree, initial, submitting, error, submitLab
       kind,
       model: model || null,
       serial: serial || null,
-      status,
       // "YYYY-MM-DD" + 고정 시각을 오프셋 없는 로컬 포맷으로 보낸다 — 서버 필드가
       // LocalDateTime(Jackson 기본 LocalDateTimeDeserializer)이라 toISOString()의 트레일링
       // Z(UTC 오프셋 표기)를 명시적으로 거부해 항상 400 C001이 났다(FarmLogForm.tsx의
@@ -91,6 +95,7 @@ export default function DeviceForm({ tree, initial, submitting, error, submitLab
       rackId,
       rackLevelId,
       metrics: kind === "SENSOR" ? metrics : [],
+      status: isOffDevice ? undefined : status,
     });
   }
 
@@ -229,18 +234,24 @@ export default function DeviceForm({ tree, initial, submitting, error, submitLab
           <label htmlFor="device-status" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
             상태
           </label>
-          <select
-            id="device-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as DeviceStatus)}
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {DEVICE_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          {isOffDevice ? (
+            <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              {DEVICE_STATUS_LABELS.OFF} — 제어 화면에서만 변경 가능
+            </p>
+          ) : (
+            <select
+              id="device-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as DeviceStatus)}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {DEVICE_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <FormField
           id="device-installed-on"
