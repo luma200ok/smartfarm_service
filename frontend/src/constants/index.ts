@@ -1,10 +1,12 @@
 import type {
+  ControllableMetric,
   DeviceKind,
   DeviceStatus,
   ErrorCode,
   EnvironmentHistoryRange,
   FarmLogType,
   NutrientStage,
+  OperationMode,
   ReadingCellState,
   SensorMetric,
   WeatherSky,
@@ -94,13 +96,23 @@ export const DEVICE_KIND_LABELS: Record<DeviceKind, string> = {
   GATEWAY: "통신 장치",
 };
 
-// 장비 상태 라벨 (contract §4.10)
+// 장비 상태 라벨 (contract §4.10 — OFF는 사이클 3에서 추가, contract §4.12)
 export const DEVICE_STATUS_LABELS: Record<DeviceStatus, string> = {
   NORMAL: "정상",
   WARNING: "주의",
   FAULT: "고장",
   OFFLINE: "통신두절",
+  OFF: "정지",
 };
+
+// 운전 모드 라벨 (contract §4.12)
+export const OPERATION_MODE_LABELS: Record<OperationMode, string> = {
+  AUTO: "자동",
+  MANUAL: "수동",
+};
+
+// 제어 가능한 지표 4종(contract §4.12 — 목표값 카드가 항상 이 순서·개수로 렌더된다).
+export const CONTROLLABLE_METRICS: ControllableMetric[] = ["TEMPERATURE", "HUMIDITY", "CO2", "PPFD"];
 
 // 센서 측정 지표 라벨 (contract §4.11, 이슈 #90) — unit은 서버 응답 필드를 그대로 쓴다.
 export const SENSOR_METRIC_LABELS: Record<SensorMetric, string> = {
@@ -166,4 +178,11 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   // 폴백일 뿐, 실제 노출은 resolveNutrientCalculationErrorMessage(errorMessage.ts)가
   // err.message를 그대로 사용해 이 문구를 대체한다(코드 쪽 임의 문구로 덮지 않는다).
   N003: "배합할 수 없는 조합입니다. 입력값을 확인해주세요.",
+  CT001: "대상 대기 항목을 찾을 수 없습니다.",
+  CT002: "통신 두절 상태인 장비는 조작할 수 없습니다.",
+  CT003: "현재 운전 모드에서는 허용되지 않는 조작입니다.",
+  CT004: "적용 대기 큐가 가득 찼습니다(존당 최대 50건). 먼저 적용하거나 취소해주세요.",
+  // CT005는 응답 본문에 최신 pendingChanges를 함께 실어 보낸다 — 이 문구는 최후 폴백일 뿐,
+  // 실제 화면은 isQueueConflict(errorMessage.ts)로 큐를 갱신하고 재확인 안내를 별도로 보여준다.
+  CT005: "다른 사용자가 대기 큐를 변경했습니다. 최신 큐를 확인한 뒤 다시 적용해주세요.",
 };

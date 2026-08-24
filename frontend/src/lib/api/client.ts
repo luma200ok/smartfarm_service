@@ -7,16 +7,22 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 /**
  * 백엔드 에러 응답(status/code)을 실어 던지는 에러.
  * 호출부는 메시지 문자열 매칭이 아니라 status/code로 분기할 것.
+ *
+ * `data`는 파싱된 응답 본문 전체를 그대로 싣는다 — 표준 {timestamp,code,message} 외에 추가
+ * 필드를 함께 보내는 상위 호환 응답(예: 제어 CT005의 `pendingChanges`, contract §4.12)을
+ * 호출부가 잃지 않고 꺼내 쓸 수 있게 한다.
  */
 export class ApiError extends Error {
   status: number;
   code?: ErrorCode;
+  data?: unknown;
 
-  constructor(status: number, message: string, code?: ErrorCode) {
+  constructor(status: number, message: string, code?: ErrorCode, data?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -71,7 +77,7 @@ export async function api<T>(path: string, options: ApiRequestOptions = {}): Pro
   if (!res.ok) {
     const message = isApiErrorResponse(data) ? data.message : res.statusText || DEFAULT_ERROR_MESSAGE;
     const code = isApiErrorResponse(data) ? data.code : undefined;
-    throw new ApiError(res.status, message, code);
+    throw new ApiError(res.status, message, code, data);
   }
 
   return data as T;

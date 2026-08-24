@@ -1,4 +1,5 @@
 import { DEFAULT_ERROR_MESSAGE, ERROR_MESSAGES } from "@/constants";
+import type { ControlQueueConflictResponse } from "@/types";
 import { ApiError } from "./client";
 
 // status/code로 분기하는 공용 에러 메시지 매핑 (메시지 문자열 매칭 금지 — contract §5 ErrorCode 기준).
@@ -35,4 +36,10 @@ export function resolveNutrientCalculationErrorMessage(err: unknown): string {
     return err.message;
   }
   return resolveErrorMessage(err);
+}
+
+// CT005(대기 큐 낙관적 검증 실패, contract §4.12 동시성 1)는 응답 본문에 최신 pendingChanges를
+// 함께 싣는다 — 별도 GET 왕복 없이 화면 큐를 그 자리에서 갱신해 재확인시키기 위함이다.
+export function isQueueConflict(err: unknown): err is ApiError & { data: ControlQueueConflictResponse } {
+  return err instanceof ApiError && err.code === "CT005" && err.data != null;
 }
