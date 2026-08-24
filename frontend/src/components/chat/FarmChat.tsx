@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import { VALIDATION } from "@/constants";
 import { isTooManyRequests, resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listChatMessages, sendChatMessage } from "@/lib/api/chat";
@@ -93,34 +94,34 @@ export default function FarmChat({ farmId }: FarmChatProps) {
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">AI 상담</h2>
+      <h2>
+        <CardTitle size="lg">AI 상담</CardTitle>
+      </h2>
 
-      {loadError && <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>}
+      {loadError && <p className="text-sm text-dp-red-ink">{loadError}</p>}
 
-      {!data && !loadError && <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>}
+      {!data && !loadError && <p className="text-sm text-dp-muted">불러오는 중...</p>}
 
       {data && data.content.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          아직 대화가 없습니다. 병해·재배 환경에 대해 물어보세요.
-        </p>
+        <p className="text-sm text-dp-muted">아직 대화가 없습니다. 병해·재배 환경에 대해 물어보세요.</p>
       )}
 
       {data && orderedMessages.length > 0 && (
         <ul className="flex flex-col gap-4">
           {orderedMessages.map((msg) => (
             <li key={msg.id} className="flex flex-col gap-2">
-              <div className="max-w-[85%] self-end rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white dark:bg-zinc-50 dark:text-zinc-900">
+              <div className="max-w-[85%] self-end rounded-lg bg-dp-ink px-3 py-2 text-sm text-dp-surface">
                 <p className="whitespace-pre-wrap">{msg.question}</p>
               </div>
-              <div className="flex max-w-[85%] flex-col gap-1.5 self-start rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+              <Card className="flex max-w-[85%] flex-col gap-1.5 self-start px-3 py-2 text-sm">
                 {msg.fallback && (
-                  <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                  <p className="rounded bg-dp-amber-tint px-2 py-1 text-xs text-dp-amber-deep">
                     AI가 답변을 생성하지 못했습니다.
                   </p>
                 )}
-                <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{msg.answer}</p>
+                <p className="whitespace-pre-wrap text-dp-body">{msg.answer}</p>
                 {msg.sources.length > 0 && (
-                  <details className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <details className="text-xs text-dp-muted">
                     <summary className="cursor-pointer select-none">근거 자료 ({msg.sources.length})</summary>
                     <ul className="mt-1 list-inside list-disc">
                       {msg.sources.map((source, i) => (
@@ -129,10 +130,8 @@ export default function FarmChat({ farmId }: FarmChatProps) {
                     </ul>
                   </details>
                 )}
-                <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                  {new Date(msg.createdAt).toLocaleString()}
-                </span>
-              </div>
+                <span className="text-[11px] text-dp-faint">{new Date(msg.createdAt).toLocaleString()}</span>
+              </Card>
             </li>
           ))}
         </ul>
@@ -144,28 +143,25 @@ export default function FarmChat({ farmId }: FarmChatProps) {
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             최신
           </button>
-          <span className="text-zinc-500 dark:text-zinc-400">
+          <span className="text-dp-muted">
             {data.page + 1} / {data.totalPages}
           </span>
           <button
             type="button"
             disabled={page + 1 >= data.totalPages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             이전 대화
           </button>
         </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800"
-      >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-dp-line pt-4">
         <label htmlFor="chat-question" className="sr-only">
           질문
         </label>
@@ -177,27 +173,27 @@ export default function FarmChat({ farmId }: FarmChatProps) {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="병해·재배 환경에 대해 물어보세요"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
         />
         <div className="flex items-center justify-between">
-          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+          <span className="text-xs text-dp-faint">
             {question.length} / {VALIDATION.chatQuestion.maxLength}자 (남은 {Math.max(0, remaining)}자)
           </span>
           <button
             type="submit"
             disabled={submitting || question.trim().length === 0}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
           >
             {submitting ? "전송 중..." : "전송"}
           </button>
         </div>
 
         {retryHint && (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <p className="rounded-md border border-dp-amber-line bg-dp-amber-tint px-3 py-2 text-sm text-dp-amber-deep">
             {retryHint}
           </p>
         )}
-        {sendError && <p className="text-sm text-red-600 dark:text-red-400">{sendError}</p>}
+        {sendError && <p className="text-sm text-dp-red-ink">{sendError}</p>}
       </form>
     </div>
   );
