@@ -30,8 +30,18 @@
 ## 2. 멀티테넌시 (Farm = 테넌트)
 
 - 테넌트 식별 = **path param `{farmId}`**. 입력값 취급 — **매 요청 멤버십 재검증**(cross-tenant IDOR 차단), repository 조회는 항상 farm 스코프.
-- 역할 2단계로 시작: `OWNER`(농장 관리·초대·삭제) / `MEMBER`(조회·진단·처방). MANAGER는 후속.
-- 합류 = 초대코드(OWNER 발급, 만료 72h, 만료까지 다인 재사용 가능). **폐기 정책(2026-08-19 확정)**: 농장당 활성 코드 1건 — 재발급 시 기존 코드 무효화, **멤버 제거·자발 탈퇴 시 해당 농장 활성 코드 자동 무효화**(제거·탈퇴한 멤버의 보유 코드 재합류 차단). 무효화된 코드는 F004. 코드는 DB에 SHA-256 해시로만 저장.
+- **역할 4단계**(2026-08-25 확정, #122/PR — 구 `OWNER`/`MEMBER` 2단계에서 확장):
+  | 역할 | rank | 권한 |
+  |---|---|---|
+  | `ADMIN`(관리자) | 3 | 구조 CRUD(농장·존·랙·장비·임계값·**알람 규칙**·웹훅) · 초대 발급 · **멤버 관리·역할 변경** · 농장 삭제 + 아래 전부 |
+  | `OPERATOR`(제어가능) | 2 | 제어(운전모드·목표값·적용·취소) · **비상 정지** · 알람 확인/처리 · 작업일지·양액 레시피 작성 · **챗·진단·처방** + 아래 전부 |
+  | `VIEWER`(조회전용) | 1 | 조회만 |
+  | `PENDING`(대기) | 0 | **farm-scoped 접근 전면 차단**(F008). 예외: **본인 멤버십 제거**(승인 대기 취소)만 허용 |
+  - 판정은 `rank` 기준 `atLeast`(선언 순서가 아니라 명시적 rank — 순서가 바뀌어도 인가가 뒤집히지 않게). 가드 3단: `requireAdmin`(18) / `requireOperator`(19) / `requireMember`(29, PENDING 거부) + `requireAnyMembership`(1, 본인 탈퇴 전용).
+  - **이관(V21)**: `OWNER→ADMIN`, `MEMBER→OPERATOR`. ⚠️ `MEMBER→VIEWER`는 **기능 회귀**다 — 구 MEMBER는 제어를 할 수 있었다.
+  - ⚠️ **비상 정지가 OWNER 전용 → OPERATOR 이상으로 완화**됐다(사용자 결정). 구 MEMBER가 장비를 켜고 끄는 건 되면서 비상정지만 안 되는 불일치를 바로잡은 것.
+  - ⚠️ **VIEWER 쓰기 UI 게이트**: 서버는 F007로 차단하지만, VIEWER에게 쓰기 버튼을 숨기는 FE 처리는 #123에서 다룬다.
+- 합류 = 초대코드(**ADMIN** 발급, 만료 72h, 만료까지 다인 재사용 가능). ⚠️ **수락 = 즉시 활성이 아니다**(2026-08-25 변경) — 수락하면 `PENDING`으로 합류하고, **ADMIN이 역할을 부여해야 활성화**된다(`PATCH .../members/{memberId}/role`). 코드 유출 시 무단 가입 차단 효과 겸용. 승인 전에는 farm-scoped 전 표면이 403 F008. **폐기 정책(2026-08-19 확정)**: 농장당 활성 코드 1건 — 재발급 시 기존 코드 무효화, **멤버 제거·자발 탈퇴 시 해당 농장 활성 코드 자동 무효화**(제거·탈퇴한 멤버의 보유 코드 재합류 차단). 무효화된 코드는 F004. 코드는 DB에 SHA-256 해시로만 저장.
 
 ## 3. 핵심 엔드포인트
 
@@ -43,28 +53,29 @@
 | POST | `/api/auth/logout` | 인증 | RefreshRequest | 204 |
 | POST | `/api/auth/demo-login` | 공개 | — | 200 TokenResponse (데모 계정 토큰 발급 — 자격증명 불필요, §5-데모 참조) |
 | GET | `/api/users/me` | 인증 | — | 200 UserResponse |
-| POST | `/api/farms` | 인증 | FarmRequest | 201 FarmResponse (생성자=OWNER) |
+| POST | `/api/farms` | 인증 | FarmRequest | 201 FarmResponse (생성자=**ADMIN**) |
 | GET | `/api/farms` | 인증 | — | 200 List\<FarmSummaryResponse\> (내 농장) |
 | GET | `/api/farms/{farmId}` | 멤버 | — | 200 FarmResponse |
-| PATCH | `/api/farms/{farmId}` | OWNER | FarmUpdateRequest(null=미변경. location 비우기는 1차 미지원 — 후속) | 200 FarmResponse |
-| DELETE | `/api/farms/{farmId}` | OWNER | — | 204 (soft delete) |
-| POST | `/api/farms/{farmId}/invitations` | OWNER | — | 201 InvitationResponse |
-| POST | `/api/invitations/accept` | 인증 | AcceptInvitationRequest | 200 FarmResponse |
-| GET | `/api/farms/{farmId}/members` | 멤버 | — | 200 List\<MemberResponse\> |
-| DELETE | `/api/farms/{farmId}/members/{memberId}` | OWNER 또는 본인 | — | 204 (OWNER 본인 탈퇴는 불가 → F006) |
-| POST | `/api/farms/{farmId}/diagnoses` | 멤버 | multipart `file` | 201 DiagnosisResponse (동기) |
+| PATCH | `/api/farms/{farmId}` | **ADMIN** | FarmUpdateRequest(null=미변경. location 비우기는 1차 미지원 — 후속) | 200 FarmResponse |
+| DELETE | `/api/farms/{farmId}` | **ADMIN** | — | 204 (soft delete) |
+| POST | `/api/farms/{farmId}/invitations` | **ADMIN** | — | 201 InvitationResponse |
+| POST | `/api/invitations/accept` | 인증 | AcceptInvitationRequest | 200 FarmResponse (**`myRole=PENDING`** — ADMIN 승인 대기) |
+| GET | `/api/farms/{farmId}/members` | 멤버 | — | 200 List\<MemberResponse\> (`pending` 파생 필드 포함) |
+| PATCH | `/api/farms/{farmId}/members/{memberId}/role` | **ADMIN**(+데모 차단 A007) | MemberRoleUpdateRequest{role} | 200 MemberResponse (**대기자 승인 겸용**. 마지막 ADMIN 강등 → F006) |
+| DELETE | `/api/farms/{farmId}/members/{memberId}` | **ADMIN** 또는 본인 | — | 204 (**마지막 ADMIN**은 본인이든 타인이든 F006. 관리자가 여럿이면 ADMIN도 탈퇴 가능. **PENDING은 본인 취소만 허용**. 대상 미존재는 멱등 204) |
+| POST | `/api/farms/{farmId}/diagnoses` | **OPERATOR** | multipart `file` | 201 DiagnosisResponse (동기) |
 | GET | `/api/farms/{farmId}/diagnoses` | 멤버 | `?page&size` | 200 Page\<DiagnosisSummaryResponse\> |
 | GET | `/api/farms/{farmId}/diagnoses/{diagnosisId}` | 멤버 | — | 200 DiagnosisResponse |
-| POST | `/api/farms/{farmId}/prescriptions` | 멤버 | PrescriptionRequest | **202** PrescriptionResponse(PENDING) |
+| POST | `/api/farms/{farmId}/prescriptions` | **OPERATOR** | PrescriptionRequest | **202** PrescriptionResponse(PENDING) |
 | GET | `/api/farms/{farmId}/prescriptions/{prescriptionId}` | 멤버 | — | 200 PrescriptionResponse (폴링용) |
 | GET | `/api/farms/{farmId}/prescriptions` | 멤버 | `?page&size` | 200 Page\<PrescriptionSummaryResponse\> |
-| DELETE | `/api/users/me` | 인증 | WithdrawRequest{password} — **비밀번호 재확인 필수**(불일치 A002. 토큰 탈취 단독으로 비가역 삭제 불가) | 204 (soft delete — **OWNER 농장 보유 시 409 A006**. 전 refresh 무효화+전 농장 멤버십 제거+해당 농장 활성 초대 무효화+**즉시 익명화**: email→`withdrawn-{id}@invalid`·nickname→`탈퇴회원`) |
-| PATCH | `/api/farms/{farmId}/webhook` | OWNER | WebhookRequest{webhookUrl?: string\|null — null=해제, https·discord.com/api/webhooks 프리픽스 검증} | 200 FarmResponse |
+| DELETE | `/api/users/me` | 인증 | WithdrawRequest{password} — **비밀번호 재확인 필수**(불일치 A002. 토큰 탈취 단독으로 비가역 삭제 불가) | 204 (soft delete — **ADMIN 농장 보유 시 409 A006**. 전 refresh 무효화+전 농장 멤버십 제거+해당 농장 활성 초대 무효화+**즉시 익명화**: email→`withdrawn-{id}@invalid`·nickname→`탈퇴회원`) |
+| PATCH | `/api/farms/{farmId}/webhook` | **ADMIN** | WebhookRequest{webhookUrl?: string\|null — null=해제, https·discord.com/api/webhooks 프리픽스 검증} | 200 FarmResponse |
 | GET | `/api/farms/{farmId}/diagnoses/{diagnosisId}/image` | 멤버 | — | 200 image/* 스트리밍 (원본 미보유 구 데이터 404 D004) |
 | GET | `/api/farms/{farmId}/environment/today` | 멤버 | — | 200 EnvironmentTodayResponse (ai-server 프록시, 60s 캐시 허용) |
 
 ### 2026-08-20 Phase 3 확장 (FR-7·탈퇴·알림·이미지 — ai-server 무변경 원칙 해제 결정)
-- **회원 탈퇴**: soft delete + `revokeAllByUserId` + 본인 farm_members 전부 삭제(각 농장 활성 초대 무효화 동반 — 기존 탈퇴 정책 재사용). OWNER인 농장(살아있는 농장 기준)이 하나라도 있으면 **A006(409)** — 농장 삭제 후 탈퇴. 탈퇴 후 이메일 재가입 허용(partial unique index가 이미 보장).
+- **회원 탈퇴**: soft delete + `revokeAllByUserId` + 본인 farm_members 전부 삭제(각 농장 활성 초대 무효화 동반 — 기존 탈퇴 정책 재사용). ADMIN인 농장(살아있는 농장 기준)이 하나라도 있으면 **A006(409)** — 농장 삭제 후 탈퇴. 탈퇴 후 이메일 재가입 허용(partial unique index가 이미 보장).
 - **탈퇴 봉쇄(2026-08-20 보안·코드 리뷰 확정)**: ① **FarmAccessGuard 멤버십 조회가 User 생존을 함께 검증**(JOIN User + @SQLRestriction — 전 farm-scoped 표면) + 가드 밖 진입점(농장 생성·초대 수락) 유저 생존 검사(A004) ② 탈퇴 트랜잭션은 users 행 잠금(FOR UPDATE)으로 동시 멤버십 생성·동시 탈퇴 직렬화 ③ 재인증: 비밀번호 재확인 ④ PII 즉시 익명화(email·nickname·비밀번호 해시 소거).
 - **탈퇴 유저 잔존 데이터**: diagnoses/prescriptions의 createdBy는 탈퇴 후에도 원 userId를 유지(팀 이력 보존 — join 없어 PII 미노출, FE는 미해석 id 표기 허용). 수용된 정책.
 - **알림(디스코드 웹훅)**: farms에 `webhook_url` 컬럼(nullable). 처방 **COMPLETED/FAILED 전이 시** 워커가 **트랜잭션 밖에서** 발송(실패는 로그만 — 알림 실패가 처방 상태에 영향 금지, 타임아웃 5s). URL은 응답에 마스킹(설정 여부 boolean `webhookConfigured`만 노출 — 멤버에게 URL 원문 비노출).
@@ -101,9 +112,9 @@
 ## 4.5 데모 계정 (2026-08-22 확정, 이슈 #49)
 
 - **목적**: 포트폴리오 방문자가 회원가입 없이 체험. 로그인 화면 "데모 계정으로 체험하기" 버튼 → `POST /api/auth/demo-login`.
-- **시드**: `users.is_demo`(boolean, Flyway 신규 마이그레이션) + 앱 기동 시 idempotent 시드(init/): 데모 유저(email `demo@smartfarm.local`, nickname `데모 계정`, 랜덤 비밀번호 해시 — 비밀번호 로그인 경로 미사용) + 데모 농장 1개(OWNER). 자격증명은 레포·문서 어디에도 평문 노출하지 않는다.
+- **시드**: `users.is_demo`(boolean, Flyway 신규 마이그레이션) + 앱 기동 시 idempotent 시드(init/): 데모 유저(email `demo@smartfarm.local`, nickname `데모 계정`, 랜덤 비밀번호 해시 — 비밀번호 로그인 경로 미사용) + 데모 농장 1개(ADMIN). 자격증명은 레포·문서 어디에도 평문 노출하지 않는다.
 - **demo-login**: 데모 유저 조회 후 기존 토큰 발급 로직 재사용(TokenResponse). 데모 유저 존재는 시드가 보장하는 전제 — 미존재는 서버 결함이므로 C002(500)로 처리(A00x 오용 금지).
-- **차단(전부 403 A007, 서버측 강제 — FE 숨김은 보조)**: 회원 탈퇴(DELETE /users/me) · 농장 생성(POST /farms) · 농장 수정/삭제(PATCH/DELETE /farms/{id}) · 웹훅 설정(PATCH /farms/{id}/webhook) · 초대코드 발급(POST /farms/{id}/invitations) · 초대코드 수락(POST /invitations/accept) · 멤버 제거/농장 나가기(DELETE 멤버 계열) · **임계치 설정(PUT /farms/{id}/env-thresholds — 2026-08-22 #52 리뷰에서 추가: 데모 방문자의 공유 농장 영속 설정 변조 차단, OWNER 전용 write 경로 일관성)** · **알람 규칙 생성/수정/삭제(POST·PATCH·DELETE /farms/{id}/alarm-rules — 2026-08-25 #118, 같은 이유)**.
+- **차단(전부 403 A007, 서버측 강제 — FE 숨김은 보조)**: 회원 탈퇴(DELETE /users/me) · 농장 생성(POST /farms) · 농장 수정/삭제(PATCH/DELETE /farms/{id}) · 웹훅 설정(PATCH /farms/{id}/webhook) · 초대코드 발급(POST /farms/{id}/invitations) · 초대코드 수락(POST /invitations/accept) · 멤버 제거/농장 나가기(DELETE 멤버 계열) · **임계치 설정(PUT /farms/{id}/env-thresholds — 2026-08-22 #52 리뷰에서 추가: 데모 방문자의 공유 농장 영속 설정 변조 차단, ADMIN 전용 write 경로 일관성)** · **알람 규칙 생성/수정/삭제(POST·PATCH·DELETE /farms/{id}/alarm-rules — 2026-08-25 #118, 같은 이유)** · **멤버 역할 변경(PATCH /farms/{id}/members/{memberId}/role — 2026-08-25 #122: 공유 계정이 농장 권한 구성을 영속 변경하는 것을 차단)**.
 - **허용**: 전체 조회 + 진단 업로드 + 처방 생성(체험 핵심). 남용 대비 rate-limit은 후속 이슈.
 - **FE**: 데모 로그인 후에는 일반 계정과 동일 UI(차단 작업은 서버 403 A007 메시지 표기). 차단 버튼 사전 숨김은 후속 폴리시.
 
@@ -117,7 +128,7 @@
 |---|---|---|---|---|
 | GET | `/api/farms/{farmId}/environment/history` | 멤버 | `?range=24h\|7d\|30d` (기본 24h, 그 외 C001) | 200 EnvironmentHistoryResponse |
 | GET | `/api/farms/{farmId}/env-thresholds` | 멤버 | — | 200 EnvThresholdsResponse (미설정 시 enabled=false 기본값) |
-| PUT | `/api/farms/{farmId}/env-thresholds` | OWNER | EnvThresholdsRequest | 200 EnvThresholdsResponse |
+| PUT | `/api/farms/{farmId}/env-thresholds` | ADMIN | EnvThresholdsRequest | 200 EnvThresholdsResponse |
 
 - **EnvironmentHistoryResponse** `{range, points: [{capturedAt, outdoorTemp?, outdoorHumidity?, indoorTemp?, indoorHumidity?}]}` — 다운샘플: 24h=원본(60s), 7d=30분 평균, 30d=2시간 평균(DB 집계, 빈 구간은 점 생략).
 - **EnvThresholdsRequest/Response** `{enabled, indoorTempMin?, indoorTempMax?, indoorHumidityMin?, indoorHumidityMax?}`(+Response에 `updatedAt`) — 검증: min<max, 온도 -50~80, 습도 0~100(위반 C001). 저장=`farm_env_thresholds`(farm당 1행).
@@ -160,9 +171,9 @@
 | POST | `/api/farms/{farmId}/logs` | 멤버 | FarmLogRequest{logDate, type, memo?} | 201 FarmLogResponse |
 | GET | `/api/farms/{farmId}/logs` | 멤버 | `?page&size` | 200 Page\<FarmLogResponse\> (logDate 내림차순) |
 | PATCH | `/api/farms/{farmId}/logs/{logId}` | **작성자 본인만** | FarmLogRequest | 200 FarmLogResponse |
-| DELETE | `/api/farms/{farmId}/logs/{logId}` | **작성자 본인 또는 OWNER** | — | 204 |
+| DELETE | `/api/farms/{farmId}/logs/{logId}` | **작성자 본인 또는 ADMIN** | — | 204 |
 
-- type enum: `WATERING, FERTILIZING, PRUNING, HARVEST, PEST_CONTROL, ETC`(FE 라벨은 constants). 없음 **L001(404)**, 본인/OWNER 아님 **L002(403)**. 데모 계정 작성 허용(컨텐츠 생성 — 진단·처방과 동일 원칙), 수정·삭제는 본인 것만이라 자연 격리.
+- type enum: `WATERING, FERTILIZING, PRUNING, HARVEST, PEST_CONTROL, ETC`(FE 라벨은 constants). 없음 **L001(404)**, 본인/ADMIN 아님 **L002(403)**. 데모 계정 작성 허용(컨텐츠 생성 — 진단·처방과 동일 원칙), 수정·삭제는 본인 것만이라 자연 격리.
 - **FarmLogResponse** `{id, logDate, type, memo, createdBy, createdAt}`
 
 **날씨예보** — backend가 KMA 단기예보(공공데이터포털 getVilageFcst)를 직접 호출(ai-server 무관), **전역 고정 지점**(환경 대시보드와 동일 데모 온실 위치, env `KMA_GRID_NX/NY`).
@@ -190,7 +201,7 @@
 | GET | `/api/farms/{farmId}/nutrient-recipes` | 멤버 | `?page&size` | 200 Page\<NutrientRecipeSummaryResponse\> (최신순) |
 | GET | `/api/farms/{farmId}/nutrient-recipes/{id}` | 멤버 | — | 200 NutrientRecipeResponse (계산 결과 동봉) |
 | PATCH | `/api/farms/{farmId}/nutrient-recipes/{id}` | **작성자 본인** | NutrientRecipeRequest | 200 NutrientRecipeResponse |
-| DELETE | `/api/farms/{farmId}/nutrient-recipes/{id}` | **작성자 본인 또는 OWNER** | — | 204 |
+| DELETE | `/api/farms/{farmId}/nutrient-recipes/{id}` | **작성자 본인 또는 ADMIN** | — | 204 |
 
 - **NutrientRecipeRequest** `{name?(1~50, 저장 시 필수), stage, target{n, p, k, ca, mg, s}(ppm, 각 0~1000), tankVolumeL(1~10000), concentrationFactor(1~500), sourceWater?{ca?, mg?, ec?}}` — sourceWater=원수 분석값(있으면 목표치에서 차감 보정).
 - **NutrientCalculationResponse** `{tanks: [{tank: "A"|"B", items: [{fertilizer, formula, amountG}]}], estimatedEc, ionBalance{cationMeL, anionMeL, deviationPercent}, warnings: [str]}`
@@ -236,17 +247,17 @@
 | 메서드 | 경로 | 권한 | 요청 | 응답 |
 |---|---|---|---|---|
 | GET | `/api/farms/{farmId}/zones` | 멤버 | — | 200 `ZoneTreeResponse` (존+랙+층 트리 — 랙 도면 렌더용 1회 조회) |
-| POST | `/api/farms/{farmId}/zones` | OWNER(데모 차단) | `{name, displayOrder?}` | 201 `ZoneResponse` |
-| PATCH | `/api/farms/{farmId}/zones/{zoneId}` | OWNER(데모 차단) | `{name?, displayOrder?}` | 200 `ZoneResponse` |
-| DELETE | `/api/farms/{farmId}/zones/{zoneId}` | OWNER(데모 차단) | — | 204 (하위 랙·층 함께 soft delete). **하위에 장비 잔존 시 R004 거부** |
-| POST | `/api/farms/{farmId}/zones/{zoneId}/racks` | OWNER(데모 차단) | `{code, levelCount(1~50), displayOrder?}` | 201 `RackResponse` (층 자동 생성) |
-| PATCH | `/api/farms/{farmId}/racks/{rackId}` | OWNER(데모 차단) | `{code?, levelCount?, displayOrder?}` | 200 `RackResponse` |
-| DELETE | `/api/farms/{farmId}/racks/{rackId}` | OWNER(데모 차단) | — | 204 (하위 층 함께 soft delete). **하위에 장비 잔존 시 R004 거부** |
+| POST | `/api/farms/{farmId}/zones` | ADMIN(데모 차단) | `{name, displayOrder?}` | 201 `ZoneResponse` |
+| PATCH | `/api/farms/{farmId}/zones/{zoneId}` | ADMIN(데모 차단) | `{name?, displayOrder?}` | 200 `ZoneResponse` |
+| DELETE | `/api/farms/{farmId}/zones/{zoneId}` | ADMIN(데모 차단) | — | 204 (하위 랙·층 함께 soft delete). **하위에 장비 잔존 시 R004 거부** |
+| POST | `/api/farms/{farmId}/zones/{zoneId}/racks` | ADMIN(데모 차단) | `{code, levelCount(1~50), displayOrder?}` | 201 `RackResponse` (층 자동 생성) |
+| PATCH | `/api/farms/{farmId}/racks/{rackId}` | ADMIN(데모 차단) | `{code?, levelCount?, displayOrder?}` | 200 `RackResponse` |
+| DELETE | `/api/farms/{farmId}/racks/{rackId}` | ADMIN(데모 차단) | — | 204 (하위 층 함께 soft delete). **하위에 장비 잔존 시 R004 거부** |
 | GET | `/api/farms/{farmId}/devices` | 멤버 | `?kind=&status=&q=&zoneId=` (q=장비명 부분일치) | 200 `DeviceListResponse` |
 | GET | `/api/farms/{farmId}/devices/summary` | 멤버 | — | 200 `DeviceSummaryResponse` (KPI 5종 + 제품군별 집계) |
-| POST | `/api/farms/{farmId}/devices` | OWNER(데모 차단) | `DeviceRequest` | 201 `DeviceResponse` |
-| PATCH | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | `DeviceRequest`(부분) | 200 `DeviceResponse` |
-| DELETE | `/api/farms/{farmId}/devices/{deviceId}` | OWNER(데모 차단) | — | 204 |
+| POST | `/api/farms/{farmId}/devices` | ADMIN(데모 차단) | `DeviceRequest` | 201 `DeviceResponse` |
+| PATCH | `/api/farms/{farmId}/devices/{deviceId}` | ADMIN(데모 차단) | `DeviceRequest`(부분) | 200 `DeviceResponse` |
+| DELETE | `/api/farms/{farmId}/devices/{deviceId}` | ADMIN(데모 차단) | — | 204 |
 
 - **ZoneTreeResponse** `{zones: [{id, name, displayOrder, racks: [{id, code, levelCount, displayOrder, levels: [{id, levelNo, label}]}]}]}`
 - **DeviceSummaryResponse** `{total, normal, warning, faultOrOffline, off, calibrationDueSoon, byModel: [{name, kind, count, status}]}` — `calibrationDueSoon`=30일 이내
@@ -255,7 +266,7 @@
 - **`levelCount` 축소 시**: 잘려나가는 층에 장비가 매달려 있으면 **R004로 거부**(조용한 데이터 유실 방지). 측정 이력만 있는 경우는 층을 soft delete하고 이력은 보존
 - **구조 삭제 시에도 동일 규칙**(2026-08-23 리뷰 반영 — 계약 초판 누락): 랙·존 삭제도 하위에 활성 장비가 있으면 **R004로 거부**한다. 초판은 `levelCount` 축소에만 R004를 걸어, `DELETE /racks/{id}`가 같은 결과를 검사 없이 통과하는 우회로가 있었다(장비가 soft delete된 층을 참조한 채 살아남아 랙 도면에서는 사라지고 `devices/summary` 집계에는 계속 잡힘)
 - **장비 위치 FK 3종의 부모-자식 정합성**(2026-08-23 리뷰 반영 — 계약 초판 누락): `zoneId`/`rackId`/`rackLevelId`는 각각 농장 소속인 것만으로 부족하고 **서로의 계층 관계가 일치해야 한다**. 규칙은 **쌍 2개가 아니라 전이까지 3개**다(2차 리뷰 반영 — 1차 보정도 쌍만 적어 불완전했다): ① `rack.zoneId == zoneId` ② `level.rackId == rackId` ③ **전이** — `rackId`를 생략해도 `level → rack → zone`을 따라가 `zoneId`와 대조한다. ③이 없으면 `{zoneId: A동, rackId: null, rackLevelId: B동 랙의 층}`이 두 쌍 검사를 모두 skip하고 통과한다(`rackId == null`이면 ①은 안 돌고 ②는 가드에 막힘). 불일치는 C001. PATCH는 부분 수정이므로 **요청값과 기존 엔티티를 병합한 최종 상태**로 검증한다. ⚠️ §4.11의 `SensorReading`이 이 3종을 device에서 유도해 비정규화하므로, 모순된 삼중조는 측정값 테이블로 그대로 복제되어 랙×층 매트릭스 집계를 오염시킨다
-- **⚠️ 후속(미도입) — 목록 페이지네이션**: `GET /zones`·`GET /devices`·`GET /devices/summary`는 현재 농장 전체를 반환한다. 이 레포는 farm-scoped 컬렉션에 `Pageable`이 이미 관례(`PrescriptionController` `@PageableDefault(size=20)` 등)이나 이번 사이클은 계약·DTO 변경 범위가 커져 **후속 이슈로 분리**한다. 자기 테넌트 OWNER가 스스로 데이터를 부풀려야 성립하고 현 데이터 규모(농장당 랙 12·장비 수십)에서는 실현되지 않으나, **리소스 생성 상한 부재와 묶어 함께 처리할 것**
+- **⚠️ 후속(미도입) — 목록 페이지네이션**: `GET /zones`·`GET /devices`·`GET /devices/summary`는 현재 농장 전체를 반환한다. 이 레포는 farm-scoped 컬렉션에 `Pageable`이 이미 관례(`PrescriptionController` `@PageableDefault(size=20)` 등)이나 이번 사이클은 계약·DTO 변경 범위가 커져 **후속 이슈로 분리**한다. 자기 테넌트 ADMIN이 스스로 데이터를 부풀려야 성립하고 현 데이터 규모(농장당 랙 12·장비 수십)에서는 실현되지 않으나, **리소스 생성 상한 부재와 묶어 함께 처리할 것**
 
 ### ⚠️ 테넌트 격리 (필수)
 `zoneId`·`rackId`·`deviceId`는 전부 **path 입력값 취급**. `FarmAccessGuard.requireMember/requireOwner`로 농장 멤버십을 재검증한 뒤, **해당 리소스가 그 농장 소속인지 반드시 재확인**한다(다른 농장의 rackId를 자기 farmId 경로에 끼워 넣는 cross-tenant IDOR 차단). 미소속 리소스는 존재를 유추당하지 않도록 **404(R00x/E001)** 로 응답한다. 격리 테스트 동반 필수.
@@ -357,10 +368,10 @@
 | GET | `/api/farms/{farmId}/zones/{zoneId}/control` | 멤버 | — | 200 `ControlStateResponse` (모드 + 목표값 4종 + 장비 상태 + 대기 큐 + 최근 이력) |
 | PUT | `/api/farms/{farmId}/zones/{zoneId}/control/mode` | 멤버(데모 차단) | `{mode}` | 200 `ControlStateResponse` |
 | POST | `/api/farms/{farmId}/zones/{zoneId}/control/changes` | 멤버(데모 차단) | `ControlChangeRequest` | 201 `ControlChangeResponse` (큐에 적재만 — **장비에 즉시 반영하지 않는다**) |
-| DELETE | `/api/farms/{farmId}/zones/{zoneId}/control/changes/{changeId}` | 작성자 본인 또는 OWNER(데모 차단) | — | 204 (개별 취소 → `DISCARDED`) |
+| DELETE | `/api/farms/{farmId}/zones/{zoneId}/control/changes/{changeId}` | 작성자 본인 또는 ADMIN(데모 차단) | — | 204 (개별 취소 → `DISCARDED`) |
 | DELETE | `/api/farms/{farmId}/zones/{zoneId}/control/changes` | 멤버(데모 차단) | — | 204 (전체 되돌리기) |
 | POST | `/api/farms/{farmId}/zones/{zoneId}/control/apply` | 멤버(데모 차단) | `{expectedChangeIds: [..]}` | 200 `ControlApplyResponse` |
-| POST | `/api/farms/{farmId}/control/emergency-stop` | OWNER(데모 차단) | — | 200 `EmergencyStopResponse` (농장 전체) |
+| POST | `/api/farms/{farmId}/control/emergency-stop` | ADMIN(데모 차단) | — | 200 `EmergencyStopResponse` (농장 전체) |
 
 ### ⚠️ 동시성 (Critical — 이 절이 이 사이클의 핵심)
 1. **일괄 적용의 낙관적 검증**: `apply`는 `expectedChangeIds`를 **필수**로 받는다. 현재 PENDING 집합과 다르면 **CT005로 거부**하고 최신 큐를 응답에 실어 재확인시킨다. 사용자 A가 큐를 보고 있는 사이 B가 항목을 추가·삭제했는데 A의 "적용"이 그것까지 함께 반영해버리는 사고를 막는다
@@ -423,10 +434,10 @@
 |---|---|---|---|---|
 | GET | `/api/farms/{farmId}/alarm-events` | 멤버 | `?status=&severity=&page=&size=` | 200 `Page<AlarmEventResponse>` |
 | GET | `/api/farms/{farmId}/alarm-events/{id}` | 멤버 | — | 200 AlarmEventDetailResponse(+타임라인) |
-| PATCH | `/api/farms/{farmId}/alarm-events/{id}/acknowledge` | 멤버 | — | 200 AlarmEventResponse |
-| POST | `/api/farms/{farmId}/alarm-events/{id}/resolve` | 멤버 | — | 200 AlarmEventResponse |
-| POST | `/api/farms/{farmId}/alarm-events/{id}/memo` | 멤버 | AlarmMemoRequest | 200 AlarmEventDetailResponse |
-| POST | `/api/farms/{farmId}/alarm-events/acknowledge-all` | 멤버 | — | 200 AlarmAcknowledgeAllResponse |
+| PATCH | `/api/farms/{farmId}/alarm-events/{id}/acknowledge` | **OPERATOR** | — | 200 AlarmEventResponse |
+| POST | `/api/farms/{farmId}/alarm-events/{id}/resolve` | **OPERATOR** | — | 200 AlarmEventResponse |
+| POST | `/api/farms/{farmId}/alarm-events/{id}/memo` | **OPERATOR** | AlarmMemoRequest | 200 AlarmEventDetailResponse |
+| POST | `/api/farms/{farmId}/alarm-events/acknowledge-all` | **OPERATOR** | — | 200 AlarmAcknowledgeAllResponse |
 | GET | `/api/farms/{farmId}/alarm-events/stats` | 멤버 | `?days=7` (1~90, 위반 C001) | 200 AlarmStatsResponse |
 | GET | `/api/farms/{farmId}/alarm-events/unacknowledged-count` | 멤버 | — | 200 AlarmUnacknowledgedCountResponse |
 
@@ -435,7 +446,7 @@
 - **AlarmMemoRequest** `{note}` — `@NotBlank`, 최대 1000자, 저장 시 trim. 상태 전이 없이 타임라인에만 추가.
 - **AlarmStatsResponse** `{days, countBySeverity: {CRITICAL, WARNING}, avgAcknowledgeMinutes?}` — DB 집계(`GROUP BY severity` + `EXTRACT(EPOCH)/60`). 평균은 초 정밀도(구 구현의 분 단위 버림과 다름).
 - ✅ **severity는 규칙이 결정한다**(2026-08-25, #118/PR #121) — `alarm_rules.severity`(CRITICAL/WARNING)가 그대로 이벤트에 실린다. `countBySeverity.CRITICAL`이 0이 아닐 수 있다.
-- **접근 제어**: 전 엔드포인트 `requireMember(farmId, userId)` 선행 + `findByIdAndFarmId`로 조회(경로변수 불일치 IDOR 차단). actor는 `@AuthenticationPrincipal`에서만(요청 바디 미수용).
+- **접근 제어**: 조회는 `requireMember`, **처리(확인·해소·메모·일괄확인)는 `requireOperator`**(2026-08-25 #122) 선행 + `findByIdAndFarmId`로 조회(경로변수 불일치 IDOR 차단). actor는 `@AuthenticationPrincipal`에서만(요청 바디 미수용).
 - **마이그레이션**: **V19** `alarm_events`·`alarm_event_logs`
 
 ## 4.14 알람 규칙 (2026-08-25 확정, 이슈 #118 — 미구현 도메인 정리 2)
@@ -455,10 +466,10 @@
 | 메서드 | 경로 | 권한 | 응답 |
 |---|---|---|---|
 | GET | `/api/farms/{farmId}/alarm-rules` | 멤버 | 200 `List<AlarmRuleResponse>` |
-| POST | `/api/farms/{farmId}/alarm-rules` | **OWNER**(+데모 차단 A007) | 201 AlarmRuleResponse |
+| POST | `/api/farms/{farmId}/alarm-rules` | **ADMIN**(+데모 차단 A007) | 201 AlarmRuleResponse |
 | GET | `/api/farms/{farmId}/alarm-rules/{id}` | 멤버 | 200 AlarmRuleResponse |
-| PATCH | `/api/farms/{farmId}/alarm-rules/{id}` | **OWNER**(+A007) | 200 AlarmRuleResponse |
-| DELETE | `/api/farms/{farmId}/alarm-rules/{id}` | **OWNER**(+A007) | 204 |
+| PATCH | `/api/farms/{farmId}/alarm-rules/{id}` | **ADMIN**(+A007) | 200 AlarmRuleResponse |
+| DELETE | `/api/farms/{farmId}/alarm-rules/{id}` | **ADMIN**(+A007) | 204 |
 
 - **PATCH는 부분 수정** — 미전송 필드는 미변경. `source`/`metric`/`comparator`/`scopeType`/`scopeId`는 **수정 대상이 아니다**(요청 DTO에 없음 — 스코프 불변이라 cross-tenant 표면이 생기지 않는다).
 - **상한**: 농장당 **50건**(ALR002). 판정은 farm 행 비관적 락 안에서 수행(check-then-act 레이스 차단). ⚠️ `PUT /env-thresholds`가 만드는 파생 규칙(최대 4개)도 이 카운트에 포함된다.
@@ -485,14 +496,17 @@
 | A003 | 401 | access 토큰 만료(refresh로 회복 가능) |
 | A004 | 401 | 토큰 무효(변조·재사용·refresh 만료/미존재 포함 — 재로그인) |
 | A005 | 403 | 접근 권한 없음 |
-| A006 | 409 | OWNER 농장 보유 — 탈퇴 불가(농장 삭제 후 재시도) |
+| A006 | 409 | ADMIN 농장 보유 — 탈퇴 불가(강등 또는 농장 삭제 후 재시도). ⚠️ **승격된 ADMIN도 해당** |
 | A007 | 403 | 데모 계정에서 허용되지 않는 작업 |
 | F001 | 404 | 농장 없음 |
 | F002 | 403 | 농장 멤버 아님 |
-| F003 | 403 | OWNER 권한 필요 |
+| F003 | 403 | **관리자(ADMIN) 권한 필요** (2026-08-25 의미 재정의 — 구 "OWNER 권한 필요") |
 | F004 | 400 | 초대코드 무효/만료 |
 | F005 | 409 | 이미 농장 멤버 |
-| F006 | 400 | OWNER는 탈퇴 불가(농장 삭제로만) |
+| F006 | 400 | **마지막 관리자는 강등·제거 불가** (2026-08-25 의미 확장 — 구 "OWNER는 탈퇴 불가"를 특수 사례로 흡수. 강등(`PATCH .../role`)에서도 발생) |
+| F007 | 403 | 제어 권한(OPERATOR 이상) 필요 |
+| F008 | 403 | **관리자 승인 대기 중**(PENDING) — 농장 접근 불가. F002(멤버 아님)와 구분 |
+| F009 | 404 | 멤버십 없음(타 농장 소속 memberId 포함 — 존재 유추 차단) |
 | D001 | 404 | 진단 이력 없음 |
 | D002 | 400 | 이미지 형식/크기 오류 |
 | D003 | 502 | AI 서버 오류/불가 |
@@ -504,10 +518,10 @@
 | CH001 | 502 | 챗 응답 실패(AI 서버 오류·타임아웃) |
 | CH002 | 429 | AI 서버 혼잡(잠시 후 재시도) |
 | L001 | 404 | 작업일지 없음 |
-| L002 | 403 | 작업일지 수정/삭제 권한 없음(작성자 본인·삭제는 OWNER 겸용) |
+| L002 | 403 | 작업일지 수정/삭제 권한 없음(작성자 본인·삭제는 ADMIN 겸용) |
 | W001 | 502 | 날씨예보 조회 실패(KMA 오류·캐시 없음) |
 | N001 | 404 | 양액 레시피 없음 |
-| N002 | 403 | 양액 레시피 수정/삭제 권한 없음(작성자 본인·삭제는 OWNER 겸용) |
+| N002 | 403 | 양액 레시피 수정/삭제 권한 없음(작성자 본인·삭제는 ADMIN 겸용) |
 | N003 | 400 | 배합 불가(탱크 침전 위험·원수 보정 과다로 투입량 음수 등) |
 | R001 | 404 | 존 없음(타 농장 소속 포함 — 존재 유추 차단) |
 | R002 | 404 | 랙 없음(타 농장 소속 포함) |
