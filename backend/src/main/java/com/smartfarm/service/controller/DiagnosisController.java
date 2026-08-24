@@ -31,7 +31,7 @@ public class DiagnosisController {
 
     private final DiagnosisService diagnosisService;
 
-    @Operation(summary = "진단 요청 (멤버) — ai-server 프록시 후 이력 저장(ood_blocked도 정상 저장)")
+    @Operation(summary = "진단 요청 (OPERATOR 이상) — ai-server 프록시 후 이력 저장(ood_blocked도 정상 저장)")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DiagnosisResponse> createDiagnosis(@AuthenticationPrincipal Long userId,
                                                               @PathVariable Long farmId,
