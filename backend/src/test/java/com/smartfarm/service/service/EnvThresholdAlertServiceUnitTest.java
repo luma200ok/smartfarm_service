@@ -259,6 +259,24 @@ class EnvThresholdAlertServiceUnitTest {
     }
 
     @Test
+    @DisplayName("P1-1: 관측 부재 틱(indoor=null)은 누적 이탈 시간을 리셋하지 않는다 — ai-server 장애나 "
+            + "중복 tick으로 폴러가 indoor를 못 실어 보내도, 관측이 재개되면 이탈 구간을 이어서 센다"
+            + "(리셋되면 ai-server가 불안정한 동안 ENV_SNAPSHOT 알람이 영영 발동하지 못한다)")
+    void observationGapDoesNotResetElapsedBreachTime() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true));            // 이탈 시작(경과 0초)
+        tick(null, Duration.ofSeconds(60));                        // 관측 부재 — 상태 무변경이어야 한다
+        tick(null, Duration.ofSeconds(60));                        // 관측 부재
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(0));  // 관측 재개, 최초 이탈로부터 120초
+
+        // firstBreachAt이 리셋됐다면 여기서 경과 0초라 발동하지 않는다.
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), any(), any(), eq("RULE_10"),
+                any(), any(), any());
+    }
+
+    @Test
     @DisplayName("indoor가 null이어도 센서 규칙 평가는 계속된다(#117까지는 여기서 즉시 return했다)")
     void nullIndoorStillEvaluatesSensorRules() {
         AlarmRule sensorRule = rule(20L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
