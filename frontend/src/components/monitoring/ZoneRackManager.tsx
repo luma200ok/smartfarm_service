@@ -10,7 +10,9 @@ import type { RackRequest, ZoneRequest, ZoneTreeRackNode, ZoneTreeResponse, Zone
 interface ZoneRackManagerProps {
   farmId: string;
   tree: ZoneTreeResponse;
-  isOwner: boolean;
+  // ADMIN 전용(이슈 #123 — 구 OWNER 전용에서 이름만 갱신, 서열은 동일). 호출부(FarmDeviceManagement)의
+  // hasFarmRoleAtLeast 판정 결과를 그대로 받는다.
+  canManageStructure: boolean;
   /** 존·랙 CRUD 성공 후 상위(FarmDeviceManagement)의 존 트리·장비 목록을 함께 재조회시킨다. */
   onChanged: () => void;
 }
@@ -25,7 +27,7 @@ type RackModalState =
 // 장비 등록도 영영 쓸 수 없어 devices 화면에 최소 범위(이름·코드·층수)로 붙인다.
 // R004(랙 구조 변경 불가 — 하위 활성 장비 잔존)는 ERROR_MESSAGES에 이미 전용 문구가 있어
 // resolveErrorMessage가 그대로 정확한 안내를 반환한다(일반 오류로 뭉개지 않음).
-export default function ZoneRackManager({ farmId, tree, isOwner, onChanged }: ZoneRackManagerProps) {
+export default function ZoneRackManager({ farmId, tree, canManageStructure, onChanged }: ZoneRackManagerProps) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [zoneModal, setZoneModal] = useState<ZoneModalState>(null);
@@ -63,7 +65,7 @@ export default function ZoneRackManager({ farmId, tree, isOwner, onChanged }: Zo
     <div className="flex flex-col gap-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">존 · 랙 구성</h3>
-        {isOwner && (
+        {canManageStructure && (
           <button
             type="button"
             onClick={() => setZoneModal({ mode: "create" })}
@@ -78,7 +80,7 @@ export default function ZoneRackManager({ farmId, tree, isOwner, onChanged }: Zo
 
       {tree.zones.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          등록된 존이 없습니다.{isOwner ? " 존을 먼저 만들어야 랙·장비를 등록할 수 있습니다." : ""}
+          등록된 존이 없습니다.{canManageStructure ? " 존을 먼저 만들어야 랙·장비를 등록할 수 있습니다." : ""}
         </p>
       )}
 
@@ -87,7 +89,7 @@ export default function ZoneRackManager({ farmId, tree, isOwner, onChanged }: Zo
           <div key={zone.id} className="rounded-md border border-zinc-100 p-3 dark:border-zinc-900">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{zone.name}</span>
-              {isOwner && (
+              {canManageStructure && (
                 <div className="flex flex-none gap-2 text-xs">
                   <button
                     type="button"
@@ -124,7 +126,7 @@ export default function ZoneRackManager({ farmId, tree, isOwner, onChanged }: Zo
                     <span className="text-zinc-600 dark:text-zinc-300">
                       {rack.code} · {rack.levelCount}층
                     </span>
-                    {isOwner && (
+                    {canManageStructure && (
                       <div className="flex flex-none gap-2">
                         <button
                           type="button"

@@ -3,6 +3,7 @@ import type {
   AcceptInvitationRequest,
   FarmRequest,
   FarmResponse,
+  FarmRole,
   FarmSummaryResponse,
   InvitationResponse,
   MemberResponse,
@@ -50,4 +51,17 @@ export async function removeMember(
   memberId: number | string
 ): Promise<void> {
   return authFetch<void>(ENDPOINTS.farms.removeMember(farmId, memberId), { method: "DELETE" });
+}
+
+// 멤버 역할 변경(이슈 #122/#123, ADMIN 전용) — 초대 수락자(PENDING) 승인도 이 호출 하나로
+// 처리한다(role을 ADMIN/OPERATOR/VIEWER 중 하나로 부여). 서버가 최종 권한 판정(F003·F006).
+export async function updateMemberRole(
+  farmId: number | string,
+  memberId: number | string,
+  role: FarmRole
+): Promise<MemberResponse> {
+  return authFetch<MemberResponse>(ENDPOINTS.farms.memberRole(farmId, memberId), {
+    method: "PATCH",
+    body: { role },
+  });
 }

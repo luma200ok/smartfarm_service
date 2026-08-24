@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { Card, StatusBadge } from "@/components/monitoring/ui";
 import type { PreviewSeverity as Severity } from "@/types";
+import { ROLE_LABELS } from "@/constants";
 import { getDeviceSummary } from "@/lib/api/devices";
 import { getZoneTree } from "@/lib/api/zones";
 import type { DeviceSummaryResponse, FarmSummaryResponse, ZoneTreeResponse } from "@/types";
 
 const CROP_LABELS: Record<string, string> = { TOMATO: "토마토" };
-const ROLE_LABELS: Record<string, string> = { OWNER: "관리자", MEMBER: "멤버" };
 
 interface FarmStatusCardProps {
   farm: FarmSummaryResponse;
@@ -76,7 +76,9 @@ export default function FarmStatusCard({ farm, selected, onSelect }: FarmStatusC
             <div className="mt-1 flex items-center gap-1.5 text-[11.5px] leading-none text-dp-muted">
               <span>{CROP_LABELS[farm.cropType] ?? farm.cropType}</span>
               <span>·</span>
-              <span>{ROLE_LABELS[farm.myRole] ?? farm.myRole}</span>
+              <span className={farm.myRole === "PENDING" ? "font-medium text-dp-amber-deep" : undefined}>
+                {ROLE_LABELS[farm.myRole] ?? farm.myRole}
+              </span>
             </div>
           </div>
           <StatusBadge label={summaryLabel(summary)} tone={summaryTone(summary)} />

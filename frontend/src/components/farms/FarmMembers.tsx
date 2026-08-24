@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Card, CardTitle, StatusBadge } from "@/components/monitoring/ui";
+import { ROLE_LABELS } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
 import { getMe } from "@/lib/api/auth";
-import { createInvitation, getFarm, listMembers, removeMember } from "@/lib/api/farms";
-import type { FarmResponse, InvitationResponse, MemberResponse } from "@/types";
+import { createInvitation, getFarm, listMembers, removeMember, updateMemberRole } from "@/lib/api/farms";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
+import type { FarmResponse, FarmRole, InvitationResponse, MemberResponse } from "@/types";
 
-const ROLE_LABELS: Record<string, string> = { OWNER: "관리자", MEMBER: "멤버" };
+// 역할 변경 select에 노출할 부여 가능 역할 전부(PENDING 포함 — 승인 보류로 되돌리는 수단, 이슈 #122).
+const ASSIGNABLE_ROLES: FarmRole[] = ["ADMIN", "OPERATOR", "VIEWER", "PENDING"];
 
 interface FarmMembersProps {
   farmId: string;
@@ -84,7 +87,8 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
     return <p className="px-6 py-6 text-sm text-dp-sub">불러오는 중...</p>;
   }
 
-  const isOwner = farm.myRole === "OWNER";
+  // 멤버 관리(초대 발급·역할 변경·승인·제거)는 ADMIN 전용(contract §2, 이슈 #123).
+  const isAdmin = hasFarmRoleAtLeast(farm.myRole, "ADMIN");
 
   async function handleInvite() {
     setActionError(null);
@@ -115,7 +119,24 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
     }
   }
 
-  // 본인 탈퇴 (contract §3 "OWNER 또는 본인" — OWNER 본인은 F006으로 서버가 차단, 탈퇴 후 농장 목록으로 이동).
+  // 역할 변경(이슈 #122/#123) — 초대 수락자(PENDING) 승인도 이 호출 하나로 처리한다.
+  // 마지막 ADMIN 강등 등 위험한 전이는 서버가 F006으로 최종 차단한다(버튼 노출은 보조 UX).
+  async function handleRoleChange(memberId: number, role: FarmRole) {
+    setActionError(null);
+    setActionBusy(true);
+    try {
+      await updateMemberRole(farmId, memberId, role);
+      const [memberData, farmData] = await Promise.all([listMembers(farmId), getFarm(farmId)]);
+      setMembers(memberData);
+      setFarm(farmData);
+    } catch (err) {
+      setActionError(resolveErrorMessage(err));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  // 본인 탈퇴 (contract §3 "ADMIN 또는 본인" — 마지막 ADMIN 본인은 F006으로 서버가 차단, 탈퇴 후 농장 목록으로 이동, 이슈 #123).
   async function handleLeaveFarm(memberId: number) {
     if (!window.confirm("정말 이 농장에서 탈퇴하시겠습니까?")) return;
     setActionError(null);
@@ -130,9 +151,11 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
     }
   }
 
+  const pendingCount = members.filter((m) => m.pending).length;
+
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
-      {isOwner && (
+      {isAdmin && (
         <Card as="section" className="flex flex-col gap-2 p-4">
           <CardTitle as="h3">초대코드 발급</CardTitle>
           <button
@@ -153,36 +176,68 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
       )}
 
       <Card as="section" className="flex flex-col gap-2 p-4">
-        <CardTitle as="h3">멤버 ({members.length})</CardTitle>
+        <CardTitle as="h3">
+          멤버 ({members.length}){pendingCount > 0 && ` · 승인 대기 ${pendingCount}명`}
+        </CardTitle>
         <ul className="flex flex-col gap-2">
           {members.map((m) => {
             const isSelf = myUserId !== null && m.userId === myUserId;
             return (
-              <li key={m.memberId} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="text-dp-ink">{m.nickname}</span>
-                  <StatusBadge label={`${ROLE_LABELS[m.role] ?? m.role}${isSelf ? " · 나" : ""}`} tone="neutral" />
+              <li
+                key={m.memberId}
+                className={`flex flex-wrap items-center justify-between gap-2 rounded-md p-2 text-sm ${
+                  m.pending ? "bg-dp-amber-tint" : ""
+                }`}
+              >
+                <span className="flex flex-col gap-0.5">
+                  <span className="flex items-center gap-2">
+                    <span className="text-dp-ink">{m.nickname}</span>
+                    <StatusBadge
+                      label={`${ROLE_LABELS[m.role] ?? m.role}${isSelf ? " · 나" : ""}`}
+                      tone={m.pending ? "warning" : "neutral"}
+                    />
+                  </span>
+                  {m.pending && isAdmin && (
+                    <span className="text-xs text-dp-amber-deep">역할을 지정하면 가입이 승인됩니다.</span>
+                  )}
                 </span>
-                {isOwner && m.role !== "OWNER" && !isSelf && (
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={() => handleRemoveMember(m.memberId)}
-                    className="text-xs text-dp-red-ink hover:underline disabled:opacity-60"
-                  >
-                    제거
-                  </button>
-                )}
-                {isSelf && m.role !== "OWNER" && (
-                  <button
-                    type="button"
-                    disabled={actionBusy}
-                    onClick={() => handleLeaveFarm(m.memberId)}
-                    className="text-xs text-dp-red-ink hover:underline disabled:opacity-60"
-                  >
-                    탈퇴하기
-                  </button>
-                )}
+                <span className="flex items-center gap-3">
+                  {isAdmin && (
+                    <select
+                      aria-label={`${m.nickname} 역할 변경`}
+                      value={m.role}
+                      disabled={actionBusy}
+                      onChange={(e) => handleRoleChange(m.memberId, e.target.value as FarmRole)}
+                      className="rounded-md border border-dp-line-strong bg-dp-surface px-2 py-1 text-xs text-dp-body disabled:opacity-60"
+                    >
+                      {ASSIGNABLE_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABELS[role]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {isAdmin && m.role !== "ADMIN" && !isSelf && (
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={() => handleRemoveMember(m.memberId)}
+                      className="text-xs text-dp-red-ink hover:underline disabled:opacity-60"
+                    >
+                      제거
+                    </button>
+                  )}
+                  {isSelf && m.role !== "ADMIN" && (
+                    <button
+                      type="button"
+                      disabled={actionBusy}
+                      onClick={() => handleLeaveFarm(m.memberId)}
+                      className="text-xs text-dp-red-ink hover:underline disabled:opacity-60"
+                    >
+                      탈퇴하기
+                    </button>
+                  )}
+                </span>
               </li>
             );
           })}
