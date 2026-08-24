@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listDiagnoses } from "@/lib/api/diagnoses";
 import type { PageResponse, DiagnosisSummaryResponse } from "@/types";
@@ -13,6 +14,7 @@ interface DiagnosisHistoryListProps {
 
 const PAGE_SIZE = 10;
 
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109).
 export default function DiagnosisHistoryList({ farmId, refreshKey }: DiagnosisHistoryListProps) {
   const [page, setPage] = useState(0);
   const [data, setData] = useState<PageResponse<DiagnosisSummaryResponse> | null>(null);
@@ -45,33 +47,30 @@ export default function DiagnosisHistoryList({ farmId, refreshKey }: DiagnosisHi
   }, [farmId, page, refreshKey]);
 
   if (error) {
-    return <p className="text-sm text-red-600 dark:text-red-400">{error}</p>;
+    return <p className="text-sm text-dp-red-ink">{error}</p>;
   }
 
   if (!data) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>;
+    return <p className="text-sm text-dp-sub">불러오는 중...</p>;
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">진단 이력</h2>
+      <CardTitle size="lg">진단 이력</CardTitle>
       {data.content.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">진단 이력이 없습니다.</p>
+        <p className="text-sm text-dp-sub">진단 이력이 없습니다.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {data.content.map((d) => (
             <li key={d.id}>
-              <Link
-                href={`/farms/${farmId}/diagnoses/${d.id}`}
-                className="flex items-center justify-between rounded-md border border-zinc-200 px-4 py-2.5 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-              >
-                <span>
-                  {d.status === "ood_blocked" ? "진단 불가" : d.labelKr}{" "}
-                  <span className="text-zinc-400 dark:text-zinc-500">({d.part})</span>
-                </span>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500">
-                  {new Date(d.createdAt).toLocaleDateString()}
-                </span>
+              <Link href={`/farms/${farmId}/diagnoses/${d.id}`}>
+                <Card className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-dp-inset">
+                  <span>
+                    {d.status === "ood_blocked" ? "진단 불가" : d.labelKr}{" "}
+                    <span className="text-dp-faint">({d.part})</span>
+                  </span>
+                  <span className="text-xs text-dp-faint">{new Date(d.createdAt).toLocaleDateString()}</span>
+                </Card>
               </Link>
             </li>
           ))}
@@ -83,18 +82,18 @@ export default function DiagnosisHistoryList({ farmId, refreshKey }: DiagnosisHi
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             이전
           </button>
-          <span className="text-zinc-500 dark:text-zinc-400">
+          <span className="text-dp-sub">
             {data.page + 1} / {data.totalPages}
           </span>
           <button
             type="button"
             disabled={page + 1 >= data.totalPages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             다음
           </button>
