@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import FormField from "@/components/ui/FormField";
 import { VALIDATION } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
@@ -18,6 +19,7 @@ interface FarmCreateFormProps {
   variant?: "card" | "plain";
 }
 
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109).
 export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -52,18 +54,9 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
     }
   }
 
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className={
-        variant === "card"
-          ? "flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
-          : "flex flex-col gap-4"
-      }
-    >
-      {variant === "card" && (
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">새 농장 만들기</h2>
-      )}
+  const form = (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {variant === "card" && <CardTitle as="h2">새 농장 만들기</CardTitle>}
 
       <FormField
         id="farm-name"
@@ -78,14 +71,14 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
       />
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="farm-crop" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor="farm-crop" className="text-sm font-medium text-dp-body">
           작물
         </label>
         <select
           id="farm-crop"
           value={cropType}
           onChange={(e) => setCropType(e.target.value as CropType)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink outline-none focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
         >
           {CROP_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -103,15 +96,19 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
         onChange={(e) => setLocation(e.target.value)}
       />
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-dp-red-ink">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting}
-        className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {submitting ? "생성 중..." : "농장 생성"}
       </button>
     </form>
   );
+
+  if (variant === "plain") return form;
+
+  return <Card className="p-4">{form}</Card>;
 }

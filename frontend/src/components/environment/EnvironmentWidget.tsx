@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import { DEVICE_LABELS } from "@/constants";
 import { getTodayEnvironment } from "@/lib/api/environment";
 import MeasuredBadge from "@/components/monitoring/MeasuredBadge";
@@ -20,6 +21,8 @@ function formatHumidity(humidity: number | null): string {
 
 // 환경 대시보드 위젯 — 대시보드 홈·농장 상세 상단 공용(이슈 #22). 진입 시 1회 조회(폴링 없음).
 // 데이터 없음(null 필드)·조회 실패(D003 등)는 화면을 깨뜨리지 않고 안내 문구로 대체한다.
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle, components/monitoring/ui.tsx)로
+// 통일한다(이슈 #109). API 호출·상태 구조는 무변경.
 export default function EnvironmentWidget({ farmId }: EnvironmentWidgetProps) {
   const [data, setData] = useState<EnvironmentTodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,61 +52,49 @@ export default function EnvironmentWidget({ farmId }: EnvironmentWidgetProps) {
   }, [farmId]);
 
   if (loading) {
-    return (
-      <section className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        환경 데이터 불러오는 중...
-      </section>
-    );
+    return <Card as="section" className="p-4 text-sm text-dp-sub">환경 데이터 불러오는 중...</Card>;
   }
 
   if (unavailable || !data) {
-    return (
-      <section className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        환경 데이터를 일시적으로 불러올 수 없습니다.
-      </section>
-    );
+    return <Card as="section" className="p-4 text-sm text-dp-sub">환경 데이터를 일시적으로 불러올 수 없습니다.</Card>;
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <Card as="section" className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">오늘의 환경</h3>
+          <CardTitle as="h3">오늘의 환경</CardTitle>
           <MeasuredBadge />
         </div>
         <div className="flex items-center gap-2">
           {data.demo && (
-            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+            <span className="rounded px-2 py-0.5 text-xs font-medium text-dp-amber-deep bg-dp-amber-tint">
               공용 데모 온실 데이터
             </span>
           )}
-          <span className="text-xs text-zinc-400 dark:text-zinc-500">
-            {new Date(data.updatedAt).toLocaleString()} 기준
-          </span>
+          <span className="text-xs text-dp-faint">{new Date(data.updatedAt).toLocaleString()} 기준</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <div className="rounded-md bg-zinc-50 p-3 dark:bg-zinc-900">
-          <p className="text-xs text-zinc-400 dark:text-zinc-500">외기</p>
+        <div className="rounded-md bg-dp-inset p-3">
+          <p className="text-xs text-dp-faint">외기</p>
           {data.outdoor ? (
-            <p className="text-zinc-900 dark:text-zinc-50">
+            <p className="text-dp-ink">
               {formatTemp(data.outdoor.temp)} · {formatHumidity(data.outdoor.humidity)}
             </p>
           ) : (
-            <p className="text-zinc-400 dark:text-zinc-500">데이터 없음</p>
+            <p className="text-dp-faint">데이터 없음</p>
           )}
         </div>
-        <div className="rounded-md bg-zinc-50 p-3 dark:bg-zinc-900">
-          <p className="text-xs text-zinc-400 dark:text-zinc-500">
-            내부{data.indoor?.controlled ? " (제어중)" : ""}
-          </p>
+        <div className="rounded-md bg-dp-inset p-3">
+          <p className="text-xs text-dp-faint">내부{data.indoor?.controlled ? " (제어중)" : ""}</p>
           {data.indoor ? (
-            <p className="text-zinc-900 dark:text-zinc-50">
+            <p className="text-dp-ink">
               {formatTemp(data.indoor.temp)} · {formatHumidity(data.indoor.humidity)}
             </p>
           ) : (
-            <p className="text-zinc-400 dark:text-zinc-500">데이터 없음</p>
+            <p className="text-dp-faint">데이터 없음</p>
           )}
         </div>
       </div>
@@ -114,9 +105,7 @@ export default function EnvironmentWidget({ farmId }: EnvironmentWidgetProps) {
             <span
               key={device.name}
               className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                device.on
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                device.on ? "bg-dp-green-tint-2 text-dp-green-ink" : "bg-dp-badge-neutral text-dp-muted"
               }`}
             >
               {DEVICE_LABELS[device.name] ?? device.name}
@@ -127,12 +116,12 @@ export default function EnvironmentWidget({ farmId }: EnvironmentWidgetProps) {
       )}
 
       {data.alerts.length > 0 && (
-        <ul className="flex flex-col gap-1 text-xs text-amber-700 dark:text-amber-300">
+        <ul className="flex flex-col gap-1 text-xs text-dp-amber-deep">
           {data.alerts.map((alert) => (
             <li key={alert}>⚠ {alert}</li>
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

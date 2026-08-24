@@ -38,7 +38,7 @@ export default function DiagnosisDetail({ farmId, diagnosisId }: DiagnosisDetail
 
   if (notFound) {
     return (
-      <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="px-6 py-6 text-sm text-dp-sub">
         진단 이력을 찾을 수 없습니다.{" "}
         <Link href={`/farms/${farmId}/diagnoses`} className="underline">
           이력 목록으로
@@ -48,11 +48,11 @@ export default function DiagnosisDetail({ farmId, diagnosisId }: DiagnosisDetail
   }
 
   if (error) {
-    return <p className="px-6 py-6 text-sm text-red-600 dark:text-red-400">{error}</p>;
+    return <p className="px-6 py-6 text-sm text-dp-red-ink">{error}</p>;
   }
 
   if (!diagnosis) {
-    return <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>;
+    return <p className="px-6 py-6 text-sm text-dp-sub">불러오는 중...</p>;
   }
 
   return (

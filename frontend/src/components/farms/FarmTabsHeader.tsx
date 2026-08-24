@@ -99,19 +99,17 @@ export default function FarmTabsHeader({ farmId }: FarmTabsHeaderProps) {
   const tabs = buildTabs(farmId);
 
   return (
-    <div className="flex flex-col gap-3 border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+    <div className="flex flex-col gap-3 border-b border-dp-line px-6 py-4">
       <div className="flex items-center gap-2 min-h-6">
         {farm && (
           <>
-            <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{farm.name}</h1>
-            <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            <h1 className="text-lg font-semibold text-dp-ink">{farm.name}</h1>
+            <span className="rounded bg-dp-badge-neutral px-2 py-0.5 text-xs text-dp-sub">
               {CROP_LABELS[farm.cropType] ?? farm.cropType}
             </span>
           </>
         )}
-        {!farm && loadFailed && (
-          <p className="text-sm text-zinc-400 dark:text-zinc-500">농장 정보를 불러오지 못했습니다.</p>
-        )}
+        {!farm && loadFailed && <p className="text-sm text-dp-faint">농장 정보를 불러오지 못했습니다.</p>}
       </div>
       <nav className="flex gap-4 text-sm">
         {tabs.map((tab) => {
@@ -122,9 +120,7 @@ export default function FarmTabsHeader({ farmId }: FarmTabsHeaderProps) {
               href={tab.href}
               aria-current={active ? "page" : undefined}
               className={`border-b-2 pb-2 transition-colors ${
-                active
-                  ? "border-zinc-900 font-semibold text-zinc-900 dark:border-zinc-50 dark:text-zinc-50"
-                  : "border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                active ? "border-dp-ink font-semibold text-dp-ink" : "border-transparent text-dp-sub hover:text-dp-ink"
               }`}
             >
               {tab.label}

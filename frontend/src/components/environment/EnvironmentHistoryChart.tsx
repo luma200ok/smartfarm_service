@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import { ENV_HISTORY_RANGE_LABELS } from "@/constants";
 import { getEnvironmentHistory } from "@/lib/api/environment";
 import { useIsDarkMode } from "@/lib/useIsDarkMode";
@@ -38,6 +39,7 @@ function formatTooltipLabel(capturedAt: string): string {
 // 환경 시계열 차트(이슈 #53, 다함 벤치마킹 1) — 대시보드 환경 섹션(EnvironmentWidget) 하단 확장.
 // 기간 탭(24h/7d/30d) 전환마다 재조회. 다운샘플은 서버가 수행(contract §4.6) —
 // FE는 받은 point만 그대로 그리고 null 구간은 선을 끊는다(connectNulls=false).
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle·Chip)로 통일한다(이슈 #109).
 export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryChartProps) {
   const [range, setRange] = useState<EnvironmentHistoryRange>("24h");
   const [points, setPoints] = useState<EnvironmentHistoryPoint[]>([]);
@@ -99,14 +101,10 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
   };
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <Card as="section" className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">환경 추이</h3>
-        <div
-          role="tablist"
-          aria-label="조회 기간"
-          className="flex gap-1 rounded-md border border-zinc-200 p-0.5 dark:border-zinc-800"
-        >
+        <CardTitle as="h3">환경 추이</CardTitle>
+        <div role="tablist" aria-label="조회 기간" className="flex gap-1.5">
           {RANGES.map((r, i) => (
             <button
               key={r}
@@ -119,10 +117,10 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
               tabIndex={range === r ? 0 : -1}
               onClick={() => setRange(r)}
               onKeyDown={(e) => handleTabKeyDown(e, i)}
-              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-md px-[11px] py-1.5 text-[11.5px] leading-none font-medium whitespace-nowrap transition-colors ${
                 range === r
-                  ? "bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                  ? "bg-dp-ink font-semibold text-dp-surface"
+                  : "border border-dp-line-strong bg-dp-surface text-dp-body"
               }`}
             >
               {ENV_HISTORY_RANGE_LABELS[r]}
@@ -131,20 +129,18 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
         </div>
       </div>
 
-      {loading && <p className="text-sm text-zinc-500 dark:text-zinc-400">차트 데이터 불러오는 중...</p>}
+      {loading && <p className="text-sm text-dp-sub">차트 데이터 불러오는 중...</p>}
 
-      {!loading && unavailable && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">환경 추이를 불러올 수 없습니다.</p>
-      )}
+      {!loading && unavailable && <p className="text-sm text-dp-sub">환경 추이를 불러올 수 없습니다.</p>}
 
       {!loading && !unavailable && points.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">표시할 데이터가 없습니다.</p>
+        <p className="text-sm text-dp-sub">표시할 데이터가 없습니다.</p>
       )}
 
       {!loading && !unavailable && points.length > 0 && (
         <div className="flex flex-col gap-6">
           <div>
-            <p className="mb-1 text-xs text-zinc-400 dark:text-zinc-500">온도(℃)</p>
+            <p className="mb-1 text-xs text-dp-faint">온도(℃)</p>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={points}>
@@ -183,7 +179,7 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
           </div>
 
           <div>
-            <p className="mb-1 text-xs text-zinc-400 dark:text-zinc-500">습도(%)</p>
+            <p className="mb-1 text-xs text-dp-faint">습도(%)</p>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={points}>
@@ -222,6 +218,6 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
           </div>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

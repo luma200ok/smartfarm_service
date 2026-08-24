@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import FormField from "@/components/ui/FormField";
 import { ENV_THRESHOLD_RANGE } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
@@ -57,6 +58,8 @@ function findCrossFieldError(payload: EnvThresholdsRequest): string | null {
 // 임계치 알림 설정 폼(이슈 #53, 다함 벤치마킹 2) — 호출부(FarmOverview)가 myRole==='OWNER'일 때만 마운트.
 // 상하한 역전·범위 초과 등 값 검증은 서버가 C001로 판정 — 메시지 문자열 매칭 대신
 // resolveErrorMessage(ErrorCode 기준)로만 분기한다(레포 컨벤션).
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109). FormField는 폼
+// 계열 공용 컴포넌트라 그대로 쓴다.
 export default function EnvThresholdForm({ farmId }: EnvThresholdFormProps) {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -143,66 +146,57 @@ export default function EnvThresholdForm({ farmId }: EnvThresholdFormProps) {
   }
 
   if (!loaded) {
-    return (
-      <section className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-        임계치 설정 불러오는 중...
-      </section>
-    );
+    return <Card as="section" className="p-4 text-sm text-dp-sub">임계치 설정 불러오는 중...</Card>;
   }
 
   if (loadError) {
-    return (
-      <section className="rounded-lg border border-zinc-200 p-4 text-sm text-red-600 dark:border-zinc-800 dark:text-red-400">
-        {loadError}
-      </section>
-    );
+    return <Card as="section" className="p-4 text-sm text-dp-red-ink">{loadError}</Card>;
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">임계치 알림 설정</h3>
-        <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
-          />
-          알림 사용
-        </label>
-      </div>
+    <Card className="p-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <CardTitle as="h3">임계치 알림 설정</CardTitle>
+          <label className="flex items-center gap-2 text-sm text-dp-sub">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-dp-line-strong"
+            />
+            알림 사용
+          </label>
+        </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {FIELD_KEYS.map((key) => (
-          <FormField
-            key={key}
-            id={`threshold-${key}`}
-            label={FIELD_CONFIG[key].label}
-            type="number"
-            step="0.1"
-            min={FIELD_CONFIG[key].min}
-            max={FIELD_CONFIG[key].max}
-            value={fields[key]}
-            onChange={(e) => handleFieldChange(key, e.target.value)}
-            disabled={!enabled}
-          />
-        ))}
-      </div>
+        <div className="grid grid-cols-2 gap-3">
+          {FIELD_KEYS.map((key) => (
+            <FormField
+              key={key}
+              id={`threshold-${key}`}
+              label={FIELD_CONFIG[key].label}
+              type="number"
+              step="0.1"
+              min={FIELD_CONFIG[key].min}
+              max={FIELD_CONFIG[key].max}
+              value={fields[key]}
+              onChange={(e) => handleFieldChange(key, e.target.value)}
+              disabled={!enabled}
+            />
+          ))}
+        </div>
 
-      {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
-      {saveSuccess && <p className="text-sm text-emerald-600 dark:text-emerald-400">저장되었습니다.</p>}
+        {saveError && <p className="text-sm text-dp-red-ink">{saveError}</p>}
+        {saveSuccess && <p className="text-sm text-dp-green-ink">저장되었습니다.</p>}
 
-      <button
-        type="submit"
-        disabled={saving}
-        className="self-start rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900"
-      >
-        {saving ? "저장 중..." : "저장"}
-      </button>
-    </form>
+        <button
+          type="submit"
+          disabled={saving}
+          className="self-start rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-40"
+        >
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </form>
+    </Card>
   );
 }
