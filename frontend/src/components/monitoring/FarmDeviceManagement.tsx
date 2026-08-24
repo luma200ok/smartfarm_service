@@ -9,6 +9,7 @@ import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
 import { createDevice, deleteDevice, getDeviceSummary, listDevices, updateDevice } from "@/lib/api/devices";
 import { getZoneTree } from "@/lib/api/zones";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
 import { buildLocationMaps, describeDeviceLocation } from "@/lib/zoneTree";
 import type {
   DeviceKind,
@@ -52,7 +53,8 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
   const [rowError, setRowError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const isOwner = farm?.myRole === "OWNER";
+  // 장비/존/랙 구조 관리는 ADMIN 전용(contract §2, 이슈 #123).
+  const isAdmin = hasFarmRoleAtLeast(farm?.myRole, "ADMIN");
 
   useEffect(() => {
     getFarm(farmId)
@@ -165,7 +167,7 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
     <div className="flex flex-col gap-4 px-6 py-6">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">장비 · 센서</h2>
-        {isOwner && tree && (
+        {isAdmin && tree && (
           <button
             type="button"
             onClick={() => {
@@ -193,7 +195,7 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
       )}
 
       {tree && (
-        <ZoneRackManager farmId={farmId} tree={tree} isOwner={isOwner} onChanged={() => setRefreshKey((k) => k + 1)} />
+        <ZoneRackManager farmId={farmId} tree={tree} canManageStructure={isAdmin} onChanged={() => setRefreshKey((k) => k + 1)} />
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -272,7 +274,7 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
                 <th className="px-3 py-2 font-medium">최종 수신</th>
                 <th className="px-3 py-2 font-medium">보정 예정</th>
                 <th className="px-3 py-2 font-medium">상태</th>
-                {isOwner && <th className="px-3 py-2 font-medium">관리</th>}
+                {isAdmin && <th className="px-3 py-2 font-medium">관리</th>}
               </tr>
             </thead>
             <tbody>
@@ -300,7 +302,7 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
                   <td className="px-3 py-2">
                     <StatusChip status={device.status} />
                   </td>
-                  {isOwner && (
+                  {isAdmin && (
                     <td className="px-3 py-2">
                       <div className="flex gap-2 text-xs">
                         <button

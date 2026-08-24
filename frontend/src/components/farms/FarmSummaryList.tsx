@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Card } from "@/components/monitoring/ui";
+import { Card, StatusBadge } from "@/components/monitoring/ui";
+import { ROLE_LABELS } from "@/constants";
 import { listFarms } from "@/lib/api/farms";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import type { FarmSummaryResponse } from "@/types";
 
 const CROP_LABELS: Record<string, string> = { TOMATO: "토마토" };
-const ROLE_LABELS: Record<string, string> = { OWNER: "관리자", MEMBER: "멤버" };
 
 interface FarmSummaryListProps {
   emptyHint?: React.ReactNode;
@@ -62,9 +62,10 @@ export default function FarmSummaryList({ emptyHint, onLoaded }: FarmSummaryList
               <span className="font-medium text-dp-ink">{farm.name}</span>
               <span className="flex items-center gap-2 text-dp-sub">
                 <span>{CROP_LABELS[farm.cropType] ?? farm.cropType}</span>
-                <span className="rounded bg-dp-badge-neutral px-2 py-0.5 text-xs">
-                  {ROLE_LABELS[farm.myRole] ?? farm.myRole}
-                </span>
+                <StatusBadge
+                  label={ROLE_LABELS[farm.myRole] ?? farm.myRole}
+                  tone={farm.myRole === "PENDING" ? "warning" : "neutral"}
+                />
               </span>
             </Card>
           </Link>

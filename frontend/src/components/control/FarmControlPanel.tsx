@@ -6,6 +6,7 @@ import ZoneControlPanel from "@/components/control/ZoneControlPanel";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
 import { getZoneTree } from "@/lib/api/zones";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
 import type { FarmResponse, ZoneTreeResponse } from "@/types";
 
 interface FarmControlPanelProps {
@@ -27,7 +28,7 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
     getFarm(farmId)
       .then(setFarm)
       .catch(() => {
-        // 비상 정지 버튼(OWNER 전용) 노출 여부에만 쓰인다 — 실패해도 화면 자체는 계속 보여준다.
+        // 비상 정지 버튼(OPERATOR 이상) 노출 여부에만 쓰인다 — 실패해도 화면 자체는 계속 보여준다.
       });
   }, [farmId]);
 
@@ -50,7 +51,8 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
     };
   }, [farmId]);
 
-  const isOwner = farm?.myRole === "OWNER";
+  // 비상 정지·제어 조작은 OPERATOR 이상(contract §2, 이슈 #123).
+  const canControl = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
@@ -75,7 +77,9 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
           </div>
 
           {/* zoneId가 바뀌면 완전히 새로 마운트 — 이전 존의 초안 입력값·배너 상태가 새 존으로 새지 않게 */}
-          {zoneId !== null && <ZoneControlPanel key={zoneId} farmId={farmId} zoneId={zoneId} isOwner={isOwner} />}
+          {zoneId !== null && (
+            <ZoneControlPanel key={zoneId} farmId={farmId} zoneId={zoneId} canControl={canControl} />
+          )}
         </>
       )}
     </div>

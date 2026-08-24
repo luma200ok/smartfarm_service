@@ -38,18 +38,20 @@ type DeviceStatusTone = "done" | "warning" | "neutral" | "critical";
 interface ZoneControlPanelProps {
   farmId: string;
   zoneId: number;
-  isOwner: boolean;
+  // OPERATOR 이상(이슈 #123 — 구 OWNER 전용에서 완화. contract §2: 비상 정지·제어 조작은
+  // OPERATOR 이상). 이름은 호출부(FarmControlPanel)의 hasFarmRoleAtLeast 판정 결과를 그대로 받는다.
+  canControl: boolean;
 }
 
 // 존 제어 화면 본체(이슈 #108, contract §4.12) — 운전 모드 + 목표값 4종 + 장비 수동 조작 +
-// 적용 대기 큐(+ CT005 재확인 플로우) + 최근 적용 이력 + 비상 정지(OWNER).
+// 적용 대기 큐(+ CT005 재확인 플로우) + 최근 적용 이력 + 비상 정지(OPERATOR 이상, 이슈 #123).
 //
 // ⚠️ 대기 큐는 서버 저장이다(§4.12 — 새로고침·다중 탭·다중 사용자에 공유). 로컬 state로 흉내내지
 // 않고 조회/적용 응답의 큐를 그대로 반영한다.
 //
 // 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle·Chip·StatusBadge, components/monitoring/ui.tsx)를
 // 재사용한다(이슈 #108 리뷰 P2 — #109 라우트 디자인 통일 전에 이 화면만 팔레트가 이탈하지 않게).
-export default function ZoneControlPanel({ farmId, zoneId, isOwner }: ZoneControlPanelProps) {
+export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneControlPanelProps) {
   const [state, setState] = useState<ControlStateResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -256,7 +258,7 @@ export default function ZoneControlPanel({ farmId, zoneId, isOwner }: ZoneContro
         <CardTitle size="lg">{state.zoneName}</CardTitle>
         <SimulatedBadge simulated={state.simulated} />
         <div className="flex-1" />
-        {isOwner && (
+        {canControl && (
           <Chip as="button" tone="critical" disabled={busy} onClick={handleEmergencyStop}>
             비상 정지
           </Chip>

@@ -71,7 +71,7 @@ export async function applyControlChanges(
   });
 }
 
-// 농장 전체 비상 정지(OWNER 전용) — 제어기(kind=CONTROLLER)만 끈다. 센서는 계속 측정한다.
+// 농장 전체 비상 정지(OPERATOR 이상) — 제어기(kind=CONTROLLER)만 끈다. 센서는 계속 측정한다(이슈 #123).
 export async function emergencyStop(farmId: number | string): Promise<EmergencyStopResponse> {
   return authFetch<EmergencyStopResponse>(ENDPOINTS.farms.emergencyStop(farmId), { method: "POST" });
 }

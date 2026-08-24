@@ -10,14 +10,14 @@ import EnvironmentWidget from "@/components/environment/EnvironmentWidget";
 import ForecastWidget from "@/components/environment/ForecastWidget";
 import VpdWidget from "@/components/environment/VpdWidget";
 import FormField from "@/components/ui/FormField";
-import { VALIDATION } from "@/constants";
+import { ROLE_LABELS, VALIDATION } from "@/constants";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
 import { deleteFarm, getFarm, updateFarm } from "@/lib/api/farms";
 import { notifyFarmsChanged } from "@/lib/farmsBus";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
 import type { FarmResponse } from "@/types";
 
 const CROP_LABELS: Record<string, string> = { TOMATO: "토마토" };
-const ROLE_LABELS: Record<string, string> = { OWNER: "관리자", MEMBER: "멤버" };
 
 interface FarmOverviewProps {
   farmId: string;
@@ -80,7 +80,8 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
     return <p className="text-sm text-dp-sub">불러오는 중...</p>;
   }
 
-  const isOwner = farm.myRole === "OWNER";
+  // 구조 변경(농장 정보 수정·삭제)·임계치 폼 마운트는 ADMIN 전용(contract §2, 이슈 #123).
+  const isAdmin = hasFarmRoleAtLeast(farm.myRole, "ADMIN");
 
   async function handleEditSubmit() {
     if (editName.length < VALIDATION.farmName.minLength || editName.length > VALIDATION.farmName.maxLength) {
@@ -162,7 +163,10 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
           <>
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-dp-ink">{farm.name}</h2>
-              <StatusBadge label={ROLE_LABELS[farm.myRole] ?? farm.myRole} tone="neutral" />
+              <StatusBadge
+                label={ROLE_LABELS[farm.myRole] ?? farm.myRole}
+                tone={farm.myRole === "PENDING" ? "warning" : "neutral"}
+              />
             </div>
             <dl className="grid grid-cols-2 gap-2 text-sm text-dp-sub">
               <div>
@@ -178,7 +182,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
                 <dd>{farm.memberCount}명</dd>
               </div>
             </dl>
-            {isOwner && (
+            {isAdmin && (
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
@@ -203,7 +207,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
 
       {actionError && <p className="text-sm text-dp-red-ink">{actionError}</p>}
 
-      {isOwner && <EnvThresholdForm farmId={farmId} />}
+      {isAdmin && <EnvThresholdForm farmId={farmId} />}
     </div>
   );
 }

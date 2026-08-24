@@ -55,7 +55,7 @@ function findCrossFieldError(payload: EnvThresholdsRequest): string | null {
   return null;
 }
 
-// 임계치 알림 설정 폼(이슈 #53, 다함 벤치마킹 2) — 호출부(FarmOverview)가 myRole==='OWNER'일 때만 마운트.
+// 임계치 알림 설정 폼(이슈 #53, 다함 벤치마킹 2) — 호출부(FarmOverview)가 ADMIN일 때만 마운트(이슈 #123).
 // 상하한 역전·범위 초과 등 값 검증은 서버가 C001로 판정 — 메시지 문자열 매칭 대신
 // resolveErrorMessage(ErrorCode 기준)로만 분기한다(레포 컨벤션).
 // 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109). FormField는 폼
