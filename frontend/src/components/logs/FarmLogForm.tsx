@@ -56,14 +56,14 @@ export default function FarmLogForm({
       />
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="log-type" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor="log-type" className="text-sm font-medium text-dp-body">
           작업 종류
         </label>
         <select
           id="log-type"
           value={type}
           onChange={(e) => setType(e.target.value as FarmLogType)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
         >
           {TYPE_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
@@ -74,7 +74,7 @@ export default function FarmLogForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="log-memo" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor="log-memo" className="text-sm font-medium text-dp-body">
           메모 (선택)
         </label>
         <textarea
@@ -83,24 +83,24 @@ export default function FarmLogForm({
           maxLength={VALIDATION.farmLogMemo.maxLength}
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
         />
       </div>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-dp-red-ink">{error}</p>}
 
       <div className="flex gap-2">
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
         >
           {submitting ? "저장 중..." : submitLabel}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
+          className="rounded-md border border-dp-line-strong px-4 py-2 text-sm text-dp-body"
         >
           취소
         </button>
