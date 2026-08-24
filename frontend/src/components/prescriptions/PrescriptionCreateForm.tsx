@@ -6,8 +6,10 @@ import { Card, CardTitle } from "@/components/monitoring/ui";
 import { VALIDATION } from "@/constants";
 import { isPrescriptionLimitExceeded, resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listDiagnoses } from "@/lib/api/diagnoses";
+import { getFarm } from "@/lib/api/farms";
 import { createPrescription } from "@/lib/api/prescriptions";
-import type { DiagnosisSummaryResponse } from "@/types";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
+import type { DiagnosisSummaryResponse, FarmResponse } from "@/types";
 
 interface PrescriptionCreateFormProps {
   farmId: string;
@@ -24,6 +26,7 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
   // P004(처방 대기 한도 초과) 전용 — 재시도 유도 문구(error)와 달리 한도 안내로 별도 렌더한다.
   const [limitExceeded, setLimitExceeded] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [farm, setFarm] = useState<FarmResponse | null>(null);
 
   useEffect(() => {
     listDiagnoses(farmId, 0, 50)
@@ -32,6 +35,24 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
         // 진단 이력 로딩 실패는 처방 작성 자체를 막지 않는다 — 선택 옵션만 비운다.
       });
   }, [farmId]);
+
+  // 처방 요청은 OPERATOR 이상(contract §2, 이슈 #122/#123 리뷰 P2-B) — VIEWER는 폼 자리를
+  // 안내 문구로 대체한다. 조회 실패해도 조용히 canWrite=false로 남긴다(보수적으로 숨김).
+  useEffect(() => {
+    let cancelled = false;
+    getFarm(farmId)
+      .then((res) => {
+        if (!cancelled) setFarm(res);
+      })
+      .catch(() => {
+        // no-op
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
+
+  const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,6 +82,15 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
       }
       setSubmitting(false);
     }
+  }
+
+  if (!canWrite) {
+    return (
+      <Card className="p-4">
+        <CardTitle as="h2">처방 요청</CardTitle>
+        <p className="mt-2 text-sm text-dp-faint">조회 전용 역할입니다.</p>
+      </Card>
+    );
   }
 
   return (

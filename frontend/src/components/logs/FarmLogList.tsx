@@ -71,6 +71,9 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
 
   // 삭제=작성자 본인 또는 ADMIN(구 OWNER 승계, contract §2·L002) — 버튼 노출은 보조판정, 최종은 서버.
   const isAdmin = hasFarmRoleAtLeast(farm?.myRole, "ADMIN");
+  // 콘텐츠 작성(작업일지)은 OPERATOR 이상(contract §2, 이슈 #122/#123 리뷰 P2-B) — VIEWER는
+  // 폼 자체를 열지 못하게 자리를 안내 문구로 대체한다.
+  const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
   async function handleCreate(payload: FarmLogRequest) {
     setFormError(null);
@@ -135,13 +138,17 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
         <h2>
           <CardTitle size="lg">작업일지</CardTitle>
         </h2>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
-        >
-          작성
-        </button>
+        {canWrite ? (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
+          >
+            작성
+          </button>
+        ) : (
+          <span className="text-xs text-dp-faint">조회 전용 역할입니다.</span>
+        )}
       </div>
 
       {loadError && <p className="text-sm text-dp-red-ink">{loadError}</p>}

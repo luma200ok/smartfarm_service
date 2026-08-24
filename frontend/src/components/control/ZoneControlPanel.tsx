@@ -269,11 +269,19 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
         <span className="text-xs font-medium text-dp-sub">운전 모드</span>
         <div className="flex gap-1.5">
           {(["AUTO", "MANUAL"] as OperationMode[]).map((m) => (
-            <Chip key={m} as="button" size="sm" active={state.mode === m} disabled={busy} onClick={() => handleModeChange(m)}>
+            <Chip
+              key={m}
+              as="button"
+              size="sm"
+              active={state.mode === m}
+              disabled={busy || !canControl}
+              onClick={() => handleModeChange(m)}
+            >
               {OPERATION_MODE_LABELS[m]}
             </Chip>
           ))}
         </div>
+        {!canControl && <span className="text-[11px] text-dp-faint">조회 전용 역할입니다.</span>}
       </Card>
 
       {actionError && <p className="text-sm text-dp-red-ink">{actionError}</p>}
@@ -287,7 +295,7 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
         <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-2 min-[1200px]:grid-cols-4">
           {CONTROLLABLE_METRICS.map((metric) => {
             const setpoint = state.setpoints.find((s) => s.metric === metric);
-            const disabled = state.mode !== "AUTO";
+            const disabled = state.mode !== "AUTO" || !canControl;
             return (
               <Card key={metric} className={`p-3 ${disabled ? "opacity-50" : ""}`}>
                 <div className="text-xs font-medium text-dp-sub">{SENSOR_METRIC_LABELS[metric]}</div>
@@ -313,7 +321,11 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
                     변경 예약
                   </button>
                 </div>
-                {disabled && <p className="mt-1.5 text-[11px] text-dp-faint">수동 운전에서는 편집할 수 없습니다.</p>}
+                {!canControl ? (
+                  <p className="mt-1.5 text-[11px] text-dp-faint">조회 전용 역할입니다.</p>
+                ) : (
+                  disabled && <p className="mt-1.5 text-[11px] text-dp-faint">수동 운전에서는 편집할 수 없습니다.</p>
+                )}
               </Card>
             );
           })}
@@ -352,7 +364,7 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
                       role="switch"
                       aria-checked={on}
                       aria-label={`${device.name} ${on ? "끄기" : "켜기"}`}
-                      disabled={busy || modeBlocks}
+                      disabled={busy || modeBlocks || !canControl}
                       onClick={() => handleToggleDevice(device)}
                       className={`flex-none rounded-full px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-40 ${
                         on ? "bg-dp-green-tint-2 text-dp-green-ink" : "bg-dp-badge-neutral text-dp-muted"
@@ -368,8 +380,12 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
             })}
           </div>
         )}
-        {state.mode !== "MANUAL" && (
-          <p className="mt-1.5 text-[11px] text-dp-faint">자동 운전 중에는 장비를 직접 조작할 수 없습니다.</p>
+        {!canControl ? (
+          <p className="mt-1.5 text-[11px] text-dp-faint">조회 전용 역할입니다.</p>
+        ) : (
+          state.mode !== "MANUAL" && (
+            <p className="mt-1.5 text-[11px] text-dp-faint">자동 운전 중에는 장비를 직접 조작할 수 없습니다.</p>
+          )
         )}
       </div>
 
@@ -377,7 +393,7 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
       <Card className="p-3">
         <div className="mb-2 flex items-center justify-between">
           <CardTitle>적용 대기 변경</CardTitle>
-          {state.pendingChanges.length > 0 && (
+          {canControl && state.pendingChanges.length > 0 && (
             <button
               type="button"
               disabled={busy}
@@ -411,28 +427,32 @@ export default function ZoneControlPanel({ farmId, zoneId, canControl }: ZoneCon
                 className="flex items-center justify-between gap-2 rounded-md bg-dp-inset px-3 py-2 text-xs text-dp-body"
               >
                 <span className="min-w-0 flex-1 truncate">{describeChange(change, devicesById)}</span>
-                <button
-                  type="button"
-                  aria-label="이 변경 취소"
-                  disabled={busy}
-                  onClick={() => handleCancelChange(change.id)}
-                  className="flex-none text-dp-faint hover:text-dp-ink disabled:opacity-60"
-                >
-                  ×
-                </button>
+                {canControl && (
+                  <button
+                    type="button"
+                    aria-label="이 변경 취소"
+                    disabled={busy}
+                    onClick={() => handleCancelChange(change.id)}
+                    className="flex-none text-dp-faint hover:text-dp-ink disabled:opacity-60"
+                  >
+                    ×
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
 
-        <button
-          type="button"
-          disabled={busy || state.pendingChanges.length === 0}
-          onClick={handleApply}
-          className="mt-3 w-full rounded-md bg-dp-ink py-2 text-sm font-semibold text-dp-surface disabled:opacity-40"
-        >
-          {state.pendingChanges.length}건 적용
-        </button>
+        {canControl && (
+          <button
+            type="button"
+            disabled={busy || state.pendingChanges.length === 0}
+            onClick={handleApply}
+            className="mt-3 w-full rounded-md bg-dp-ink py-2 text-sm font-semibold text-dp-surface disabled:opacity-40"
+          >
+            {state.pendingChanges.length}건 적용
+          </button>
+        )}
       </Card>
 
       {state.recentApplyLogs.length > 0 && (
