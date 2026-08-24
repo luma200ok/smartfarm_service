@@ -55,7 +55,7 @@ public class DeviceController {
         return ResponseEntity.ok(deviceService.summary(farmId, userId));
     }
 
-    @Operation(summary = "장비 등록 (OWNER, 데모 차단) — 위치(존·랙·층) 중 최소 하나 필수")
+    @Operation(summary = "장비 등록 (ADMIN, 데모 차단) — 위치(존·랙·층) 중 최소 하나 필수")
     @PostMapping
     public ResponseEntity<DeviceResponse> createDevice(@AuthenticationPrincipal Long userId,
                                                         @PathVariable Long farmId,
@@ -63,7 +63,7 @@ public class DeviceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(deviceService.createDevice(farmId, userId, request));
     }
 
-    @Operation(summary = "장비 부분 수정 (OWNER, 데모 차단)")
+    @Operation(summary = "장비 부분 수정 (ADMIN, 데모 차단)")
     @PatchMapping("/{deviceId}")
     public ResponseEntity<DeviceResponse> updateDevice(@AuthenticationPrincipal Long userId,
                                                         @PathVariable Long farmId,
@@ -72,7 +72,7 @@ public class DeviceController {
         return ResponseEntity.ok(deviceService.updateDevice(farmId, userId, deviceId, request));
     }
 
-    @Operation(summary = "장비 삭제 — soft delete (OWNER, 데모 차단)")
+    @Operation(summary = "장비 삭제 — soft delete (ADMIN, 데모 차단)")
     @DeleteMapping("/{deviceId}")
     public ResponseEntity<Void> deleteDevice(@AuthenticationPrincipal Long userId,
                                               @PathVariable Long farmId,

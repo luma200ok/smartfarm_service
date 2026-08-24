@@ -62,7 +62,7 @@ public class ZoneService {
     @Transactional
     public ZoneResponse createZone(Long farmId, Long userId, ZoneRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
 
         Zone zone = zoneRepository.save(Zone.builder()
                 .farmId(farmId)
@@ -75,7 +75,7 @@ public class ZoneService {
     @Transactional
     public ZoneResponse updateZone(Long farmId, Long userId, Long zoneId, ZoneUpdateRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Zone zone = findZoneOrThrow(farmId, zoneId);
         zone.update(request.name(), request.displayOrder());
         return ZoneResponse.from(zone);
@@ -84,7 +84,7 @@ public class ZoneService {
     @Transactional
     public void deleteZone(Long farmId, Long userId, Long zoneId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Zone zone = findZoneOrThrow(farmId, zoneId);
 
         List<Rack> racks = rackRepository.findByZoneIdOrderByDisplayOrderAscIdAsc(zoneId);

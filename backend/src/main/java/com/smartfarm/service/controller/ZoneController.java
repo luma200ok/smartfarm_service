@@ -40,7 +40,7 @@ public class ZoneController {
         return ResponseEntity.ok(zoneService.findZoneTree(farmId, userId));
     }
 
-    @Operation(summary = "존 생성 (OWNER, 데모 차단)")
+    @Operation(summary = "존 생성 (ADMIN, 데모 차단)")
     @PostMapping
     public ResponseEntity<ZoneResponse> createZone(@AuthenticationPrincipal Long userId,
                                                     @PathVariable Long farmId,
@@ -48,7 +48,7 @@ public class ZoneController {
         return ResponseEntity.status(HttpStatus.CREATED).body(zoneService.createZone(farmId, userId, request));
     }
 
-    @Operation(summary = "존 부분 수정 (OWNER, 데모 차단)")
+    @Operation(summary = "존 부분 수정 (ADMIN, 데모 차단)")
     @PatchMapping("/{zoneId}")
     public ResponseEntity<ZoneResponse> updateZone(@AuthenticationPrincipal Long userId,
                                                     @PathVariable Long farmId,
@@ -57,7 +57,7 @@ public class ZoneController {
         return ResponseEntity.ok(zoneService.updateZone(farmId, userId, zoneId, request));
     }
 
-    @Operation(summary = "존 삭제 — soft delete, 하위 랙·층 함께 (OWNER, 데모 차단)")
+    @Operation(summary = "존 삭제 — soft delete, 하위 랙·층 함께 (ADMIN, 데모 차단)")
     @DeleteMapping("/{zoneId}")
     public ResponseEntity<Void> deleteZone(@AuthenticationPrincipal Long userId,
                                             @PathVariable Long farmId,
@@ -66,7 +66,7 @@ public class ZoneController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "랙 생성 (OWNER, 데모 차단) — levelCount만큼 층 자동 생성")
+    @Operation(summary = "랙 생성 (ADMIN, 데모 차단) — levelCount만큼 층 자동 생성")
     @PostMapping("/{zoneId}/racks")
     public ResponseEntity<RackResponse> createRack(@AuthenticationPrincipal Long userId,
                                                     @PathVariable Long farmId,

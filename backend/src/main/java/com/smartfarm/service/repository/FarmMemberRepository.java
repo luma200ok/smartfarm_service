@@ -38,6 +38,21 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
     long countLiveMembersByFarmId(@Param("farmId") Long farmId);
 
     /**
+     * 농장의 특정 역할 생존 멤버 수 — "마지막 ADMIN 보호"(F006) 판정용(이슈 #122).
+     *
+     * <p>{@code countLiveMembersByFarmId}와 같은 User join이다: 탈퇴(soft delete) 유저의 잔존
+     * ADMIN 멤버십 행이 관리자 수를 부풀리면, 실제로는 관리 불능인 농장에서 마지막 관리자의
+     * 강등·제거가 통과해 버린다.
+     *
+     * <p>⚠️ 호출자는 <b>농장 행을 잠근 뒤</b> 이 쿼리를 실행해야 한다. "세어 보고 → 바꾸기"는
+     * check-then-act라, 잠금이 없으면 두 ADMIN이 서로를 동시에 강등할 때 양쪽 모두 "관리자 2명"을
+     * 보고 통과해 관리자가 0명이 된다.
+     */
+    @Query("SELECT COUNT(fm) FROM FarmMember fm JOIN User u ON u.id = fm.userId "
+            + "WHERE fm.farmId = :farmId AND fm.role = :role")
+    long countLiveMembersByFarmIdAndRole(@Param("farmId") Long farmId, @Param("role") FarmRole role);
+
+    /**
      * 내 농장 목록 — Farm/User 양쪽 @SQLRestriction으로 soft delete 농장·탈퇴 유저의
      * 잔존 멤버십 행은 join에서 제외됨(탈퇴 유저의 농장 요약 노출 차단, 가드 3곳과 동일 패턴).
      */

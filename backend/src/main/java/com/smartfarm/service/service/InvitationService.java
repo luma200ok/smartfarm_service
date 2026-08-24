@@ -42,13 +42,13 @@ public class InvitationService {
     private final DemoAccountGuard demoAccountGuard;
 
     /**
-     * 초대코드 발급 — 농장당 활성 코드 1건 (contract §2):
+     * 초대코드 발급(ADMIN) — 농장당 활성 코드 1건 (contract §2):
      * 기존 활성 코드를 전부 무효화한 뒤 신규 발급한다. 원문은 응답으로 1회만 반환, DB에는 해시만 저장.
      */
     @Transactional
     public InvitationResponse createInvitation(Long farmId, Long userId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         invitationRepository.revokeAllActiveByFarmId(farmId, LocalDateTime.now());
         String rawCode = generateCode();
         Invitation invitation = invitationRepository.save(Invitation.builder()
@@ -62,6 +62,14 @@ public class InvitationService {
     /**
      * 초대 수락 — 코드 미존재/폐기/만료/soft delete된 농장의 코드는 전부 F004로 통일
      * (수락자에게 코드 상태·농장 존재 여부를 구분해 노출하지 않음).
+     *
+     * <p>⚠️ <b>수락은 {@link FarmRole#PENDING}(접근 불가)으로 합류시킨다</b>(이슈 #122 사용자
+     * 결정 ⓑ — 구 "수락 = 즉시 활성 MEMBER"에서 <b>바뀐 동작</b>이다). ADMIN이 역할 변경 API
+     * ({@code PATCH .../members/{memberId}/role})로 역할을 부여해야 농장 데이터에 접근할 수 있다.
+     * 초대코드가 유출돼도 무단 가입자가 곧바로 농장 데이터를 읽지 못하는 효과를 겸한다.
+     *
+     * <p>PENDING도 멤버십 행은 존재하므로 중복 수락은 그대로 F005이고, 멤버 목록에는 대기자로
+     * 보인다(memberCount에도 포함된다 — 관리자가 승인 대기 인원을 인지해야 한다).
      *
      * <p>FarmAccessGuard를 타지 않는 진입점이라 유저 생존을 직접 검증한다
      * (contract 탈퇴 봉쇄 ① — 탈퇴 유저의 잔존 access 토큰으로 멤버십 재획득 차단).
@@ -86,7 +94,7 @@ public class InvitationService {
             farmMemberRepository.saveAndFlush(FarmMember.builder()
                     .farmId(farm.getId())
                     .userId(userId)
-                    .role(FarmRole.MEMBER)
+                    .role(FarmRole.PENDING)
                     .build());
         } catch (DataIntegrityViolationException e) {
             // 같은 유저 동시 수락 race → unique(farm_id, user_id) 위반만 F005로 변환.
@@ -96,7 +104,7 @@ public class InvitationService {
             }
             throw e;
         }
-        return FarmResponse.of(farm, FarmRole.MEMBER,
+        return FarmResponse.of(farm, FarmRole.PENDING,
                 farmMemberRepository.countLiveMembersByFarmId(farm.getId()));
     }
 

@@ -40,7 +40,7 @@ public class NutrientRecipeController {
         return ResponseEntity.ok(nutrientService.calculate(farmId, userId, request));
     }
 
-    @Operation(summary = "양액 배합 레시피 저장 (멤버, 데모 계정도 허용)")
+    @Operation(summary = "양액 배합 레시피 저장 (OPERATOR 이상, 데모 계정도 허용)")
     @PostMapping
     public ResponseEntity<NutrientRecipeResponse> createRecipe(@AuthenticationPrincipal Long userId,
                                                                   @PathVariable Long farmId,
@@ -64,7 +64,7 @@ public class NutrientRecipeController {
         return ResponseEntity.ok(nutrientService.findRecipe(farmId, userId, recipeId));
     }
 
-    @Operation(summary = "양액 배합 레시피 수정 (작성자 본인만)")
+    @Operation(summary = "양액 배합 레시피 수정 (작성자 본인만, OPERATOR 이상)")
     @PatchMapping("/{recipeId}")
     public ResponseEntity<NutrientRecipeResponse> updateRecipe(@AuthenticationPrincipal Long userId,
                                                                   @PathVariable Long farmId,
@@ -73,7 +73,7 @@ public class NutrientRecipeController {
         return ResponseEntity.ok(nutrientService.updateRecipe(farmId, userId, recipeId, request));
     }
 
-    @Operation(summary = "양액 배합 레시피 삭제 (작성자 본인 또는 OWNER)")
+    @Operation(summary = "양액 배합 레시피 삭제 (작성자 본인 또는 ADMIN)")
     @DeleteMapping("/{recipeId}")
     public ResponseEntity<Void> deleteRecipe(@AuthenticationPrincipal Long userId,
                                               @PathVariable Long farmId,

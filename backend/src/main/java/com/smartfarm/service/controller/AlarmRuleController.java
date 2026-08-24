@@ -47,7 +47,7 @@ public class AlarmRuleController {
         return ResponseEntity.ok(alarmRuleService.findRule(farmId, userId, ruleId));
     }
 
-    @Operation(summary = "알람 규칙 생성 (OWNER, 데모 차단)")
+    @Operation(summary = "알람 규칙 생성 (ADMIN, 데모 차단)")
     @PostMapping
     public ResponseEntity<AlarmRuleResponse> createRule(@AuthenticationPrincipal Long userId,
                                                          @PathVariable Long farmId,
@@ -56,7 +56,7 @@ public class AlarmRuleController {
                 .body(alarmRuleService.createRule(farmId, userId, request));
     }
 
-    @Operation(summary = "알람 규칙 부분 수정 (OWNER, 데모 차단) — 소스·지표·비교조건·스코프는 변경 불가")
+    @Operation(summary = "알람 규칙 부분 수정 (ADMIN, 데모 차단) — 소스·지표·비교조건·스코프는 변경 불가")
     @PatchMapping("/{ruleId}")
     public ResponseEntity<AlarmRuleResponse> updateRule(@AuthenticationPrincipal Long userId,
                                                          @PathVariable Long farmId,
@@ -65,7 +65,7 @@ public class AlarmRuleController {
         return ResponseEntity.ok(alarmRuleService.updateRule(farmId, userId, ruleId, request));
     }
 
-    @Operation(summary = "알람 규칙 삭제 (OWNER, 데모 차단) — 열려 있던 알람은 자동 해소")
+    @Operation(summary = "알람 규칙 삭제 (ADMIN, 데모 차단) — 열려 있던 알람은 자동 해소")
     @DeleteMapping("/{ruleId}")
     public ResponseEntity<Void> deleteRule(@AuthenticationPrincipal Long userId,
                                             @PathVariable Long farmId,

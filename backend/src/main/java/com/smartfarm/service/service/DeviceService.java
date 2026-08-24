@@ -118,7 +118,7 @@ public class DeviceService {
     @Transactional
     public DeviceResponse createDevice(Long farmId, Long userId, DeviceRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
 
         if (request.name() == null || request.name().isBlank()) {
             throw new CustomException(ErrorCode.C001, "장비명은 필수입니다.");
@@ -168,7 +168,7 @@ public class DeviceService {
     @Transactional
     public DeviceResponse updateDevice(Long farmId, Long userId, Long deviceId, DeviceRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Device device = findDeviceOrThrow(farmId, deviceId);
         rejectControlOnlyStatusChange(device.getStatus(), request.status());
 
@@ -208,7 +208,7 @@ public class DeviceService {
     @Transactional
     public void deleteDevice(Long farmId, Long userId, Long deviceId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Device device = findDeviceOrThrow(farmId, deviceId);
         // 제어 캐스케이드(contract §4.12) — 이 장비를 참조하는 PENDING 큐 폐기(고아 참조 방지).
         controlCascadeService.discardForDevice(device);

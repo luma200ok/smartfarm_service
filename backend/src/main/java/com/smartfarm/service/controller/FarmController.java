@@ -31,7 +31,7 @@ public class FarmController {
 
     private final FarmService farmService;
 
-    @Operation(summary = "농장 생성 (생성자=OWNER)")
+    @Operation(summary = "농장 생성 (생성자=ADMIN)")
     @PostMapping
     public ResponseEntity<FarmResponse> createFarm(@AuthenticationPrincipal Long userId,
                                                    @Valid @RequestBody FarmRequest request) {
@@ -51,7 +51,7 @@ public class FarmController {
         return ResponseEntity.ok(farmService.findFarm(farmId, userId));
     }
 
-    @Operation(summary = "농장 부분 수정 (OWNER)")
+    @Operation(summary = "농장 부분 수정 (ADMIN)")
     @PatchMapping("/{farmId}")
     public ResponseEntity<FarmResponse> updateFarm(@AuthenticationPrincipal Long userId,
                                                    @PathVariable Long farmId,
@@ -59,7 +59,7 @@ public class FarmController {
         return ResponseEntity.ok(farmService.updateFarm(farmId, userId, request));
     }
 
-    @Operation(summary = "농장 디스코드 웹훅 설정/해제 (OWNER) — null=해제, URL 원문은 응답에 없음(webhookConfigured만)")
+    @Operation(summary = "농장 디스코드 웹훅 설정/해제 (ADMIN) — null=해제, URL 원문은 응답에 없음(webhookConfigured만)")
     @PatchMapping("/{farmId}/webhook")
     public ResponseEntity<FarmResponse> updateWebhook(@AuthenticationPrincipal Long userId,
                                                        @PathVariable Long farmId,
@@ -67,7 +67,7 @@ public class FarmController {
         return ResponseEntity.ok(farmService.updateWebhook(farmId, userId, request));
     }
 
-    @Operation(summary = "농장 삭제 — soft delete (OWNER)")
+    @Operation(summary = "농장 삭제 — soft delete (ADMIN)")
     @DeleteMapping("/{farmId}")
     public ResponseEntity<Void> deleteFarm(@AuthenticationPrincipal Long userId,
                                            @PathVariable Long farmId) {
