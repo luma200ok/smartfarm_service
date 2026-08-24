@@ -78,7 +78,8 @@ public enum ErrorCode {
 
     // Alarm Event (알람 이벤트 도메인 — 이슈 #116)
     AL001(HttpStatus.NOT_FOUND, "AL001", "알람 이벤트를 찾을 수 없습니다."),
-    AL002(HttpStatus.CONFLICT, "AL002", "현재 상태에서는 처리할 수 없는 알람입니다.");
+    AL002(HttpStatus.CONFLICT, "AL002", "현재 상태에서는 처리할 수 없는 알람입니다."),
+    AL003(HttpStatus.CONFLICT, "AL003", "다른 사용자가 먼저 처리했습니다. 새로고침 후 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String code;

@@ -15,7 +15,9 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Component;
  * <p>단일 스케줄러 스레드가 순차 호출하므로 별도 락은 필요 없다({@link ConcurrentHashMap}은
  * 안전망일 뿐 실질적 동시 접근은 없다).
  */
+@Slf4j
 @Component
 public class EnvThresholdAlertService {
 
@@ -122,8 +125,14 @@ public class EnvThresholdAlertService {
     }
 
     /**
-     * 알람 이벤트 생성 훅(이슈 #116) — {@link AlarmEventService#recordBreach}가 멱등을 보장하므로
-     * (같은 farm×metricKey 조합 미해결 이벤트 존재 시 no-op) 매 확정 이탈마다 호출해도 안전하다.
+     * 알람 이벤트 생성 훅(이슈 #116) — {@link AlarmEventService#recordBreach}가 1차로 멱등을
+     * 보장하지만(같은 farm×metricKey 조합 미해결 이벤트 존재 시 no-op), 그 조회-후-저장 자체가
+     * 원자적이지 않아 동시 브리치 레이스에서는 DB의 partial unique index(V19, 2차 방어선)가
+     * {@link DataIntegrityViolationException}을 던질 수 있다. {@code recordBreach}의 트랜잭션이
+     * 이미 rollback-only로 마킹된 지점(그 내부)이 아니라 여기서 잡아야 한다 — 그렇지 않으면
+     * evaluateDirection → evaluate()의 for 루프를 타고 올라가 {@code EnvironmentSnapshotPoller}의
+     * catch(Exception)까지 전파되며, 그 사이 아직 평가되지 않은 "뒤 순서 농장 전부"가 이번 틱에서
+     * 알람·웹훅 모두 유실된다(SensorSimulatorService의 농장 단위 격리 catch와 동일한 이유).
      * severity는 현재 CRITICAL/WARNING을 구분하는 별도 기준이 없어 전부 WARNING으로 기록한다
      * (후속 이슈 — 항목별/이탈폭별 등급 분화).
      */
@@ -131,8 +140,14 @@ public class EnvThresholdAlertService {
                                     double value, double boundary) {
         String message = metric.label() + " " + direction.label()
                 + " (현재 " + value + metric.unit() + " / 기준 " + boundary + metric.unit() + ")";
-        alarmEventService.recordBreach(threshold.getFarmId(), AlarmSeverity.WARNING, AlarmSourceType.ENV_THRESHOLD,
-                metricKeyOf(metric, direction), message, LocalDateTime.now(clock), threshold.getId());
+        Long farmId = threshold.getFarmId();
+        String metricKey = metricKeyOf(metric, direction);
+        try {
+            alarmEventService.recordBreach(farmId, AlarmSeverity.WARNING, AlarmSourceType.ENV_THRESHOLD,
+                    metricKey, message, LocalDateTime.now(clock), threshold.getId());
+        } catch (DataIntegrityViolationException e) {
+            log.debug("알람 이벤트 중복 생성(멱등 2차 방어선) — 무시: farm={}, metric={}", farmId, metricKey);
+        }
     }
 
     /** farm×항목×방향 조합을 표현하는 alarm_events.metric_key 값(예: INDOOR_TEMP_HIGH, 이슈 #116). */

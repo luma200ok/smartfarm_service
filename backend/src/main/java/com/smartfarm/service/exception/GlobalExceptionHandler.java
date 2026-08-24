@@ -4,6 +4,7 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -30,6 +31,19 @@ public class GlobalExceptionHandler {
             ControlQueueConflictException e) {
         return ResponseEntity.status(e.getErrorCode().getStatus())
                 .body(ControlQueueConflictResponse.of(e));
+    }
+
+    /**
+     * JPA {@code @Version} 낙관적 락 충돌(예: AlarmEvent 동시 acknowledge/resolve, 이슈 #116) —
+     * CustomException을 거치지 않고 Spring Data가 직접 던지므로 별도 핸들러가 없으면 마지막
+     * {@code Exception.class} 핸들러로 떨어져 500 C002가 된다. 이 예외는 {@link CustomException}과
+     * 상속 관계가 아니어서 우선순위 경쟁이 없다(타입이 겹치는 {@link ControlQueueConflictException}과
+     * 달리 순서 무관하게 항상 이 핸들러가 매치된다).
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException e) {
+        return ResponseEntity.status(ErrorCode.AL003.getStatus())
+                .body(ErrorResponse.of(ErrorCode.AL003));
     }
 
     @ExceptionHandler(CustomException.class)
