@@ -21,7 +21,14 @@ export function hasFarmRoleAtLeast(role: FarmRole | null | undefined, required: 
   return FARM_ROLE_RANK[role] >= FARM_ROLE_RANK[required];
 }
 
-/** 승인된 멤버인가 — PENDING만 false. farm-scoped 화면 진입 최소 자격. */
+/**
+ * 승인된 멤버인가 — farm-scoped 화면 진입 최소 자격.
+ *
+ * <p>{@code role !== "PENDING"}이 아니라 {@code hasFarmRoleAtLeast(role, "VIEWER")}로 판정한다
+ * (백엔드 FarmRole#isActive, contract §2 — 이슈 #122 리뷰 반영). 전자는 "PENDING만 아니면
+ * 통과"라 나중에 PENDING보다 더 낮은 서열(예: 정지·차단)이 추가되면 그 역할이 조용히 활성으로
+ * 취급된다(fail-open) — 서열 기반이면 새 하위 역할이 기본적으로 차단되는 쪽(fail-closed)이 된다.
+ */
 export function isActiveFarmRole(role: FarmRole | null | undefined): boolean {
-  return role != null && role !== "PENDING";
+  return hasFarmRoleAtLeast(role, "VIEWER");
 }
