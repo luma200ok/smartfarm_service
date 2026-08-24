@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Chip } from "@/components/monitoring/ui";
 import ZoneControlPanel from "@/components/control/ZoneControlPanel";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
@@ -13,6 +14,9 @@ interface FarmControlPanelProps {
 
 // 제어 탭(이슈 #108, contract §4.12) — 제어는 존 단위라 존 선택 UI가 먼저 필요하다(GET /zones 트리
 // 재사용). 존이 0개인 농장은 정상 케이스이므로 안내만 하고 끝낸다(장비 탭에서 먼저 존을 만들어야 함).
+//
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(components/monitoring/ui.tsx)를 따른다(이슈 #108 리뷰
+// P2 — 다음 작업인 #109 라우트 디자인 통일과 팔레트를 맞춰둔다).
 export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
   const [farm, setFarm] = useState<FarmResponse | null>(null);
   const [tree, setTree] = useState<ZoneTreeResponse | null>(null);
@@ -50,35 +54,23 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">제어</h2>
+      <h2 className="text-sm font-semibold text-dp-ink">제어</h2>
 
-      {treeError && <p className="text-sm text-red-600 dark:text-red-400">{treeError}</p>}
+      {treeError && <p className="text-sm text-dp-red-ink">{treeError}</p>}
 
-      {!tree && !treeError && <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>}
+      {!tree && !treeError && <p className="text-sm text-dp-muted">불러오는 중...</p>}
 
       {tree && tree.zones.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          등록된 존이 없습니다. 장비 탭에서 존을 먼저 추가해주세요.
-        </p>
+        <p className="text-sm text-dp-muted">등록된 존이 없습니다. 장비 탭에서 존을 먼저 추가해주세요.</p>
       )}
 
       {tree && tree.zones.length > 0 && (
         <>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {tree.zones.map((zone) => (
-              <button
-                key={zone.id}
-                type="button"
-                aria-pressed={zoneId === zone.id}
-                onClick={() => setZoneId(zone.id)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  zoneId === zone.id
-                    ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                    : "border-zinc-300 bg-white text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
-                }`}
-              >
+              <Chip key={zone.id} as="button" size="sm" active={zoneId === zone.id} onClick={() => setZoneId(zone.id)}>
                 {zone.name}
-              </button>
+              </Chip>
             ))}
           </div>
 

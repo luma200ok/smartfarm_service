@@ -40,6 +40,8 @@ export function resolveNutrientCalculationErrorMessage(err: unknown): string {
 
 // CT005(대기 큐 낙관적 검증 실패, contract §4.12 동시성 1)는 응답 본문에 최신 pendingChanges를
 // 함께 싣는다 — 별도 GET 왕복 없이 화면 큐를 그 자리에서 갱신해 재확인시키기 위함이다.
+// status===409도 함께 확인한다 — code만으로 충분히 안전하지만(서버가 CT005는 항상 409로만
+// 보낸다), 이중 확인 비용이 낮아 방어적으로 남겨둔다(리뷰 P3).
 export function isQueueConflict(err: unknown): err is ApiError & { data: ControlQueueConflictResponse } {
-  return err instanceof ApiError && err.code === "CT005" && err.data != null;
+  return err instanceof ApiError && err.status === 409 && err.code === "CT005" && err.data != null;
 }

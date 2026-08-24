@@ -3,7 +3,13 @@
 // 갈린다(토큰 자체는 건드리지 않음). design-preview/ui.tsx는 이 파일을 거꾸로 재노출해
 // 프리뷰 10화면의 기존 import 경로를 그대로 유지한다(의존 방향: 프리뷰 → 운영 공용).
 import type { ReactNode } from "react";
-import type { PreviewCellState as CellState, PreviewSeverity as Severity } from "@/types";
+import type { PreviewCellState as CellState, PreviewSeverity } from "@/types";
+
+// StatusBadge 전용 확장 톤 — "neutral"은 위험/경고가 아닌 중립 상태 표기용(제어 화면 #108의
+// OFF — 장애가 아니라 조작 결과라 critical 톤을 쓰면 고장으로 오인된다). PreviewSeverity
+// 자체를 넓히면 design-preview의 Record<PreviewSeverity, …> 완전성 매핑이 전부 깨지므로
+// (그 화면들은 손대지 않는다), StatusBadge의 tone에서만 로컬로 확장한다.
+type Severity = PreviewSeverity | "neutral";
 
 /* ── 카드 ─────────────────────────────────────────────────────────────── */
 
@@ -26,6 +32,7 @@ export function Chip({
   tone = "neutral",
   as = "span",
   size = "md",
+  disabled = false,
   onClick,
 }: {
   children: ReactNode;
@@ -33,6 +40,8 @@ export function Chip({
   tone?: "neutral" | "critical" | "warning";
   as?: "span" | "button";
   size?: "md" | "sm";
+  /** as="button"일 때만 의미가 있다(busy 중 중복 클릭 방지 — 제어 화면 #108에서 추가). */
+  disabled?: boolean;
   onClick?: () => void;
 }) {
   const base =
@@ -46,10 +55,10 @@ export function Chip({
       : tone === "warning"
         ? "border border-dp-amber-line bg-dp-amber-tint font-semibold text-dp-amber-deep"
         : "border border-dp-line-strong bg-dp-surface font-medium text-dp-body";
-  const cls = `${base} ${style}`;
+  const cls = `${base} ${style} ${disabled ? "opacity-40" : ""}`;
   if (as === "button") {
     return (
-      <button type="button" onClick={onClick} aria-pressed={active} className={cls}>
+      <button type="button" disabled={disabled} onClick={onClick} aria-pressed={active} className={cls}>
         {children}
       </button>
     );
@@ -57,14 +66,17 @@ export function Chip({
   return <span className={cls}>{children}</span>;
 }
 
-/** 상태 배지 (농장 카드) */
+/** 상태 배지 (농장 카드). "neutral"은 위험/경고가 아닌 중립 상태 표기용(제어 화면 #108의
+ * OFF — 장애가 아니라 조작 결과라 critical 톤을 쓰면 고장으로 오인된다). */
 export function StatusBadge({ label, tone }: { label: string; tone: Severity }) {
   const style =
     tone === "critical"
       ? "bg-dp-red-tint-2 text-dp-red-ink"
       : tone === "warning"
         ? "bg-dp-amber-tint text-dp-amber-deep"
-        : "bg-dp-green-tint-2 text-dp-green-ink";
+        : tone === "neutral"
+          ? "bg-dp-badge-neutral text-dp-muted"
+          : "bg-dp-green-tint-2 text-dp-green-ink";
   return (
     <span className={`flex-none rounded-[5px] px-[9px] py-1 text-[10.5px] leading-[1.4] font-semibold ${style}`}>
       {label}
