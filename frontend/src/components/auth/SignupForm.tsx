@@ -70,10 +70,8 @@ export default function SignupForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">회원가입</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          스마트팜 서비스 계정을 만드세요.
-        </p>
+        <h1 className="text-xl font-semibold text-dp-ink">회원가입</h1>
+        <p className="mt-1 text-sm text-dp-muted">스마트팜 서비스 계정을 만드세요.</p>
       </div>
 
       <FormField
@@ -110,19 +108,19 @@ export default function SignupForm() {
         error={fieldErrors.nickname}
       />
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-dp-red-ink">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
       >
         {submitting ? "가입 중..." : "회원가입"}
       </button>
 
-      <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-center text-sm text-dp-muted">
         이미 계정이 있으신가요?{" "}
-        <Link href="/login" className="font-medium text-zinc-900 underline dark:text-zinc-50">
+        <Link href="/login" className="font-medium text-dp-ink underline">
           로그인
         </Link>
       </p>

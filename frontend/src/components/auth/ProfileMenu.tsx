@@ -93,35 +93,29 @@ export default function ProfileMenu() {
         aria-controls={panelId}
         aria-label={triggerLabel}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-dp-inset"
       >
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-sm font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-dp-badge-neutral text-sm font-semibold text-dp-body"
         >
           {initial}
         </span>
-        {user && (
-          <span className="hidden max-w-[8rem] truncate font-medium text-zinc-700 sm:inline dark:text-zinc-300">
-            {user.nickname}
-          </span>
-        )}
+        {user && <span className="hidden max-w-[8rem] truncate font-medium text-dp-body sm:inline">{user.nickname}</span>}
       </button>
 
       {open && (
         <div
           id={panelId}
-          className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-dp-line bg-dp-surface p-1 shadow-lg"
         >
           {user && (
             <>
               <div className="px-3 py-2">
-                <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                  {user.nickname}
-                </p>
-                <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{user.email}</p>
+                <p className="truncate text-sm font-semibold text-dp-ink">{user.nickname}</p>
+                <p className="truncate text-xs text-dp-muted">{user.email}</p>
               </div>
-              <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+              <div className="my-1 border-t border-dp-line" />
             </>
           )}
           <button
@@ -129,7 +123,7 @@ export default function ProfileMenu() {
             type="button"
             onClick={handleLogout}
             disabled={submitting}
-            className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-dp-body hover:bg-dp-inset disabled:opacity-60"
           >
             로그아웃
           </button>

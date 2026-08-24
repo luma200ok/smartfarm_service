@@ -63,10 +63,8 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">로그인</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          스마트팜 서비스에 로그인하세요.
-        </p>
+        <h1 className="text-xl font-semibold text-dp-ink">로그인</h1>
+        <p className="mt-1 text-sm text-dp-muted">스마트팜 서비스에 로그인하세요.</p>
       </div>
 
       <FormField
@@ -89,12 +87,12 @@ export default function LoginForm() {
         onChange={(e) => setPassword(e.target.value)}
       />
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-dp-red-ink">{error}</p>}
 
       <button
         type="submit"
         disabled={submitting || demoSubmitting}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
       >
         {submitting ? "로그인 중..." : "로그인"}
       </button>
@@ -103,14 +101,14 @@ export default function LoginForm() {
         type="button"
         onClick={handleDemoLogin}
         disabled={submitting || demoSubmitting}
-        className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        className="rounded-md border border-dp-line-strong px-4 py-2 text-sm font-medium text-dp-sub hover:bg-dp-inset disabled:opacity-40"
       >
         {demoSubmitting ? "데모 로그인 중..." : "데모 계정으로 체험하기"}
       </button>
 
-      <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-center text-sm text-dp-muted">
         계정이 없으신가요?{" "}
-        <Link href="/signup" className="font-medium text-zinc-900 underline dark:text-zinc-50">
+        <Link href="/signup" className="font-medium text-dp-ink underline">
           회원가입
         </Link>
       </p>
