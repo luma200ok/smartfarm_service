@@ -24,6 +24,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@link FarmAccessGuard#requireMember}로 farm 스코프를 검증하지만, 시스템 훅은 스케줄러 스레드가
  * 호출하므로(요청 사용자가 없음) 가드를 거치지 않는다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -123,7 +125,15 @@ public class AlarmEventService {
 
         Map<AlarmSeverity, Long> countBySeverity = new EnumMap<>(AlarmSeverity.class);
         for (AlarmSeverityCountProjection row : alarmEventRepository.countBySeverityAfter(farmId, since)) {
-            countBySeverity.put(AlarmSeverity.valueOf(row.getSeverity()), row.getEventCount());
+            // severity 컬럼은 DB에 문자열로 저장돼 있어(@Enumerated(STRING)) enum 재정의·수기 데이터
+            // 등으로 알 수 없는 값이 들어와도 valueOf가 IllegalArgumentException으로 500을 유발하지
+            // 않도록 방어한다(이슈 #116 리뷰 P3) — 그 행만 건너뛰고 나머지 severity 집계는 정상 반환.
+            try {
+                countBySeverity.put(AlarmSeverity.valueOf(row.getSeverity()), row.getEventCount());
+            } catch (IllegalArgumentException e) {
+                log.warn("stats 집계 중 알 수 없는 severity 값 건너뜀: farmId={}, severity={}",
+                        farmId, row.getSeverity());
+            }
         }
         Double avgAcknowledgeMinutes = alarmEventRepository.avgAcknowledgeMinutesAfter(farmId, since);
 

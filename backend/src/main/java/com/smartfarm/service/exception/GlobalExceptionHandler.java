@@ -39,11 +39,18 @@ public class GlobalExceptionHandler {
      * {@code Exception.class} 핸들러로 떨어져 500 C002가 된다. 이 예외는 {@link CustomException}과
      * 상속 관계가 아니어서 우선순위 경쟁이 없다(타입이 겹치는 {@link ControlQueueConflictException}과
      * 달리 순서 무관하게 항상 이 핸들러가 매치된다).
+     *
+     * <p>⚠️ 이 핸들러는 <b>앱 전체</b>에 적용된다(이슈 #116 리뷰 P3) — 알람 이벤트 도메인에서
+     * 처음 필요해졌을 뿐, {@code @Version}을 쓰는 어떤 엔티티든 낙관적 락 충돌 시 여기로 온다.
+     * 그래서 응답 코드도 도메인 prefix(AL) 대신 공통 코드 {@link ErrorCode#C005}를 쓴다 — 예:
+     * {@code Device}에 향후 {@code @Version}이 도입되면(Device 엔티티 클래스 주석 참고, 현재
+     * {@code @DynamicUpdate} 컬럼 덮어쓰기 문제의 후속 과제로 명시돼 있음) 그 충돌도 이 핸들러가
+     * 잡아 C005로 응답한다.
      */
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException e) {
-        return ResponseEntity.status(ErrorCode.AL003.getStatus())
-                .body(ErrorResponse.of(ErrorCode.AL003));
+        return ResponseEntity.status(ErrorCode.C005.getStatus())
+                .body(ErrorResponse.of(ErrorCode.C005));
     }
 
     @ExceptionHandler(CustomException.class)

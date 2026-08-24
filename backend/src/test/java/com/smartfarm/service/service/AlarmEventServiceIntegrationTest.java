@@ -136,7 +136,7 @@ class AlarmEventServiceIntegrationTest extends IntegrationTestSupport {
         assertThat(events).isEmpty();
     }
 
-    // ── 낙관적 락 충돌(이슈 #116 P1-A, GlobalExceptionHandler 409/AL003 매핑 회귀 테스트) ──────
+    // ── 낙관적 락 충돌(이슈 #116 P1-A, GlobalExceptionHandler 409/C005 매핑 회귀 테스트) ──────
 
     /**
      * 동시 acknowledge 레이스를 실제 스레드 타이밍에 맡기면 재현이 불안정해지므로, 두 편집자를
@@ -146,11 +146,11 @@ class AlarmEventServiceIntegrationTest extends IntegrationTestSupport {
      * 시도한다. Hibernate가 DB의 실제 version(1)과 stale 사본의 version(0)이 다름을 감지해
      * {@link ObjectOptimisticLockingFailureException}을 던지는지 검증한다 — 이 예외 타입이 바로
      * {@link com.smartfarm.service.exception.GlobalExceptionHandler#handleOptimisticLockingFailure}가
-     * 409/AL003으로 매핑하는 대상이다.
+     * 409/C005로 매핑하는 대상이다.
      */
     @Test
     @DisplayName("동시 acknowledge 레이스에서 뒤늦은 stale 저장은 ObjectOptimisticLockingFailureException을 던진다"
-            + "(GlobalExceptionHandler가 409 AL003으로 매핑)")
+            + "(GlobalExceptionHandler가 409 C005로 매핑)")
     void concurrentAcknowledgeThrowsOptimisticLockingFailure() {
         DefaultTransactionDefinition requiresNew =
                 new DefaultTransactionDefinition(TransactionDefinition.PROPAGATION_REQUIRES_NEW);

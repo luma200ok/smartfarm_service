@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.AlarmMemoRequest;
 import com.smartfarm.service.entity.AlarmEvent;
@@ -13,10 +15,17 @@ import com.smartfarm.service.entity.AlarmSeverity;
 import com.smartfarm.service.entity.AlarmSourceType;
 import com.smartfarm.service.repository.AlarmEventRepository;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * 알람 이벤트 API 통합 테스트(이슈 #116) — 목록 페이지네이션·상세 타임라인·상태 전이(확인/처리완료/
@@ -231,6 +240,57 @@ class AlarmEventApiIntegrationTest extends FarmTestSupport {
         mockMvc.perform(get("/api/farms/" + farmId + "/alarm-events/" + e2)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$.event.status").value("ACKNOWLEDGED"));
+    }
+
+    @Test
+    @DisplayName("P3: 동시 acknowledge 요청 중 하나는 200, 다른 하나는 409(AL002 또는 C005)를 반환한다 —"
+            + " 500이 되면 안 된다(GlobalExceptionHandler#handleOptimisticLockingFailure의 실제 HTTP"
+            + " 라운드트립 검증 — 서비스 레벨 테스트는 예외 발생만 검증해 핸들러 자체를 삭제해도"
+            + " 초록으로 남는 공백이 있었다. ControlConcurrencyTest 선례와 동일하게 CountDownLatch로"
+            + " 실제 스레드를 동시 출발시켜 진짜 레이스를 재현한다 — MockMvc 호출을 한 스레드에서"
+            + " 순차 실행하면 경합이 재현되지 않는다). 두 요청의 SELECT가 완전히 겹치면 버전 충돌"
+            + "(C005)로, 한쪽이 이미 커밋을 마친 뒤 다른 쪽이 뒤늦게 읽으면 상태 가드(AL002)로 거부"
+            + "된다 — 타이밍에 따라 둘 다 가능하고 실측(로컬 반복 실행)으로도 둘 다 관찰됨. 어느 쪽"
+            + "이든 500이 아닌 409라는 게 핵심이며, C005 핸들러가 삭제되면 버전 충돌로 겹친 실행에서"
+            + "는 500이 돼 이 테스트가 잡아낸다.")
+    void concurrentAcknowledgeReturnsOneSuccessAndOneOptimisticLockConflict() throws Exception {
+        String token = signupAndLogin("알람농부-동시성");
+        long farmId = createFarm(token, "동시성농장");
+        long eventId = saveEvent(farmId, "INDOOR_TEMP_HIGH", LocalDateTime.now()).getId();
+        String url = "/api/farms/" + farmId + "/alarm-events/" + eventId + "/acknowledge";
+
+        int threadCount = 2;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
+        List<Integer> statuses = new CopyOnWriteArrayList<>();
+        List<String> conflictCodes = new CopyOnWriteArrayList<>();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    MvcResult result = mockMvc.perform(patch(url).header("Authorization", "Bearer " + token))
+                            .andReturn();
+                    int httpStatus = result.getResponse().getStatus();
+                    statuses.add(httpStatus);
+                    if (httpStatus != 200) {
+                        conflictCodes.add(readJson(result).get("code").asText());
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+        startLatch.countDown();
+        assertThat(doneLatch.await(30, TimeUnit.SECONDS)).isTrue();
+        executor.shutdownNow();
+
+        assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+        assertThat(conflictCodes).hasSize(1);
+        assertThat(conflictCodes.get(0)).isIn("C005", "AL002");
     }
 
     // ── 메모 ──────────────────────────────────────────────────────
