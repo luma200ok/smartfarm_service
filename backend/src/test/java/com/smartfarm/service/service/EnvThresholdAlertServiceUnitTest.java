@@ -1,5 +1,6 @@
 package com.smartfarm.service.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -529,7 +530,7 @@ class EnvThresholdAlertServiceUnitTest {
     @Test
     @DisplayName("보안 P3-2: 웹훅 본문의 @everyone은 멘션으로 해석되지 않는다 — payload에 "
             + "allowed_mentions.parse=[]가 실린다(규칙 이름은 사용자 입력이라 멘션 폭탄 벡터다)")
-    void webhookPayloadSuppressesMentions() {
+    void webhookPayloadSuppressesMentions() throws Exception {
         RestClient webhookRestClient = mock(RestClient.class);
         RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class);
         RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
@@ -550,10 +551,12 @@ class EnvThresholdAlertServiceUnitTest {
 
         ArgumentCaptor<Object> bodyCaptor = ArgumentCaptor.forClass(Object.class);
         verify(bodySpec).body(bodyCaptor.capture());
-        String payload = bodyCaptor.getValue().toString();
-        assertThat(payload).contains("@everyone");        // 문자열 자체는 그대로 보인다
-        assertThat(payload).contains("allowedMentions");  // 억제 필드가 실려 있다
-        assertThat(payload).contains("parse=[]");         // 어떤 멘션도 해석하지 않는다
+        // ⚠️ toString()이 아니라 실제 JSON으로 단언한다(#118 재검토 P3-1) — 디스코드가 읽는 필드명은
+        // record 필드명(allowedMentions)이 아니라 @JsonProperty("allowed_mentions")가 만드는 쪽이다.
+        // toString()만 보면 그 애노테이션이 지워져도 테스트가 초록이라, 멘션 억제가 조용히 무력화된다.
+        String payload = new ObjectMapper().writeValueAsString(bodyCaptor.getValue());
+        assertThat(payload).contains("@everyone");                        // 문자열 자체는 그대로 보인다
+        assertThat(payload).contains("\"allowed_mentions\":{\"parse\":[]}"); // 어떤 멘션도 해석하지 않는다
     }
 
     @Test
