@@ -33,7 +33,7 @@ import org.springframework.http.MediaType;
  * <p>#118은 평가 엔진의 데이터 소스를 {@code farm_env_thresholds}에서 {@code alarm_rules}로 옮겼다.
  * V20이 <b>기존 설정 행을 규칙으로 이관</b>하고, 그 뒤로는 이 API가 저장될 때마다 파생 규칙을
  * 동기화한다. 이 테스트는 그 동기화가 <b>V20 이관 SQL과 같은 결과</b>(ENV_SNAPSHOT · FARM 스코프 ·
- * duration 120초 · WARNING · 하한 LT/상한 GT)를 만드는지, 그리고 <b>기존 API 응답 스펙이 그대로인지</b>
+ * duration 60초 · WARNING · 하한 LT/상한 GT)를 만드는지, 그리고 <b>기존 API 응답 스펙이 그대로인지</b>
  * 를 함께 검증한다. (V20의 INSERT ... SELECT 자체는 마이그레이션이 빈 DB에서 도는 테스트 환경에서는
  * 대상 행이 없어 직접 관측할 수 없으므로, 같은 명세를 구현한 이 살아 있는 경로로 검증한다.)
  */

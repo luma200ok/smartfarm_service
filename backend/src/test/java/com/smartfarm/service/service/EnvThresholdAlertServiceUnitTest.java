@@ -68,7 +68,13 @@ class EnvThresholdAlertServiceUnitTest {
     private static final long FARM_ID = 1L;
     private static final long FARM_ID_2 = 2L;
 
-    /** #117까지의 "연속 2틱"에 대응하는 지속시간(폴러 60s × 2) — V20 이관 SQL과 같은 값. */
+    /**
+     * 테스트 전용 지속시간 — "미달에서는 안 울리고 충족되면 울린다"를 폴러 주기(60s)의 배수로 깔끔히
+     * 재현하려고 고른 값일 뿐, <b>V20 이관값(60초)과는 무관하다</b>. 이관값의 근거는
+     * {@code EnvThresholdService.DERIVED_DURATION_SECONDS}에 있고, 그 값이 실제로 60인지는
+     * {@code EnvThresholdDerivedRuleIntegrationTest}·{@code AlarmRuleMigrationV20IntegrationTest}가
+     * 검증한다.
+     */
     private static final int DURATION_120S = 120;
 
     private final AlarmRuleRepository alarmRuleRepository = mock(AlarmRuleRepository.class);

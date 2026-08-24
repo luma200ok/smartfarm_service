@@ -78,7 +78,11 @@ public class AlarmRule {
     @Column(name = "threshold_max")
     private Double thresholdMax;
 
-    /** 조건이 이 시간(초) 동안 지속되면 발동한다. 기존 "연속 2틱"(=120초) 하드코딩의 일반화. */
+    /**
+     * 조건이 이 시간(초) 동안 지속되면 발동한다 — 최초 이탈 시각부터의 경과 기준. 기존 "연속 2틱"
+     * 하드코딩의 일반화이며, 그 이관값은 <b>60초</b>다(폴러 60s fixedDelay에서 "연속 2틱"의 실제
+     * 경과는 틱 간격 1회분 — 근거는 {@code EnvThresholdService.DERIVED_DURATION_SECONDS}).
+     */
     @Column(name = "duration_seconds", nullable = false)
     private Integer durationSeconds;
 
