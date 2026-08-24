@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Card, CardTitle, StatusBadge } from "@/components/monitoring/ui";
 import { NUTRIENT_STAGE_LABELS } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listNutrientRecipes } from "@/lib/api/nutrientRecipes";
@@ -47,14 +48,14 @@ export default function NutrientRecipeList({ farmId, refreshKey }: NutrientRecip
   }, [farmId, page, refreshKey]);
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">저장된 레시피</h2>
+    <Card className="flex flex-col gap-4 px-4 py-4">
+      <h2>
+        <CardTitle size="lg">저장된 레시피</CardTitle>
+      </h2>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {!data && !error && <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>}
-      {data && data.content.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">저장된 레시피가 없습니다.</p>
-      )}
+      {error && <p className="text-sm text-dp-red-ink">{error}</p>}
+      {!data && !error && <p className="text-sm text-dp-muted">불러오는 중...</p>}
+      {data && data.content.length === 0 && <p className="text-sm text-dp-muted">저장된 레시피가 없습니다.</p>}
 
       {data && data.content.length > 0 && (
         <ul className="flex flex-col gap-2">
@@ -62,15 +63,13 @@ export default function NutrientRecipeList({ farmId, refreshKey }: NutrientRecip
             <li key={recipe.id}>
               <Link
                 href={`/farms/${farmId}/nutrient/${recipe.id}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 px-4 py-3 text-sm transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dp-line px-4 py-3 text-sm hover:border-dp-line-strong"
               >
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">{recipe.name}</span>
-                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                    {NUTRIENT_STAGE_LABELS[recipe.stage] ?? recipe.stage}
-                  </span>
+                  <span className="font-medium text-dp-ink">{recipe.name}</span>
+                  <StatusBadge label={NUTRIENT_STAGE_LABELS[recipe.stage] ?? recipe.stage} tone="neutral" />
                 </div>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="text-xs text-dp-muted">
                   EC {recipe.estimatedEc.toFixed(2)} · {recipe.createdAt.slice(0, 10)}
                 </span>
               </Link>
@@ -85,23 +84,23 @@ export default function NutrientRecipeList({ farmId, refreshKey }: NutrientRecip
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             이전
           </button>
-          <span className="text-zinc-500 dark:text-zinc-400">
+          <span className="text-dp-muted">
             {data.page + 1} / {data.totalPages}
           </span>
           <button
             type="button"
             disabled={page + 1 >= data.totalPages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             다음
           </button>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

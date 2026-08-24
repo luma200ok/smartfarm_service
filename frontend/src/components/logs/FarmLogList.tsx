@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import FarmLogForm from "./FarmLogForm";
+import { Card, CardTitle, StatusBadge } from "@/components/monitoring/ui";
 import Modal from "@/components/ui/Modal";
 import { FARM_LOG_TYPE_LABELS } from "@/constants";
 import { getMe } from "@/lib/api/auth";
@@ -129,24 +130,24 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">작업일지</h2>
+        <h2>
+          <CardTitle size="lg">작업일지</CardTitle>
+        </h2>
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
         >
           작성
         </button>
       </div>
 
-      {loadError && <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>}
-      {rowError && <p className="text-sm text-red-600 dark:text-red-400">{rowError}</p>}
+      {loadError && <p className="text-sm text-dp-red-ink">{loadError}</p>}
+      {rowError && <p className="text-sm text-dp-red-ink">{rowError}</p>}
 
-      {!data && !loadError && <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>}
+      {!data && !loadError && <p className="text-sm text-dp-muted">불러오는 중...</p>}
 
-      {data && data.content.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">작성된 작업일지가 없습니다.</p>
-      )}
+      {data && data.content.length === 0 && <p className="text-sm text-dp-muted">작성된 작업일지가 없습니다.</p>}
 
       {data && data.content.length > 0 && (
         <ul className="flex flex-col gap-2">
@@ -155,45 +156,42 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
             const canEdit = isAuthor;
             const canDelete = isAuthor || isOwner;
             return (
-              <li
-                key={log.id}
-                className="flex flex-col gap-1.5 rounded-md border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-zinc-900 dark:text-zinc-50">{log.logDate}</span>
-                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                      {FARM_LOG_TYPE_LABELS[log.type] ?? log.type}
-                    </span>
-                  </div>
-                  {(canEdit || canDelete) && (
-                    <div className="flex gap-2 text-xs">
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormError(null);
-                            setEditTarget(log);
-                          }}
-                          className="text-zinc-500 hover:underline dark:text-zinc-400"
-                        >
-                          수정
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          type="button"
-                          disabled={busyId === log.id}
-                          onClick={() => handleDelete(log)}
-                          className="text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
-                        >
-                          삭제
-                        </button>
-                      )}
+              <li key={log.id}>
+                <Card className="flex flex-col gap-1.5 px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-dp-ink">{log.logDate}</span>
+                      <StatusBadge label={FARM_LOG_TYPE_LABELS[log.type] ?? log.type} tone="neutral" />
                     </div>
-                  )}
-                </div>
-                {log.memo && <p className="whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">{log.memo}</p>}
+                    {(canEdit || canDelete) && (
+                      <div className="flex gap-2 text-xs">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormError(null);
+                              setEditTarget(log);
+                            }}
+                            className="text-dp-sub hover:text-dp-ink hover:underline"
+                          >
+                            수정
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            disabled={busyId === log.id}
+                            onClick={() => handleDelete(log)}
+                            className="text-dp-red-ink hover:underline disabled:opacity-60"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {log.memo && <p className="whitespace-pre-wrap text-dp-sub">{log.memo}</p>}
+                </Card>
               </li>
             );
           })}
@@ -206,18 +204,18 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             이전
           </button>
-          <span className="text-zinc-500 dark:text-zinc-400">
+          <span className="text-dp-muted">
             {data.page + 1} / {data.totalPages}
           </span>
           <button
             type="button"
             disabled={page + 1 >= data.totalPages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
           >
             다음
           </button>

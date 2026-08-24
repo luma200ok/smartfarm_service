@@ -68,14 +68,14 @@ export default function NutrientRecipeFormFields({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="nutrient-stage" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label htmlFor="nutrient-stage" className="text-sm font-medium text-dp-body">
           생육 단계
         </label>
         <select
           id="nutrient-stage"
           value={stage}
           onChange={(e) => onStageChange(e.target.value as NutrientStage)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
         >
           {STAGE_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
@@ -127,8 +127,8 @@ export default function NutrientRecipeFormFields({
         />
       </div>
 
-      <details className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-        <summary className="cursor-pointer font-medium text-zinc-700 dark:text-zinc-300">
+      <details className="rounded-md border border-dp-line p-3 text-sm">
+        <summary className="cursor-pointer font-medium text-dp-body">
           원수 분석값 (선택 — 있으면 Ca/Mg 목표치에서 차감 보정)
         </summary>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
