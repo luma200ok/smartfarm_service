@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import { VALIDATION } from "@/constants";
 import { isPrescriptionLimitExceeded, resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listDiagnoses } from "@/lib/api/diagnoses";
@@ -13,6 +14,7 @@ interface PrescriptionCreateFormProps {
 }
 
 // 처방 질문 입력(+선택: 진단 이력 연결) → 202 응답 즉시 상세 페이지로 이동해 폴링한다.
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109).
 export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFormProps) {
   const router = useRouter();
   const [question, setQuestion] = useState("");
@@ -62,59 +64,59 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">처방 요청</h2>
+    <Card className="p-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <CardTitle>처방 요청</CardTitle>
 
-      {diagnoses.length > 0 && (
+        {diagnoses.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="diagnosis-select" className="text-sm font-medium text-dp-body">
+              관련 진단 이력 (선택)
+            </label>
+            <select
+              id="diagnosis-select"
+              value={diagnosisId}
+              onChange={(e) => setDiagnosisId(e.target.value)}
+              className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink outline-none focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
+            >
+              <option value="">선택 안 함</option>
+              {diagnoses.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.labelKr} ({new Date(d.createdAt).toLocaleDateString()})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="diagnosis-select" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            관련 진단 이력 (선택)
+          <label htmlFor="question" className="text-sm font-medium text-dp-body">
+            질문
           </label>
-          <select
-            id="diagnosis-select"
-            value={diagnosisId}
-            onChange={(e) => setDiagnosisId(e.target.value)}
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          >
-            <option value="">선택 안 함</option>
-            {diagnoses.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.labelKr} ({new Date(d.createdAt).toLocaleDateString()})
-              </option>
-            ))}
-          </select>
+          <textarea
+            id="question"
+            required
+            maxLength={VALIDATION.prescriptionQuestion.maxLength}
+            rows={4}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink outline-none focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
+          />
         </div>
-      )}
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="question" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          질문
-        </label>
-        <textarea
-          id="question"
-          required
-          maxLength={VALIDATION.prescriptionQuestion.maxLength}
-          rows={4}
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-        />
-      </div>
+        {limitExceeded && (
+          <p className="rounded-md bg-dp-amber-tint px-3 py-2 text-sm text-dp-amber-deep">{limitExceeded}</p>
+        )}
+        {error && <p className="text-sm text-dp-red-ink">{error}</p>}
 
-      {limitExceeded && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          {limitExceeded}
-        </p>
-      )}
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-      <button
-        type="submit"
-        disabled={submitting}
-        className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-      >
-        {submitting ? "요청 중..." : "처방 요청"}
-      </button>
-    </form>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {submitting ? "요청 중..." : "처방 요청"}
+        </button>
+      </form>
+    </Card>
   );
 }

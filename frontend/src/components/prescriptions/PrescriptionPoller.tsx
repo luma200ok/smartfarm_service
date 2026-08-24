@@ -89,7 +89,7 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
 
   if (notFound) {
     return (
-      <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="px-6 py-6 text-sm text-dp-sub">
         처방 이력을 찾을 수 없습니다.{" "}
         <Link href={`/farms/${farmId}/prescriptions`} className="underline">
           이력 목록으로
@@ -99,18 +99,18 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
   }
 
   if (forbidden) {
-    return <p className="px-6 py-6 text-sm text-red-600 dark:text-red-400">{error}</p>;
+    return <p className="px-6 py-6 text-sm text-dp-red-ink">{error}</p>;
   }
 
   if (retryExhausted) {
     return (
       <main className="flex flex-col gap-3 px-6 py-6">
         {prescription && <PrescriptionStatusCard prescription={prescription} />}
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="text-sm text-dp-red-ink">{error}</p>
         <button
           type="button"
           onClick={handleRetry}
-          className="self-start rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+          className="self-start rounded-md border border-dp-line-strong px-3 py-1.5 text-sm text-dp-body"
         >
           다시 시도
         </button>
@@ -119,17 +119,13 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
   }
 
   if (!prescription) {
-    return <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>;
+    return <p className="px-6 py-6 text-sm text-dp-sub">불러오는 중...</p>;
   }
 
   return (
     <main className="flex flex-col gap-3 px-6 py-6">
       <PrescriptionStatusCard prescription={prescription} />
-      {error && (
-        <p className="text-sm text-amber-600 dark:text-amber-400">
-          일시적인 오류가 발생했습니다. 자동으로 재시도 중입니다...
-        </p>
-      )}
+      {error && <p className="text-sm text-dp-amber-deep">일시적인 오류가 발생했습니다. 자동으로 재시도 중입니다...</p>}
     </main>
   );
 }
