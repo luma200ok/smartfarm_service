@@ -1,6 +1,7 @@
 package com.smartfarm.service.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -65,14 +66,18 @@ class FarmRoleMigrationV21IntegrationTest extends FarmTestSupport {
     @Autowired
     private FarmMemberRepository farmMemberRepository;
 
-    /** V21 파일에서 이관 UPDATE만 파일에 적힌 순서 그대로 골라낸다(DDL·검증 블록 제외). */
-    private List<String> migrationDml() {
-        String sql;
+    /** V21 파일 원문 — 검증 블록(DO $$)·CHECK 제약까지 포함해 통째로 실행할 때 쓴다. */
+    private String readMigrationFile() {
         try {
-            sql = Files.readString(V21_PATH, StandardCharsets.UTF_8);
+            return Files.readString(V21_PATH, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("V21 마이그레이션 파일을 읽을 수 없습니다: " + V21_PATH, e);
         }
+    }
+
+    /** V21 파일에서 이관 UPDATE만 파일에 적힌 순서 그대로 골라낸다(DDL·검증 블록 제외). */
+    private List<String> migrationDml() {
+        String sql = readMigrationFile();
         List<String> statements = Arrays.stream(sql.split(";"))
                 .map(FarmRoleMigrationV21IntegrationTest::stripLeadingComments)
                 .filter(statement -> statement.startsWith("UPDATE"))
@@ -204,6 +209,48 @@ class FarmRoleMigrationV21IntegrationTest extends FarmTestSupport {
         assertThat(farmMemberRepository.countLiveMembersByFarmIdAndRole(farmId, FarmRole.ADMIN))
                 .as("구 OWNER 1명이 그대로 유일한 ADMIN이어야 한다")
                 .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("V21 전체 실행: 알 수 없는 role 값이 남아 있으면 검증 블록(DO $$)이 배포를 실패시킨다 "
+            + "— 이관 누락을 조용히 통과시키면 그 사용자는 농장 접근이 영구히 500이 된다")
+    void migrationFailsFastOnUnknownRole() throws Exception {
+        String adminToken = signupAndLogin("이관-미상역할");
+        long farmId = createFarm(adminToken, "미상역할 농장");
+        long adminUserId = myUserId(adminToken);
+
+        syncAndDetach();
+        // 이관 DML이 다루지 않는 값을 심는다 — 실제로는 "새 역할이 생겼는데 V21을 갱신하지 않은"
+        // 상황이나 수기 SQL로 들어온 오타가 이 모습이 된다.
+        writeLegacyRole(farmId, adminUserId, "SUPERUSER");
+
+        // ⚠️ UPDATE만 골라 쓰는 다른 테스트와 달리 여기서는 파일 전체를 실행한다 — 검증 블록과
+        // CHECK 제약이 실제로 발화하는지 보는 것이 이 테스트의 목적이다.
+        assertThatThrownBy(() -> jdbcTemplate.execute(readMigrationFile()))
+                .as("V21은 알 수 없는 role 값을 만나면 예외로 배포를 멈춰야 한다")
+                .hasMessageContaining("V21");
+    }
+
+    @Test
+    @DisplayName("V21 전체 실행: 정상 데이터면 CHECK 제약까지 포함해 끝까지 통과한다 "
+            + "(실패 경로 테스트가 '항상 터지는' 것이 아님을 확인)")
+    void migrationSucceedsOnCleanData() throws Exception {
+        String adminToken = signupAndLogin("이관-정상역할");
+        long farmId = createFarm(adminToken, "정상역할 농장");
+        long adminUserId = myUserId(adminToken);
+
+        syncAndDetach();
+        writeLegacyRole(farmId, adminUserId, "OWNER");
+
+        jdbcTemplate.execute(readMigrationFile());
+        entityManager.clear();
+
+        assertThat(roleOf(farmId, adminUserId)).isEqualTo("ADMIN");
+        // CHECK 제약이 다시 붙었으므로 알 수 없는 값은 이제 DB가 거부한다
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE farm_members SET role = 'SUPERUSER' WHERE farm_id = ?", farmId))
+                .as("V21이 붙인 ck_farm_members_role이 값 도메인을 고정해야 한다")
+                .isInstanceOf(Exception.class);
     }
 
     @Test

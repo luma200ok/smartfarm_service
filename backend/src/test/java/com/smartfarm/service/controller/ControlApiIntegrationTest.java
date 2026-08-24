@@ -1,6 +1,5 @@
 package com.smartfarm.service.controller;
 
-import com.smartfarm.service.entity.FarmRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,6 +17,7 @@ import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.entity.ControlChangeKind;
 import com.smartfarm.service.entity.DeviceKind;
 import com.smartfarm.service.entity.DeviceStatus;
+import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.OperationMode;
 import com.smartfarm.service.entity.SensorMetric;
 import java.util.List;

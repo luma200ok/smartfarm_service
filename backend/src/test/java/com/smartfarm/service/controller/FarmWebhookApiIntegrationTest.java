@@ -1,11 +1,11 @@
 package com.smartfarm.service.controller;
 
-import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartfarm.service.FarmTestSupport;
+import com.smartfarm.service.entity.FarmRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;

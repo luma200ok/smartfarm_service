@@ -1,6 +1,5 @@
 package com.smartfarm.service.controller;
 
-import com.smartfarm.service.entity.FarmRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -10,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.smartfarm.service.DiagnosisApiTestSupport;
 import com.smartfarm.service.entity.Diagnosis;
+import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.repository.DiagnosisRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

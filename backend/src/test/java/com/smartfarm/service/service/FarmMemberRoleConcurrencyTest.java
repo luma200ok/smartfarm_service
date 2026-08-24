@@ -26,6 +26,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * "농장에는 항상 ADMIN이 최소 1명" 불변식의 <b>동시성 경계</b> 검증(이슈 #122).
@@ -67,6 +69,9 @@ class FarmMemberRoleConcurrencyTest extends IntegrationTestSupport {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private record TwoAdminFarm(Long farmId, Long adminAId, Long adminBId, Long memberAId, Long memberBId) {
     }
@@ -164,6 +169,66 @@ class FarmMemberRoleConcurrencyTest extends IntegrationTestSupport {
         assertThat(farmMemberRepository.findById(fixture.memberBId())).isEmpty();
         assertThat(farmMemberRepository
                 .countLiveMembersByFarmIdAndRole(fixture.farmId(), FarmRole.ADMIN))
+                .isEqualTo(1);
+    }
+
+    /**
+     * 실제 인터리빙을 <b>결정론적으로</b> 재현한다(리뷰 P2-1). 스레드 경쟁이 아니라 영속성 컨텍스트
+     * 상태를 직접 만들어 두므로 타이밍 운에 맡기지 않는다.
+     *
+     * <p>바깥 트랜잭션이 {@code removeMember}가 합류할 영속성 컨텍스트 역할을 한다:
+     * ① 가드가 하는 것과 동일하게 B의 멤버십을 <b>OPERATOR 상태로</b> 컨텍스트에 올린다
+     * ② 다른 트랜잭션(REQUIRES_NEW)이 커밋으로 B를 ADMIN으로 승격하고 A를 강등한다 — 이제 DB상
+     * <b>B가 유일한 관리자</b>다 ③ B가 본인 탈퇴를 시도한다.
+     *
+     * <p>엔티티로 판정하면 ①의 스냅샷(OPERATOR)이 그대로 돌아와 F006을 건너뛰고 삭제해
+     * <b>관리자 0명</b>이 된다. 스칼라 재조회는 ②의 커밋을 보므로 F006으로 막는다.
+     */
+    @Test
+    @DisplayName("잠금 이전에 OPERATOR로 읽힌 본인이 그 사이 DB에서 마지막 ADMIN이 됐다면, 본인 "
+            + "탈퇴는 F006으로 막혀야 한다 — 판정 근거가 엔티티 스냅샷이면 이 검사를 통과해 버려 "
+            + "관리자 0명인 농장이 만들어진다")
+    void staleEntitySnapshotMustNotDecideLastAdmin() {
+        TwoAdminFarm fixture = createFarmWithTwoAdmins("스냅샷");
+        // 픽스처는 ADMIN 2명이므로, 먼저 B를 OPERATOR로 내려 "탈퇴해도 되는 평범한 멤버"로 만든다
+        farmMemberService.changeMemberRole(fixture.farmId(), fixture.adminAId(),
+                fixture.memberBId(), FarmRole.OPERATOR);
+
+        TransactionTemplate outer = new TransactionTemplate(transactionManager);
+        TransactionTemplate inner = new TransactionTemplate(transactionManager);
+        inner.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        CustomException thrown = Assertions.assertThrows(CustomException.class, () ->
+                outer.executeWithoutResult(status -> {
+                    // ① 가드와 동일한 조회 — B의 멤버십이 role=OPERATOR로 영속성 컨텍스트에 올라온다
+                    assertThat(farmMemberRepository
+                            .findLiveByFarmIdAndUserId(fixture.farmId(), fixture.adminBId())
+                            .orElseThrow().getRole())
+                            .isEqualTo(FarmRole.OPERATOR);
+
+                    // ② 다른 트랜잭션이 커밋: B를 ADMIN으로 승격 + A를 강등 → B가 유일한 관리자
+                    //    (JPA를 거치지 않는 순수 SQL이라 바깥 컨텍스트의 스냅샷은 낡은 채로 남는다)
+                    inner.executeWithoutResult(ignored -> {
+                        jdbcTemplate.update("UPDATE farm_members SET role = 'ADMIN' WHERE id = ?",
+                                fixture.memberBId());
+                        jdbcTemplate.update("UPDATE farm_members SET role = 'OPERATOR' WHERE id = ?",
+                                fixture.memberAId());
+                    });
+
+                    // ③ B의 본인 탈퇴 — 같은 컨텍스트라 가드는 stale OPERATOR를 보게 된다
+                    farmMemberService.removeMember(fixture.farmId(), fixture.adminBId(),
+                            fixture.memberBId());
+                }));
+
+        assertThat(thrown.getErrorCode())
+                .as("DB 기준으로 B는 마지막 관리자이므로 F006이어야 한다")
+                .isEqualTo(ErrorCode.F006);
+        assertThat(farmMemberRepository.findById(fixture.memberBId()))
+                .as("거부됐으므로 멤버십 행이 남아 있어야 한다")
+                .isPresent();
+        assertThat(farmMemberRepository
+                .countLiveMembersByFarmIdAndRole(fixture.farmId(), FarmRole.ADMIN))
+                .as("관리자가 0명이 되면 농장은 영구히 관리 불능이 된다")
                 .isEqualTo(1);
     }
 

@@ -1,6 +1,5 @@
 package com.smartfarm.service.controller;
 
-import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -13,6 +12,7 @@ import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.dto.RackRequest;
 import com.smartfarm.service.dto.RackUpdateRequest;
 import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.SensorMetric;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

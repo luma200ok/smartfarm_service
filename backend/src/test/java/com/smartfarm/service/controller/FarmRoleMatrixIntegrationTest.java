@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.AlarmMemoRequest;
+import com.smartfarm.service.dto.ChatRequest;
 import com.smartfarm.service.dto.AlarmRuleRequest;
 import com.smartfarm.service.dto.ControlApplyRequest;
 import com.smartfarm.service.dto.ControlChangeRequest;
@@ -15,6 +16,7 @@ import com.smartfarm.service.dto.FarmUpdateRequest;
 import com.smartfarm.service.dto.MemberRoleUpdateRequest;
 import com.smartfarm.service.dto.NutrientRecipeRequest;
 import com.smartfarm.service.dto.NutrientTargetRequest;
+import com.smartfarm.service.dto.PrescriptionRequest;
 import com.smartfarm.service.dto.WebhookRequest;
 import com.smartfarm.service.dto.ZoneRequest;
 import com.smartfarm.service.entity.AlarmComparator;
@@ -35,6 +37,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
@@ -71,6 +74,7 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
     private String pendingToken;
     private long farmId;
     private long zoneId;
+    private long rackId;
     private long viewerMemberId;
     /** 멤버 관리 거부 검증 전용 대상 — 호출자 본인이면 "자기 탈퇴"가 되어 역할과 무관하게 허용된다. */
     private long targetMemberId;
@@ -84,6 +88,7 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
 
         farmId = createFarm(adminToken, "권한 매트릭스 농장");
         zoneId = createZone(adminToken, farmId, "A동");
+        rackId = createRack(adminToken, farmId, zoneId, "R1", 3);
 
         joinFarmAs(adminToken, farmId, operatorToken, FarmRole.OPERATOR);
         viewerMemberId = joinFarmAs(adminToken, farmId, viewerToken, FarmRole.VIEWER);
@@ -108,7 +113,48 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
                 () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/alarm-events"),
                 () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/alarm-events/unacknowledged-count"),
                 // 제어 상태 조회는 읽기 경로다 — VIEWER도 현재 모드·목표값을 볼 수 있어야 한다
-                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/zones/" + zoneId + "/control"));
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/zones/" + zoneId + "/control"),
+                // 센서 측정값·환경 이력 — DB 기반이라 외부 의존 없이 성공까지 검증할 수 있다
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/readings/series")
+                        .param("metrics", "TEMPERATURE").param("scope", "farm"),
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/readings/latest")
+                        .param("metric", "TEMPERATURE"),
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/readings/level-summary")
+                        .param("rackId", String.valueOf(rackId)),
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/environment/history"));
+    }
+
+    /**
+     * 외부 프록시 조회(ai-server·기상청) — <b>거부 판정 전용</b> 카탈로그.
+     *
+     * <p>성공 경로는 외부 스텁이 필요해 각 도메인 테스트(EnvironmentApiTestSupport·
+     * KmaApiTestSupport)의 몫이다. 여기서는 인가만 본다: PENDING은 F008로 막히고, VIEWER는
+     * <b>403이 아니어야</b> 한다(외부 호출 실패로 502가 나도 인가는 통과한 것이다).
+     */
+    private List<Supplier<MockHttpServletRequestBuilder>> externalProxyReadRequests() {
+        return List.of(
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/environment/today"),
+                () -> MockMvcRequestBuilders.get("/api/farms/" + farmId + "/environment/forecast"));
+    }
+
+    /**
+     * AI 작성 표면(챗·진단·처방) — OPERATOR 이상(리뷰 P2-2로 격상). <b>거부 판정 전용</b>
+     * (성공 경로는 외부 AI 스텁이 필요해 각 도메인 테스트의 몫).
+     *
+     * <p>작업일지·양액 레시피와 달리 author 기반 삭제 경로가 없어 "삭제 권한 우회" 근거는
+     * 성립하지 않는다. 격상 근거는 <b>농장 공유 자원 고갈</b>이다 — 챗 레이트리밋은 농장 단위,
+     * 처방 대기 상한은 농장당 3건이라 VIEWER 한 명이 농장 전체의 쿼터를 점유할 수 있고,
+     * 진단은 농장 스토리지와 LLM 비용을 소비한다.
+     */
+    private List<Supplier<MockHttpServletRequestBuilder>> aiAuthoringRequests() {
+        return List.of(
+                () -> json(MockMvcRequestBuilders.post("/api/farms/" + farmId + "/chat"),
+                        new ChatRequest("질문")),
+                () -> MockMvcRequestBuilders.multipart("/api/farms/" + farmId + "/diagnoses")
+                        .file(new MockMultipartFile("file", "leaf.jpg", "image/jpeg",
+                                new byte[] {1, 2, 3})),
+                () -> json(MockMvcRequestBuilders.post("/api/farms/" + farmId + "/prescriptions"),
+                        new PrescriptionRequest("질문", null)));
     }
 
     /** 제어 표면 — OPERATOR 이상. 구 MEMBER가 하던 일 전량이 여기 있다(회귀 감시 지점). */
@@ -191,20 +237,43 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
         @DisplayName("조회·제어·알람처리·작성·구조변경·멤버관리 전 표면에서 403 F008")
         void everyFarmScopedSurfaceIsBlocked() throws Exception {
             expectAll(pendingToken, readRequests(), "F008");
+            expectAll(pendingToken, externalProxyReadRequests(), "F008");
             expectAll(pendingToken, controlRequests(), "F008");
             expectAll(pendingToken, alarmHandlingRequests(), "F008");
             expectAll(pendingToken, authoringRequests(), "F008");
+            expectAll(pendingToken, aiAuthoringRequests(), "F008");
             expectAll(pendingToken, structureRequests(), "F008");
             expectAll(pendingToken, memberManagementRequests(), "F008");
         }
 
         @Test
-        @DisplayName("본인 멤버십 제거(농장 나가기)도 F008 — 승인 전에는 어떤 farm 경로도 열리지 않는다")
-        void evenSelfRemovalIsBlocked() throws Exception {
+        @DisplayName("본인 승인 대기 취소(농장 나가기)는 허용된다 — 유일한 예외(리뷰 P3-4). "
+                + "승인 전에는 농장을 볼 수도 없고 재수락도 F005라, 막으면 잘못 수락한 사용자가 "
+                + "농장에 영구히 묶인다")
+        void selfCancellationIsAllowed() throws Exception {
             long pendingMemberId = memberIdOfUser(adminToken, farmId, myUserId(pendingToken));
 
             mockMvc.perform(MockMvcRequestBuilders
                             .delete("/api/farms/" + farmId + "/members/" + pendingMemberId)
+                            .header("Authorization", "Bearer " + pendingToken))
+                    .andExpect(status().isNoContent());
+
+            // 실제로 빠져나왔다 — 내 농장 목록에서 사라지고, 재접근은 F002(멤버 아님)다
+            mockMvc.perform(MockMvcRequestBuilders.get("/api/farms")
+                            .header("Authorization", "Bearer " + pendingToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+            mockMvc.perform(MockMvcRequestBuilders.get("/api/farms/" + farmId)
+                            .header("Authorization", "Bearer " + pendingToken))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("F002"));
+        }
+
+        @Test
+        @DisplayName("대기자가 '남'을 제거하려 하면 여전히 F008 — 허용되는 건 본인 취소뿐이다")
+        void removingOthersStaysBlocked() throws Exception {
+            mockMvc.perform(MockMvcRequestBuilders
+                            .delete("/api/farms/" + farmId + "/members/" + viewerMemberId)
                             .header("Authorization", "Bearer " + pendingToken))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("F008"));
@@ -233,11 +302,24 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
         }
 
         @Test
+        @DisplayName("외부 프록시 조회(금일 환경·예보)는 인가를 통과한다 — 403이 아니어야 한다")
+        void externalProxyReadsArePermitted() throws Exception {
+            expectNoneForbidden(viewerToken, externalProxyReadRequests());
+        }
+
+        @Test
         @DisplayName("제어·알람처리·작성은 403 F007 (OPERATOR 권한 필요)")
         void writeSurfacesRequireOperator() throws Exception {
             expectAll(viewerToken, controlRequests(), "F007");
             expectAll(viewerToken, alarmHandlingRequests(), "F007");
             expectAll(viewerToken, authoringRequests(), "F007");
+        }
+
+        @Test
+        @DisplayName("챗·진단·처방도 403 F007 — '조회 전용'이 농장 공유 쿼터·비용을 소비할 수 "
+                + "없어야 한다(리뷰 P2-2)")
+        void aiSurfacesRequireOperator() throws Exception {
+            expectAll(viewerToken, aiAuthoringRequests(), "F007");
         }
 
         @Test
@@ -256,6 +338,13 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
         @DisplayName("조회 표면은 전부 200")
         void readSurfacesAreOpen() throws Exception {
             expectAllOk(operatorToken, readRequests());
+        }
+
+        @Test
+        @DisplayName("외부 프록시 조회·AI 작성 표면이 인가를 통과한다 — 403이 아니어야 한다")
+        void proxyAndAiSurfacesArePermitted() throws Exception {
+            expectNoneForbidden(operatorToken, externalProxyReadRequests());
+            expectNoneForbidden(operatorToken, aiAuthoringRequests());
         }
 
         @Test
@@ -407,6 +496,26 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
             mockMvc.perform(request.get().header("Authorization", "Bearer " + token))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value(expectedCode));
+        }
+    }
+
+    /**
+     * 어느 요청도 403으로 막히지 않는지 — 외부 의존(ai-server·기상청·LLM) 때문에 2xx를 단정할 수
+     * 없는 표면의 <b>인가만</b> 검증한다. 외부 호출 실패로 502가 나도 인가는 통과한 것이다.
+     * 반대로 그 표면이 잘못 격상되면 403이 떨어져 여기서 잡힌다.
+     */
+    private void expectNoneForbidden(String token, List<Supplier<MockHttpServletRequestBuilder>> requests)
+            throws Exception {
+        for (Supplier<MockHttpServletRequestBuilder> request : requests) {
+            mockMvc.perform(request.get().header("Authorization", "Bearer " + token))
+                    .andExpect(result -> {
+                        int statusCode = result.getResponse().getStatus();
+                        if (statusCode == 403) {
+                            throw new AssertionError("인가를 통과해야 하는 표면이 403으로 막혔다: "
+                                    + result.getRequest().getRequestURI() + " → "
+                                    + result.getResponse().getContentAsString());
+                        }
+                    });
         }
     }
 
