@@ -146,18 +146,18 @@ export default function EnvThresholdForm({ farmId }: EnvThresholdFormProps) {
   }
 
   if (!loaded) {
-    return <Card className="p-4 text-sm text-dp-sub">임계치 설정 불러오는 중...</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">임계치 설정 불러오는 중...</Card>;
   }
 
   if (loadError) {
-    return <Card className="p-4 text-sm text-dp-red-ink">{loadError}</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-red-ink">{loadError}</Card>;
   }
 
   return (
     <Card className="p-4">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <CardTitle>임계치 알림 설정</CardTitle>
+          <CardTitle as="h3">임계치 알림 설정</CardTitle>
           <label className="flex items-center gap-2 text-sm text-dp-sub">
             <input
               type="checkbox"

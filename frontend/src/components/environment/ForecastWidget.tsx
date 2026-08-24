@@ -65,17 +65,17 @@ export default function ForecastWidget({ farmId }: ForecastWidgetProps) {
   }, [farmId]);
 
   if (loading) {
-    return <Card className="p-4 text-sm text-dp-sub">예보 불러오는 중...</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">예보 불러오는 중...</Card>;
   }
 
   if (unavailable || !data || data.points.length === 0) {
-    return <Card className="p-4 text-sm text-dp-sub">예보를 불러올 수 없습니다.</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">예보를 불러올 수 없습니다.</Card>;
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card as="section" className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <CardTitle>날씨예보</CardTitle>
+        <CardTitle as="h3">날씨예보</CardTitle>
         <span className="text-xs text-dp-faint">{new Date(data.updatedAt).toLocaleString("ko-KR")} 기준</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">

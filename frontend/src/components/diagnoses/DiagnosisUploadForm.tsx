@@ -44,7 +44,7 @@ export default function DiagnosisUploadForm({ farmId, onUploaded }: DiagnosisUpl
     <div className="flex flex-col gap-4">
       <Card className="p-4">
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <CardTitle>작물 이미지 진단</CardTitle>
+          <CardTitle as="h2">작물 이미지 진단</CardTitle>
           <input
             type="file"
             accept="image/*"

@@ -125,7 +125,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
       </div>
       <EnvironmentHistoryChart farmId={farmId} />
 
-      <Card className="flex flex-col gap-3 p-4">
+      <Card as="section" className="flex flex-col gap-3 p-4">
         {editing ? (
           <div className="flex flex-col gap-3">
             <FormField
@@ -145,7 +145,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
                 type="button"
                 disabled={actionBusy}
                 onClick={handleEditSubmit}
-                className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-60"
+                className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-40"
               >
                 저장
               </button>

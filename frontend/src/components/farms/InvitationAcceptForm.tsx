@@ -45,7 +45,7 @@ export default function InvitationAcceptForm({ variant = "card" }: InvitationAcc
 
   const form = (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {variant === "card" && <CardTitle>초대코드로 농장 합류</CardTitle>}
+      {variant === "card" && <CardTitle as="h2">초대코드로 농장 합류</CardTitle>}
       <FormField
         id="invitation-code"
         label="초대코드"

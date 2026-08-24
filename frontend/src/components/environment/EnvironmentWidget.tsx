@@ -52,18 +52,18 @@ export default function EnvironmentWidget({ farmId }: EnvironmentWidgetProps) {
   }, [farmId]);
 
   if (loading) {
-    return <Card className="p-4 text-sm text-dp-sub">환경 데이터 불러오는 중...</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">환경 데이터 불러오는 중...</Card>;
   }
 
   if (unavailable || !data) {
-    return <Card className="p-4 text-sm text-dp-sub">환경 데이터를 일시적으로 불러올 수 없습니다.</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">환경 데이터를 일시적으로 불러올 수 없습니다.</Card>;
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card as="section" className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <CardTitle>오늘의 환경</CardTitle>
+          <CardTitle as="h3">오늘의 환경</CardTitle>
           <MeasuredBadge />
         </div>
         <div className="flex items-center gap-2">

@@ -56,7 +56,7 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
 
   const form = (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {variant === "card" && <CardTitle>새 농장 만들기</CardTitle>}
+      {variant === "card" && <CardTitle as="h2">새 농장 만들기</CardTitle>}
 
       <FormField
         id="farm-name"

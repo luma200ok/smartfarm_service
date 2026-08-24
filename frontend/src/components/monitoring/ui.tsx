@@ -13,15 +13,41 @@ type Severity = PreviewSeverity | "neutral";
 
 /* ── 카드 ─────────────────────────────────────────────────────────────── */
 
-export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
-  return <div className={`rounded-[10px] border border-dp-line bg-dp-surface ${className}`}>{children}</div>;
+/**
+ * `as`는 기본 "div"(기존 소비처 전부가 이 기본 동작에 의존하므로 바꾸지 않는다) — 원래
+ * `<section>`이었던 자리를 옮길 때만 "section"을 지정해 랜드마크 소실을 막는다
+ * (이슈 #109 리뷰 P3-1, CardTitle의 `as`와 같은 패턴).
+ */
+export function Card({
+  className = "",
+  as: Tag = "div",
+  children,
+}: {
+  className?: string;
+  as?: "div" | "section";
+  children: ReactNode;
+}) {
+  return <Tag className={`rounded-[10px] border border-dp-line bg-dp-surface ${className}`}>{children}</Tag>;
 }
 
-export function CardTitle({ children, size = "md" }: { children: ReactNode; size?: "md" | "lg" }) {
+/**
+ * `as`는 기본 "span"(design-preview 10화면·기존 운영 화면이 이 기본 동작에 의존하므로 바꾸지
+ * 않는다) — 실제 문서 헤딩 자리에 쓸 때만 "h2"/"h3"를 지정해 스크린리더 헤딩 탐색(WCAG 1.3.1)이
+ * 카드 제목을 건너뛰지 않게 한다(이슈 #109 리뷰 P2, ui.tsx는 이번에 처음 손댐 — 다른 그룹과 충돌 없음).
+ */
+export function CardTitle({
+  children,
+  size = "md",
+  as: Tag = "span",
+}: {
+  children: ReactNode;
+  size?: "md" | "lg";
+  as?: "span" | "h2" | "h3";
+}) {
   return (
-    <span className={`${size === "lg" ? "text-[14px]" : "text-[13.5px]"} leading-none font-semibold text-dp-ink`}>
+    <Tag className={`${size === "lg" ? "text-[14px]" : "text-[13.5px]"} leading-none font-semibold text-dp-ink`}>
       {children}
-    </span>
+    </Tag>
   );
 }
 

@@ -66,7 +66,7 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
   return (
     <Card className="p-4">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <CardTitle>처방 요청</CardTitle>
+        <CardTitle as="h2">처방 요청</CardTitle>
 
         {diagnoses.length > 0 && (
           <div className="flex flex-col gap-1.5">

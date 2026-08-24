@@ -62,7 +62,7 @@ export default function VpdWidget({ farmId }: VpdWidgetProps) {
   }, [farmId]);
 
   if (loading) {
-    return <Card className="p-4 text-sm text-dp-sub">VPD 계산 중...</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">VPD 계산 중...</Card>;
   }
 
   const temp = data?.indoor?.temp;
@@ -70,7 +70,7 @@ export default function VpdWidget({ farmId }: VpdWidgetProps) {
   const canCalculate = !unavailable && temp !== null && temp !== undefined && humidity !== null && humidity !== undefined;
 
   if (!canCalculate) {
-    return <Card className="p-4 text-sm text-dp-sub">내부 온습도 데이터가 없어 VPD를 계산할 수 없습니다.</Card>;
+    return <Card as="section" className="p-4 text-sm text-dp-sub">내부 온습도 데이터가 없어 VPD를 계산할 수 없습니다.</Card>;
   }
 
   const vpd = vaporPressureDeficitKpa(temp, humidity);
@@ -78,8 +78,8 @@ export default function VpdWidget({ farmId }: VpdWidgetProps) {
   const level = classifyVpdLevel(vpd);
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
-      <CardTitle>VPD · 이슬점</CardTitle>
+    <Card as="section" className="flex flex-col gap-3 p-4">
+      <CardTitle as="h3">VPD · 이슬점</CardTitle>
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div className="rounded-md bg-dp-inset p-3">
           <p className="text-xs text-dp-faint">VPD (포화수증기압차)</p>

@@ -67,7 +67,7 @@ export default function PrescriptionHistoryList({ farmId }: PrescriptionHistoryL
 
   return (
     <div className="flex flex-col gap-3">
-      <CardTitle size="lg">처방 이력</CardTitle>
+      <CardTitle as="h2" size="lg">처방 이력</CardTitle>
       {data.content.length === 0 ? (
         <p className="text-sm text-dp-sub">처방 이력이 없습니다.</p>
       ) : (
@@ -93,7 +93,7 @@ export default function PrescriptionHistoryList({ farmId }: PrescriptionHistoryL
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-60"
           >
             이전
           </button>
@@ -104,7 +104,7 @@ export default function PrescriptionHistoryList({ farmId }: PrescriptionHistoryL
             type="button"
             disabled={page + 1 >= data.totalPages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
+            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-60"
           >
             다음
           </button>

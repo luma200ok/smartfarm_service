@@ -133,8 +133,8 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
       {isOwner && (
-        <Card className="flex flex-col gap-2 p-4">
-          <CardTitle>초대코드 발급</CardTitle>
+        <Card as="section" className="flex flex-col gap-2 p-4">
+          <CardTitle as="h3">초대코드 발급</CardTitle>
           <button
             type="button"
             disabled={actionBusy}
@@ -152,8 +152,8 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
         </Card>
       )}
 
-      <Card className="flex flex-col gap-2 p-4">
-        <CardTitle>멤버 ({members.length})</CardTitle>
+      <Card as="section" className="flex flex-col gap-2 p-4">
+        <CardTitle as="h3">멤버 ({members.length})</CardTitle>
         <ul className="flex flex-col gap-2">
           {members.map((m) => {
             const isSelf = myUserId !== null && m.userId === myUserId;

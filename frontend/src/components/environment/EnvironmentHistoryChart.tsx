@@ -101,9 +101,9 @@ export default function EnvironmentHistoryChart({ farmId }: EnvironmentHistoryCh
   };
 
   return (
-    <Card className="flex flex-col gap-4 p-4">
+    <Card as="section" className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <CardTitle>환경 추이</CardTitle>
+        <CardTitle as="h3">환경 추이</CardTitle>
         <div role="tablist" aria-label="조회 기간" className="flex gap-1.5">
           {RANGES.map((r, i) => (
             <button

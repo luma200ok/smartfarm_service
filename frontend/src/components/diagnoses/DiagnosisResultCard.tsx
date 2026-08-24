@@ -20,7 +20,7 @@ export default function DiagnosisResultCard({ diagnosis }: DiagnosisResultCardPr
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
-        <CardTitle size="lg">{diagnosis.labelKr}</CardTitle>
+        <CardTitle as="h3" size="lg">{diagnosis.labelKr}</CardTitle>
         <span className="rounded bg-dp-badge-neutral px-2 py-0.5 text-xs text-dp-sub">
           확신도 {(diagnosis.prob * 100).toFixed(1)}%
         </span>
