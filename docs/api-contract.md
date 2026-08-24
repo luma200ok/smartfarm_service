@@ -103,7 +103,7 @@
 - **목적**: 포트폴리오 방문자가 회원가입 없이 체험. 로그인 화면 "데모 계정으로 체험하기" 버튼 → `POST /api/auth/demo-login`.
 - **시드**: `users.is_demo`(boolean, Flyway 신규 마이그레이션) + 앱 기동 시 idempotent 시드(init/): 데모 유저(email `demo@smartfarm.local`, nickname `데모 계정`, 랜덤 비밀번호 해시 — 비밀번호 로그인 경로 미사용) + 데모 농장 1개(OWNER). 자격증명은 레포·문서 어디에도 평문 노출하지 않는다.
 - **demo-login**: 데모 유저 조회 후 기존 토큰 발급 로직 재사용(TokenResponse). 데모 유저 존재는 시드가 보장하는 전제 — 미존재는 서버 결함이므로 C002(500)로 처리(A00x 오용 금지).
-- **차단(전부 403 A007, 서버측 강제 — FE 숨김은 보조)**: 회원 탈퇴(DELETE /users/me) · 농장 생성(POST /farms) · 농장 수정/삭제(PATCH/DELETE /farms/{id}) · 웹훅 설정(PATCH /farms/{id}/webhook) · 초대코드 발급(POST /farms/{id}/invitations) · 초대코드 수락(POST /invitations/accept) · 멤버 제거/농장 나가기(DELETE 멤버 계열) · **임계치 설정(PUT /farms/{id}/env-thresholds — 2026-08-22 #52 리뷰에서 추가: 데모 방문자의 공유 농장 영속 설정 변조 차단, OWNER 전용 write 경로 일관성)**.
+- **차단(전부 403 A007, 서버측 강제 — FE 숨김은 보조)**: 회원 탈퇴(DELETE /users/me) · 농장 생성(POST /farms) · 농장 수정/삭제(PATCH/DELETE /farms/{id}) · 웹훅 설정(PATCH /farms/{id}/webhook) · 초대코드 발급(POST /farms/{id}/invitations) · 초대코드 수락(POST /invitations/accept) · 멤버 제거/농장 나가기(DELETE 멤버 계열) · **임계치 설정(PUT /farms/{id}/env-thresholds — 2026-08-22 #52 리뷰에서 추가: 데모 방문자의 공유 농장 영속 설정 변조 차단, OWNER 전용 write 경로 일관성)** · **알람 규칙 생성/수정/삭제(POST·PATCH·DELETE /farms/{id}/alarm-rules — 2026-08-25 #118, 같은 이유)**.
 - **허용**: 전체 조회 + 진단 업로드 + 처방 생성(체험 핵심). 남용 대비 rate-limit은 후속 이슈.
 - **FE**: 데모 로그인 후에는 일반 계정과 동일 UI(차단 작업은 서버 403 A007 메시지 표기). 차단 버튼 사전 숨김은 후속 폴리시.
 
@@ -123,7 +123,8 @@
 - **EnvThresholdsRequest/Response** `{enabled, indoorTempMin?, indoorTempMax?, indoorHumidityMin?, indoorHumidityMax?}`(+Response에 `updatedAt`) — 검증: min<max, 온도 -50~80, 습도 0~100(위반 C001). 저장=`farm_env_thresholds`(farm당 1행).
 - **임계치 알림**: 폴러가 적재 직후 `enabled=true`인 농장 대상 **indoor 온·습도** 평가. **연속 2틱 이탈 시 발동**, 농장×항목×방향별 **쿨다운 30분**(단일 인스턴스 전제 — 메모리 상태 허용, 재시작 시 초기화 수용). 발송은 기존 디스코드 웹훅 노티파이어 컨벤션(타임아웃 5s·실패는 로그만·URL 마스킹) 준수. 신규 ErrorCode 없음(검증은 C001 재사용).
   - ⚠️ **2026-08-24 변경(#116/PR #117)**: 평가 대상이 "웹훅 설정된 농장"에서 **`enabled=true` 전체**로 확대됐다. 웹훅(알림 채널)과 알람 이벤트(영속 기록)는 다른 관심사라, 웹훅 URL 미설정 농장도 §4.12 알람 이벤트는 쌓인다. 웹훅 발송만 `webhook_url == null`이면 스킵. 단 soft delete된 농장은 계속 제외된다(`findEnabled()`가 Farm 서브쿼리로 `@SQLRestriction` 상속 — 이 서브쿼리 제거 시 삭제 농장에 알람이 무한 축적되므로 유지 필수).
-- **마이그레이션**: V9 `env_snapshots`, V10 `farm_env_thresholds` (V8은 #49 데모 선점 — **#49 먼저 머지**, out-of-order=true 확인됨).
+- ⚠️ **2026-08-25 변경(#118/PR #121)**: 평가 주체가 `farm_env_thresholds` → **`alarm_rules`(§4.14)** 로 옮겨졌다. 이 API의 요청·응답 스펙은 **불변**이고, 저장 시 대응 파생 규칙을 제자리 upsert한다. 또 **평가 시점이 적재 성공과 분리**됐다 — 폴러는 매 틱 평가를 호출하고 `indoor`는 실제로 적재된 틱에만 전달한다(ai-server 장애 중에도 센서·장비 소스 규칙이 계속 평가되도록).
+- **마이그레이션**: V9 `env_snapshots`, V10 `farm_env_thresholds` (V8은 #49 데모 선점 — **#49 먼저 머지**, out-of-order=true 확인됨). 2026-08-25: **V20**이 이 테이블의 설정을 `alarm_rules` 파생 규칙으로 이관.
 
 ## 4.7 AI 챗봇 (2026-08-23 확정, 이슈 #54·#55 — 다함 벤치마킹 3. ai-server 무변경 원칙 3번째 해제: smartfarm_ai 신규 챗 라우트)
 
@@ -413,7 +414,9 @@
 
 - **목적**: 임계치 이탈을 **영속 기록**해 알람 화면·TopBar "미확인 알람 N건" 배지의 데이터 소스가 된다. §4.6 임계치 알림(웹훅=알림 채널)과 **관심사 분리** — 웹훅 미설정 농장도 이벤트는 쌓인다.
 - **상태 전이**: `UNACKNOWLEDGED → ACKNOWLEDGED → RESOLVED`. 역방향·건너뛰기 금지(AL002). 정상 복귀 감지 시 시스템이 **자동 RESOLVED**(`resolvedBy=null`, 타임라인에 `note="자동 해소"`).
-- **멱등성**: 같은 `farm × metricKey` 조합으로 미해결(UNACKNOWLEDGED/ACKNOWLEDGED) 이벤트가 있으면 **새로 만들지 않는다**. 애플리케이션 조회(1차) + DB partial unique index `(farm_id, metric_key) WHERE status<>'RESOLVED'`(2차). `metricKey`=`{EnvMetric}_{EnvDirection}`(예: `INDOOR_TEMP_HIGH`).
+- **멱등성**: 같은 `farm × metricKey` 조합으로 미해결(UNACKNOWLEDGED/ACKNOWLEDGED) 이벤트가 있으면 **새로 만들지 않는다**. 애플리케이션 조회(1차) + DB partial unique index `(farm_id, metric_key) WHERE status<>'RESOLVED'`(2차).
+  - `metricKey` = **`RULE_{ruleId}`**(2026-08-25, #118 — 구 형식 `{EnvMetric}_{EnvDirection}`은 V20이 재매핑). ⚠️ `{source}_{metric}_{scope}` 류의 조합 키를 쓰면 **같은 스코프·지표를 다른 임계값으로 보는 두 규칙**(예: CRITICAL EC>3.2 + WARNING EC>2.8)이 같은 키를 만들어 한쪽 알람이 조용히 삼켜진다. rule id는 전역 유일이라 항상 정합.
+  - 규칙이 삭제·비활성되면 열린 알람은 **그 시점에 자동 해소**된다(고아 방지 3경로: 규칙 삭제·규칙 비활성·파생 규칙 비활성).
 - **동시성**: `@Version` 낙관적 락. 충돌 시 **409 C005**(공통 코드 — `@Version`을 쓰는 모든 엔티티에 적용).
 
 | 메서드 | 경로 | 권한 | 요청 | 응답 |
@@ -427,13 +430,44 @@
 | GET | `/api/farms/{farmId}/alarm-events/stats` | 멤버 | `?days=7` (1~90, 위반 C001) | 200 AlarmStatsResponse |
 | GET | `/api/farms/{farmId}/alarm-events/unacknowledged-count` | 멤버 | — | 200 AlarmUnacknowledgedCountResponse |
 
-- **AlarmEventResponse** `{id, severity, sourceType, metricKey, message, status, occurredAt, acknowledgedAt?, acknowledgedBy?, resolvedAt?, resolvedBy?}` — `acknowledgedBy`/`resolvedBy`는 raw userId(이름 치환은 후속). `resolvedBy=null`+status=RESOLVED = 시스템 자동 해소.
+- **AlarmEventResponse** `{id, severity, sourceType, metricKey, ruleId?, scopeType?, scopeId?, message, status, occurredAt, acknowledgedAt?, acknowledgedBy?, resolvedAt?, resolvedBy?}` — `acknowledgedBy`/`resolvedBy`는 raw userId(이름 치환은 후속). `resolvedBy=null`+status=RESOLVED = 시스템 자동 해소.
 - **AlarmEventDetailResponse** = 위 + `timeline: [{action, actorId?, note?, createdAt}]` (action=CREATED/ACKNOWLEDGED/RESOLVED/MEMO_ADDED)
 - **AlarmMemoRequest** `{note}` — `@NotBlank`, 최대 1000자, 저장 시 trim. 상태 전이 없이 타임라인에만 추가.
 - **AlarmStatsResponse** `{days, countBySeverity: {CRITICAL, WARNING}, avgAcknowledgeMinutes?}` — DB 집계(`GROUP BY severity` + `EXTRACT(EPOCH)/60`). 평균은 초 정밀도(구 구현의 분 단위 버림과 다름).
-- ⚠️ **severity는 현재 전부 WARNING** — 등급 분화 기준이 아직 없다. **#118(알람 규칙 확장)에서 규칙이 등급을 결정**하도록 바뀐다. 그때까지 `countBySeverity.CRITICAL`은 항상 0.
+- ✅ **severity는 규칙이 결정한다**(2026-08-25, #118/PR #121) — `alarm_rules.severity`(CRITICAL/WARNING)가 그대로 이벤트에 실린다. `countBySeverity.CRITICAL`이 0이 아닐 수 있다.
 - **접근 제어**: 전 엔드포인트 `requireMember(farmId, userId)` 선행 + `findByIdAndFarmId`로 조회(경로변수 불일치 IDOR 차단). actor는 `@AuthenticationPrincipal`에서만(요청 바디 미수용).
 - **마이그레이션**: **V19** `alarm_events`·`alarm_event_logs`
+
+## 4.14 알람 규칙 (2026-08-25 확정, 이슈 #118 — 미구현 도메인 정리 2)
+
+- **모델**: 농장당 N개 규칙(`alarm_rules`, V20). §4.6의 `farm_env_thresholds`(농장당 1행·온습도 4컬럼)를 대체하되 **구 테이블·구 API는 유지**한다.
+- **소스 3종**(지표 데이터 라우팅):
+  | source | 데이터 | 스코프 | 비고 |
+  |---|---|---|---|
+  | `ENV_SNAPSHOT` | `env_snapshots`(§4.6) | **FARM 고정** | farmId 없는 전역 단일 스트림이라 하위 스코프 불가(DB CHECK로 강제) |
+  | `SENSOR_READING` | `sensor_readings`(§4.11) | FARM/ZONE/RACK/LEVEL | `SensorMetric` 7종 |
+  | `DEVICE_HEARTBEAT` | `devices` 상태 | FARM/ZONE/RACK/LEVEL | ⚠️ **현재 수동 토글 전용** — 후속 #119 참조 |
+- **comparator**: `GT`·`LT`(→`threshold_value`) · `OUTSIDE_RANGE`(→`threshold_min`/`max`) · `ABSENT`(부재 판정, DEVICE_HEARTBEAT 전용 성격)
+- **지속시간**: `duration_seconds` — **벽시계 기준**(최초 이탈 시각부터 경과). 구 "연속 2틱" 하드코딩의 일반화이며 **이관값은 60초**(연속 2틱의 실제 경과는 틱 간격 1회분이다 — 120으로 두면 기존 사용자 알람이 한 틱 늦어진다).
+- **등급**: `severity`(CRITICAL/WARNING)를 규칙이 결정 → §4.13 이벤트에 그대로 실린다.
+- **스코프 소멸 vs 빈 스코프**: 스코프 대상(zone/rack/level)이 soft delete되면 **열린 알람을 자동 해소하고 그 규칙을 건너뛴다**. 스코프는 살아있는데 관측이 없으면(장비 0대·측정값 없음) "관측 부재"로 **상태를 유지**한다(정상 복귀가 아니므로 해소하지 않는다).
+
+| 메서드 | 경로 | 권한 | 응답 |
+|---|---|---|---|
+| GET | `/api/farms/{farmId}/alarm-rules` | 멤버 | 200 `List<AlarmRuleResponse>` |
+| POST | `/api/farms/{farmId}/alarm-rules` | **OWNER**(+데모 차단 A007) | 201 AlarmRuleResponse |
+| GET | `/api/farms/{farmId}/alarm-rules/{id}` | 멤버 | 200 AlarmRuleResponse |
+| PATCH | `/api/farms/{farmId}/alarm-rules/{id}` | **OWNER**(+A007) | 200 AlarmRuleResponse |
+| DELETE | `/api/farms/{farmId}/alarm-rules/{id}` | **OWNER**(+A007) | 204 |
+
+- **PATCH는 부분 수정** — 미전송 필드는 미변경. `source`/`metric`/`comparator`/`scopeType`/`scopeId`는 **수정 대상이 아니다**(요청 DTO에 없음 — 스코프 불변이라 cross-tenant 표면이 생기지 않는다).
+- **상한**: 농장당 **50건**(ALR002). 판정은 farm 행 비관적 락 안에서 수행(check-then-act 레이스 차단). ⚠️ `PUT /env-thresholds`가 만드는 파생 규칙(최대 4개)도 이 카운트에 포함된다.
+- **파생 규칙**: `PUT /env-thresholds`(§4.6)가 `threshold_id`로 묶인 규칙을 **제자리 upsert**한다(id 보존 → `metricKey` 불변 → 열린 알람 고아화 방지). 경계를 지우거나 설정을 끄면 `enabled=false`로 내리고 **열린 알람을 즉시 자동 해소**한다. `/alarm-rules`에서는 **읽기 전용**(수정·삭제 시 ALR004) — 두 API가 서로 덮어쓰지 못하게.
+- **스코프 검증**: `scopeId`는 입력값 취급 — 생성 시 해당 zone/rack/level이 그 농장 소속인지 `findByIdAndFarmId`로 재검증하고, 아니면 **403이 아니라 404**(R001/R002/R003)로 존재 유추를 차단한다.
+- **웹훅 쿨다운**: 농장×규칙별 30분. 규칙 **수정** 시 지속시간 카운터만 리셋하고 **쿨다운은 보존**한다(PATCH 반복으로 쿨다운을 우회해 외부 발송을 증폭하는 벡터 차단). 규칙 **삭제** 시에는 쿨다운까지 폐기한다. ⚠️ 부작용: 규칙을 껐다 켠 뒤 30분 내 재이탈하면 **이벤트는 생기지만 Discord 발송은 억제**된다.
+- **웹훅 멘션 억제**: payload에 `allowed_mentions: {parse: []}` 고정 — 규칙 이름·장비 이름이 사용자 입력이라 `@everyone`이 해석되면 멘션 폭탄이 된다. 두 노티파이어(`EnvThreshold`·`Prescription`)가 **공유 payload 타입**을 쓴다(복사하면 한쪽만 고쳐진다).
+- **ErrorCode**: `ALR001`(404 규칙 없음) · `ALR002`(409 상한 초과) · `ALR003`(400 검증 실패) · `ALR004`(409 파생 규칙 직접 수정 불가)
+- **마이그레이션**: **V20** `alarm_rules` + 기존 `farm_env_thresholds` 이관 + 열린 `alarm_events`의 `metric_key` 재매핑 + 미대상 레거시 알람 자동 해소(감사 로그 동반)
 
 ## 5. ErrorCode 체계
 
@@ -488,6 +522,10 @@
 | CT005 | 409 | 대기 큐가 변경됨 — 최신 큐로 재확인 후 재적용 |
 | AL001 | 404 | 알람 이벤트 없음(타 농장 소속 포함) |
 | AL002 | 409 | 현재 상태에서 처리할 수 없는 알람(잘못된 상태 전이) |
+| ALR001 | 404 | 알람 규칙 없음(타 농장 소속 포함) |
+| ALR002 | 409 | 알람 규칙 개수 상한 초과(농장당 50건 — 파생 규칙 포함) |
+| ALR003 | 400 | 알람 규칙 검증 실패(comparator·임계값 조합 불일치, 공백 이름 등) |
+| ALR004 | 409 | 파생 규칙은 직접 수정·삭제할 수 없음(`PUT /env-thresholds`로만) |
 
 ## 6. 환경변수 · CORS
 
