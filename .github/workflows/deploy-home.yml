@@ -19,6 +19,13 @@ on:
   workflow_dispatch: {}
   push:
     branches: [main]
+    # 문서 단독 커밋으로 운영을 재배포하지 않는다(#114).
+    # docs/STATUS.md 는 머지마다 갱신하는 문서라, 필터가 없으면 문서 갱신이 곧 운영 재배포가 된다.
+    # paths-ignore 는 **변경 파일이 전부** 패턴에 걸릴 때만 스킵하므로, 코드+문서를 함께 바꾼
+    # 커밋은 그대로 배포된다. 수동 배포가 필요하면 위 workflow_dispatch 를 쓴다.
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
 
 permissions:
   contents: read
