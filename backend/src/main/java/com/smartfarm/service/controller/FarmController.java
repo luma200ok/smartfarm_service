@@ -38,7 +38,8 @@ public class FarmController {
         return ResponseEntity.status(HttpStatus.CREATED).body(farmService.createFarm(userId, request));
     }
 
-    @Operation(summary = "내 농장 목록 조회")
+    @Operation(summary = "내 농장 목록 조회 (인증) — farm 스코프 가드를 타지 않아 승인 대기자"
+            + "(PENDING)도 접근 가능. memberId는 요청자 본인의 멤버십 id다")
     @GetMapping
     public ResponseEntity<List<FarmSummaryResponse>> findMyFarms(@AuthenticationPrincipal Long userId) {
         return ResponseEntity.ok(farmService.findMyFarms(userId));

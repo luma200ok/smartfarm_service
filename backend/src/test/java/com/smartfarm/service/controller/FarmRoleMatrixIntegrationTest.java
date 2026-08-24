@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -251,7 +252,10 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
                 + "승인 전에는 농장을 볼 수도 없고 재수락도 F005라, 막으면 잘못 수락한 사용자가 "
                 + "농장에 영구히 묶인다")
         void selfCancellationIsAllowed() throws Exception {
-            long pendingMemberId = memberIdOfUser(adminToken, farmId, myUserId(pendingToken));
+            // ⚠️ memberId를 <b>대기자 본인의 토큰으로만</b> 알아낸다 — ADMIN 토큰으로 조회해 버리면
+            // "BE에는 탈출구가 있지만 FE에서 도달할 수 없는" 상태를 이 테스트가 덮어 버린다.
+            // 실제로 초판이 그랬다(memberIdOfUser(adminToken, ...)를 썼다).
+            long pendingMemberId = myMemberIdOf(pendingToken, farmId);
 
             mockMvc.perform(MockMvcRequestBuilders
                             .delete("/api/farms/" + farmId + "/members/" + pendingMemberId)
@@ -280,14 +284,43 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
         }
 
         @Test
-        @DisplayName("내 농장 목록에는 myRole=PENDING으로 보인다 — 승인 대기 중임을 알 수 있어야 한다")
-        void pendingFarmIsVisibleInMyFarmsWithPendingRole() throws Exception {
+        @DisplayName("내 농장 목록에는 myRole=PENDING + 본인 memberId가 실린다 — 승인 대기 중임을 "
+                + "알 수 있어야 하고, 대기 취소에 필요한 memberId를 여기서만 얻을 수 있다")
+        void pendingFarmIsVisibleInMyFarmsWithPendingRoleAndMemberId() throws Exception {
+            long expectedMemberId = memberIdOfUser(adminToken, farmId, myUserId(pendingToken));
+
             mockMvc.perform(MockMvcRequestBuilders.get("/api/farms")
                             .header("Authorization", "Bearer " + pendingToken))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
                     .andExpect(jsonPath("$[0].id").value(farmId))
-                    .andExpect(jsonPath("$[0].myRole").value("PENDING"));
+                    .andExpect(jsonPath("$[0].myRole").value("PENDING"))
+                    // 이 필드가 없으면 대기 취소 API가 BE에만 있고 FE에서는 도달 불가가 된다
+                    .andExpect(jsonPath("$[0].memberId").value(expectedMemberId));
+        }
+
+        @Test
+        @DisplayName("memberId는 요청자 본인의 멤버십 id다 — 같은 농장을 봐도 사용자마다 다른 값이 "
+                + "실리고, 남의 memberId는 어떤 응답에도 섞이지 않는다")
+        void memberIdIsScopedToTheRequester() throws Exception {
+            long pendingMemberId = memberIdOfUser(adminToken, farmId, myUserId(pendingToken));
+            long adminMemberId = memberIdOfUser(adminToken, farmId, myUserId(adminToken));
+            long operatorMemberId = memberIdOfUser(adminToken, farmId, myUserId(operatorToken));
+
+            // 같은 농장인데 각자 자기 멤버십 id만 본다
+            assertThat(myMemberIdOf(pendingToken, farmId)).isEqualTo(pendingMemberId);
+            assertThat(myMemberIdOf(adminToken, farmId)).isEqualTo(adminMemberId);
+            assertThat(myMemberIdOf(operatorToken, farmId)).isEqualTo(operatorMemberId);
+
+            // 대기자의 응답 본문 어디에도 남의 memberId가 없다(전체 문자열 대조)
+            String pendingBody = mockMvc.perform(MockMvcRequestBuilders.get("/api/farms")
+                            .header("Authorization", "Bearer " + pendingToken))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(pendingBody)
+                    .as("승인 대기자 응답에 타인의 memberId가 새면 안 된다: %s", pendingBody)
+                    .doesNotContain(String.valueOf(adminMemberId))
+                    .doesNotContain(String.valueOf(operatorMemberId));
         }
     }
 
@@ -497,6 +530,23 @@ class FarmRoleMatrixIntegrationTest extends FarmTestSupport {
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value(expectedCode));
         }
+    }
+
+    /**
+     * <b>본인 토큰만으로</b> 자기 멤버십 id를 얻는다({@code GET /api/farms}) — FE가 실제로 쓸 수 있는
+     * 유일한 경로다. 승인 대기자는 멤버 목록({@code GET .../members})이 F008로 막혀 있어 이 방법밖에 없다.
+     */
+    private long myMemberIdOf(String token, long targetFarmId) throws Exception {
+        var result = mockMvc.perform(MockMvcRequestBuilders.get("/api/farms")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        for (com.fasterxml.jackson.databind.JsonNode farm : readJson(result)) {
+            if (farm.get("id").asLong() == targetFarmId) {
+                return farm.get("memberId").asLong();
+            }
+        }
+        throw new IllegalStateException("내 농장 목록에서 farmId=" + targetFarmId + "를 찾을 수 없음");
     }
 
     /**

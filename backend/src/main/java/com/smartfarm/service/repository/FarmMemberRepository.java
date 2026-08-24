@@ -76,8 +76,17 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
     /**
      * 내 농장 목록 — Farm/User 양쪽 @SQLRestriction으로 soft delete 농장·탈퇴 유저의
      * 잔존 멤버십 행은 join에서 제외됨(탈퇴 유저의 농장 요약 노출 차단, 가드 3곳과 동일 패턴).
+     *
+     * <p>{@code fm.id}(요청자 본인의 멤버십 id)를 함께 실어 준다(이슈 #122) — 승인 대기자가
+     * 자기 대기를 취소할 때 필요한 값인데, PENDING이 접근할 수 있는 다른 표면이 없다
+     * ({@link com.smartfarm.service.dto.FarmSummaryResponse} javadoc 참고). 이미 이 조인이
+     * 요청자의 멤버십 행을 읽고 있으므로 <b>추가 조회는 없다</b>.
+     *
+     * <p>⚠️ {@code WHERE fm.userId = :userId} 스코프가 "본인 멤버십 id만 노출"을 구조적으로
+     * 보장한다 — 이 조건을 느슨하게 바꾸면 타인의 memberId가 새므로 함께 재검토할 것.
      */
-    @Query("SELECT new com.smartfarm.service.dto.FarmSummaryResponse(f.id, f.name, f.cropType, fm.role) "
+    @Query("SELECT new com.smartfarm.service.dto.FarmSummaryResponse("
+            + "f.id, f.name, f.cropType, fm.role, fm.id) "
             + "FROM FarmMember fm JOIN Farm f ON f.id = fm.farmId JOIN User u ON u.id = fm.userId "
             + "WHERE fm.userId = :userId ORDER BY f.id ASC")
     List<FarmSummaryResponse> findMyFarms(@Param("userId") Long userId);
