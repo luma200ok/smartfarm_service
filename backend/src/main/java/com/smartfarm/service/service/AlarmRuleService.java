@@ -11,9 +11,6 @@ import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.AlarmRuleRepository;
-import com.smartfarm.service.repository.RackLevelRepository;
-import com.smartfarm.service.repository.RackRepository;
-import com.smartfarm.service.repository.ZoneRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -45,9 +42,7 @@ public class AlarmRuleService {
     static final int MAX_RULES_PER_FARM = 50;
 
     private final AlarmRuleRepository alarmRuleRepository;
-    private final ZoneRepository zoneRepository;
-    private final RackRepository rackRepository;
-    private final RackLevelRepository rackLevelRepository;
+    private final AlarmScopeResolver alarmScopeResolver;
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
     private final AlarmEventService alarmEventService;
@@ -218,15 +213,9 @@ public class AlarmRuleService {
         if (scopeId == null) {
             throw new CustomException(ErrorCode.ALR003, "이 스코프에는 scopeId가 필요합니다.");
         }
-        switch (scopeType) {
-            case ZONE -> zoneRepository.findByIdAndFarmId(scopeId, farmId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.R001));
-            case RACK -> rackRepository.findByIdAndFarmId(scopeId, farmId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.R002));
-            case LEVEL -> rackLevelRepository.findByIdAndFarmId(scopeId, farmId)
-                    .orElseThrow(() -> new CustomException(ErrorCode.R003));
-            default -> throw new CustomException(ErrorCode.ALR003, "지원하지 않는 스코프입니다.");
-        }
+        // 소속·생존 확인은 평가 경로와 같은 매핑을 쓴다(AlarmScopeResolver) — 두 경로가 갈라지면
+        // API는 막는데 평가는 통과하는(혹은 그 반대) 상태가 생긴다.
+        alarmScopeResolver.requireExists(farmId, scopeType, scopeId);
     }
 
     /**

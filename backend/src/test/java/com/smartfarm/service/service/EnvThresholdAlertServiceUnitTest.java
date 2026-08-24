@@ -73,6 +73,7 @@ class EnvThresholdAlertServiceUnitTest {
     private final FarmRepository farmRepository = mock(FarmRepository.class);
     private final SensorReadingRepository sensorReadingRepository = mock(SensorReadingRepository.class);
     private final DeviceRepository deviceRepository = mock(DeviceRepository.class);
+    private final AlarmScopeResolver alarmScopeResolver = mock(AlarmScopeResolver.class);
     private final EnvThresholdWebhookNotifier notifier = mock(EnvThresholdWebhookNotifier.class);
     private final AlarmEventService alarmEventService = mock(AlarmEventService.class);
     private final MutableClock clock = new MutableClock(Instant.parse("2026-08-24T00:00:00Z"));
@@ -80,8 +81,10 @@ class EnvThresholdAlertServiceUnitTest {
     private final EnvThresholdAlertService service = newService(notifier);
 
     private EnvThresholdAlertService newService(EnvThresholdWebhookNotifier notifierToUse) {
+        // 스코프 대상은 기본적으로 "살아 있다" — 삭제 시나리오(P2-3)만 개별 테스트에서 뒤집는다.
+        when(alarmScopeResolver.exists(any(), any(), any())).thenReturn(true);
         return new EnvThresholdAlertService(alarmRuleRepository, farmRepository, sensorReadingRepository,
-                deviceRepository, notifierToUse, alarmEventService, clock);
+                deviceRepository, alarmScopeResolver, notifierToUse, alarmEventService, clock);
     }
 
     /**
@@ -368,6 +371,40 @@ class EnvThresholdAlertServiceUnitTest {
         AlarmRule heartbeatRule = rule(30L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
                 AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
         when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
+        when(deviceRepository.findByZoneIdOrderByIdAsc(9L)).thenReturn(List.of());
+
+        service.evaluate(null);
+
+        verify(alarmEventService, never()).autoResolveIfOpen(anyLong(), anyString());
+    }
+
+    // ── 스코프 대상 삭제(#118 리뷰 P2-3) ───────────────────────────────────────
+
+    @Test
+    @DisplayName("P2-3: 스코프 대상(랙)이 soft delete되면 열린 알람을 자동 해소하고 그 규칙은 "
+            + "건너뛴다 — 측정값 조회조차 하지 않는다(삭제된 랙의 rack_level_id IS NULL 읽기가 "
+            + "집계에 섞이는 경로도 함께 막힌다)")
+    void deletedScopeTargetResolvesAlarmAndSkipsRule() {
+        AlarmRule rackRule = rule(60L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
+                AlarmComparator.GT, 2.8, AlarmSeverity.WARNING, AlarmScopeType.RACK, 100L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(rackRule));
+        when(alarmScopeResolver.exists(FARM_ID, AlarmScopeType.RACK, 100L)).thenReturn(false);
+
+        service.evaluate(null);
+
+        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "RULE_60");
+        verify(sensorReadingRepository, never()).findLatestInScope(any(), any(), any(), any(), any(), any());
+        verify(alarmEventService, never()).recordBreach(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("P2-3: 스코프 대상이 살아 있는데 그 안이 비었을 뿐이면(관측 부재) 열린 알람을 "
+            + "유지한다 — '비었다'와 '사라졌다'는 다른 상태다")
+    void aliveButEmptyScopeKeepsOpenAlarm() {
+        AlarmRule heartbeatRule = rule(61L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
+                AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
+        when(alarmScopeResolver.exists(FARM_ID, AlarmScopeType.ZONE, 9L)).thenReturn(true);
         when(deviceRepository.findByZoneIdOrderByIdAsc(9L)).thenReturn(List.of());
 
         service.evaluate(null);

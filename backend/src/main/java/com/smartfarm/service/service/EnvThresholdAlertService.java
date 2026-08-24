@@ -68,6 +68,7 @@ public class EnvThresholdAlertService {
     private final FarmRepository farmRepository;
     private final SensorReadingRepository sensorReadingRepository;
     private final DeviceRepository deviceRepository;
+    private final AlarmScopeResolver alarmScopeResolver;
     private final EnvThresholdWebhookNotifier notifier;
     private final AlarmEventService alarmEventService;
     private final Clock clock;
@@ -79,10 +80,11 @@ public class EnvThresholdAlertService {
                                      FarmRepository farmRepository,
                                      SensorReadingRepository sensorReadingRepository,
                                      DeviceRepository deviceRepository,
+                                     AlarmScopeResolver alarmScopeResolver,
                                      EnvThresholdWebhookNotifier notifier,
                                      AlarmEventService alarmEventService) {
-        this(alarmRuleRepository, farmRepository, sensorReadingRepository, deviceRepository, notifier,
-                alarmEventService, Clock.systemDefaultZone());
+        this(alarmRuleRepository, farmRepository, sensorReadingRepository, deviceRepository,
+                alarmScopeResolver, notifier, alarmEventService, Clock.systemDefaultZone());
     }
 
     /**
@@ -93,6 +95,7 @@ public class EnvThresholdAlertService {
                               FarmRepository farmRepository,
                               SensorReadingRepository sensorReadingRepository,
                               DeviceRepository deviceRepository,
+                              AlarmScopeResolver alarmScopeResolver,
                               EnvThresholdWebhookNotifier notifier,
                               AlarmEventService alarmEventService,
                               Clock clock) {
@@ -100,6 +103,7 @@ public class EnvThresholdAlertService {
         this.farmRepository = farmRepository;
         this.sensorReadingRepository = sensorReadingRepository;
         this.deviceRepository = deviceRepository;
+        this.alarmScopeResolver = alarmScopeResolver;
         this.notifier = notifier;
         this.alarmEventService = alarmEventService;
         this.clock = clock;
@@ -139,6 +143,25 @@ public class EnvThresholdAlertService {
     }
 
     private void evaluateRule(AlarmRule rule, AiEnvironmentResponse.Indoor indoor) {
+        // ⚠️ 감시 대상이 사라진 규칙 처리(#118 리뷰 P2-3) — "스코프가 비었다(관측 부재)"와 "스코프
+        // 자체가 사라졌다"는 다른 상태다. 전자는 관측이 재개될 수 있으니 열린 알람을 유지하지만,
+        // 후자는 그 존/랙/층이 soft delete돼 다시 관측될 일이 없으므로 열린 알람을 닫아야 한다.
+        // alarm_rules.scope_id는 다형 참조라 FK가 없고, ZoneService·RackService는 규칙을 모르므로
+        // (이 PR 범위를 넓히지 않기 위해 그쪽은 건드리지 않는다) 평가 시점의 이 자기방어가 유일한
+        // 방어선이다. 이 검사가 없으면 삭제된 랙의 규칙이 매 틱 계속 평가되고, DEVICE_HEARTBEAT이면
+        // 빈 스코프 → 관측 부재 → 자동 해소 미실행으로 그 시점 열린 알람이 영구 미해결이 된다.
+        // 부수 효과로 SENSOR_READING 경로도 함께 막힌다 — findLatestInScope는 층(rack_levels)만
+        // soft delete 필터하므로, 삭제된 랙/존에 속하면서 rack_level_id가 null인 측정값은 그 쿼리
+        // 혼자서는 걸러내지 못한다.
+        if (!alarmScopeResolver.exists(rule.getFarmId(), rule.getScopeType(), rule.getScopeId())) {
+            AlertState orphanState = states.get(new AlertKey(rule.getFarmId(), rule.getId()));
+            if (orphanState != null) {
+                orphanState.firstBreachAt.set(null);
+            }
+            alarmEventService.autoResolveIfOpen(rule.getFarmId(), rule.metricKey());
+            return;
+        }
+
         Observation observation = observe(rule, indoor);
         if (observation == null) {
             // 관측 부재(해당 지표의 신선한 값이 없거나, 스코프에 장비가 없음) — 판정 불가다.
