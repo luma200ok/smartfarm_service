@@ -45,7 +45,7 @@ public class FarmMemberController {
                 farmMemberService.changeMemberRole(farmId, userId, memberId, request.role()));
     }
 
-    @Operation(summary = "멤버 제거 (ADMIN 또는 본인 — 마지막 ADMIN 제거는 F006)")
+    @Operation(summary = "멤버 제거 (ADMIN 또는 본인 — 마지막 ADMIN 제거는 F006, 승인 대기자의 본인 취소도 허용)")
     @DeleteMapping("/{memberId}")
     public ResponseEntity<Void> removeMember(@AuthenticationPrincipal Long userId,
                                              @PathVariable Long farmId,

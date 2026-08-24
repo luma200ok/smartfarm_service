@@ -47,6 +47,11 @@ public class FarmMemberService {
      * 직렬화된다. ({@code AlarmRuleService#createRule}의 상한 판정과 같은 관용구.)
      *
      * <p>자기 자신 강등도 같은 규칙이다 — 마지막 ADMIN이면 본인이라도 F006이다.
+     *
+     * <p>⚠️ <b>판정 근거는 엔티티가 아니라 스칼라 재조회다</b>(리뷰 P2-1). 대상이 요청자 본인이면
+     * 가드가 이미 그 멤버십 행을 영속성 컨텍스트에 올려 두었고, 잠금 뒤 다시 조회해도 JPA 엔티티
+     * 동일성 보장 때문에 <b>잠금 이전 스냅샷</b>이 돌아온다. 근거는
+     * {@link FarmMemberRepository#findRoleByIdAndFarmId} javadoc 참고.
      */
     @Transactional
     public MemberResponse changeMemberRole(Long farmId, Long userId, Long memberId, FarmRole role) {
@@ -55,12 +60,16 @@ public class FarmMemberService {
         farmAccessGuard.requireAdmin(farmId, userId);
         lockFarm(farmId);
 
-        // farm 스코프 필수 조회 — cross-tenant memberId는 여기서 F009로 걸러진다
-        FarmMember target = farmMemberRepository.findByIdAndFarmId(memberId, farmId)
+        // 잠금 안쪽 fresh 값으로 판정한다(엔티티 캐시 우회) — farm 스코프 조회라
+        // cross-tenant memberId는 여기서 F009로 걸러진다.
+        FarmRole currentRole = farmMemberRepository.findRoleByIdAndFarmId(memberId, farmId)
                 .orElseThrow(() -> new CustomException(ErrorCode.F009));
-        if (target.getRole() == FarmRole.ADMIN && role != FarmRole.ADMIN) {
+        if (currentRole.atLeast(FarmRole.ADMIN) && !role.atLeast(FarmRole.ADMIN)) {
             requireAnotherAdminRemains(farmId);
         }
+
+        FarmMember target = farmMemberRepository.findByIdAndFarmId(memberId, farmId)
+                .orElseThrow(() -> new CustomException(ErrorCode.F009));
         target.changeRole(role);
 
         String nickname = userRepository.findById(target.getUserId())
@@ -78,34 +87,53 @@ public class FarmMemberService {
      *   <li>ADMIN + 대상 미존재(farm 스코프 밖 memberId 포함) → 204 no-op (멱등 DELETE,
      *       farm 스코프 조회라 타 농장 멤버십은 조회·삭제 불가)</li>
      *   <li>비ADMIN + 대상이 본인 아님(미존재 포함) → F003</li>
+     *   <li><b>PENDING(승인 대기)</b> + 대상이 본인 → 허용(승인 대기 취소, 리뷰 P3-4). 대상이
+     *       본인이 아니면 다른 farm 표면과 동일하게 F008. 승인 전에는 농장을 볼 수도 없고
+     *       재수락도 F005라, 이 예외가 없으면 잘못 수락한 사용자가 농장에 영구히 묶인다.</li>
      * </ul>
      *
-     * <p>{@link #changeMemberRole}과 같은 농장 행 잠금 안에서 <b>대상의 역할을 다시 읽어</b>
-     * 판정한다 — 잠금 밖에서 읽은 역할로 판단하면 "승격 직후 본인 탈퇴" 같은 인터리빙에서
-     * 마지막 관리자가 빠져나갈 수 있다.
+     * <p><b>마지막 ADMIN 판정은 잠금 안쪽 스칼라 재조회로 한다</b>(리뷰 P2-1). 잠금 뒤에
+     * {@code findByIdAndFarmId}로 엔티티를 다시 읽어도, 대상이 요청자 본인이면 가드가 올려 둔
+     * 관리 인스턴스가 반환되어 <b>잠금 이전 스냅샷</b>이 나온다 — 그 상태로 판정하면 "B의 탈퇴
+     * 요청이 잠금을 기다리는 사이 B가 ADMIN으로 승격되고 A가 강등되는" 인터리빙에서 F006을
+     * 건너뛰고 관리자 0명이 된다. 상세는
+     * {@link FarmMemberRepository#findRoleByIdAndFarmId} javadoc 참고.
      */
     @Transactional
     public void removeMember(Long farmId, Long userId, Long memberId) {
         // 데모 계정 차단(A007) — 타 멤버 제거·본인 탈퇴(농장 나가기) 모두 해당(contract §4.5)
         demoAccountGuard.rejectDemoAccount(userId);
-        FarmMember requester = farmAccessGuard.requireMember(farmId, userId).membership();
+        // PENDING을 포함해 읽는다 — 승인 대기자의 "본인 취소"만 아래에서 예외적으로 허용한다.
+        FarmMember requester = farmAccessGuard.requireAnyMembership(farmId, userId).membership();
         lockFarm(farmId);
         // farm 스코프 필수 조회 — cross-tenant memberId는 여기서 걸러짐
         Optional<FarmMember> target = farmMemberRepository.findByIdAndFarmId(memberId, farmId);
+        boolean targetIsSelf = target.isPresent() && target.get().getUserId().equals(userId);
 
-        if (requester.getRole() == FarmRole.ADMIN) {
+        if (!requester.getRole().isActive()) {
+            // PENDING: 본인 승인 대기 취소만 허용 — 그 외 시도는 다른 farm 표면과 같은 F008
+            if (!targetIsSelf) {
+                throw new CustomException(ErrorCode.F008);
+            }
+        } else if (requester.getRole().atLeast(FarmRole.ADMIN)) {
             if (target.isEmpty()) {
                 return;
             }
-        } else if (target.isEmpty() || !target.get().getUserId().equals(userId)) {
+        } else if (!targetIsSelf) {
             throw new CustomException(ErrorCode.F003);
         }
 
-        FarmMember victim = target.get();
-        if (victim.getRole() == FarmRole.ADMIN) {
+        // 잠금 안쪽 fresh 역할로 마지막 ADMIN을 판정한다(엔티티 캐시 우회 — 위 javadoc 참고).
+        Optional<FarmRole> victimRole = farmMemberRepository.findRoleByIdAndFarmId(memberId, farmId);
+        if (victimRole.isEmpty()) {
+            // 잠금을 기다리는 사이 행이 사라졌다(회원 탈퇴의 벌크 삭제 등) — 멱등 DELETE라 no-op.
+            // 여기서 delete를 강행하면 이미 사라진 행에 대해 500이 난다.
+            return;
+        }
+        if (victimRole.get().atLeast(FarmRole.ADMIN)) {
             requireAnotherAdminRemains(farmId);
         }
-        farmMemberRepository.delete(victim);
+        farmMemberRepository.delete(target.get());
         revokeActiveInvitations(farmId);
     }
 
@@ -138,10 +166,16 @@ public class FarmMemberService {
      * — 본인 소유 행만 삭제하므로 cross-tenant 접근 여지가 없다. ADMIN 부재 검증(A006)·
      * 유저 행 잠금은 호출자(UserService#withdraw)가 선행한다.
      *
-     * <p>⚠️ 이 경로는 <b>마지막 ADMIN 보호(F006)를 검사하지 않는다</b> — 검사할 필요가 없기
-     * 때문이다. 호출자의 A006 가드가 ADMIN 멤버십을 하나라도 가진 유저의 탈퇴를 통째로
-     * 막으므로, 여기 도달한 유저에게는 ADMIN 멤버십이 없다. A006을 완화하려면 이 메서드에
-     * 농장별 마지막 ADMIN 검사(+농장 행 잠금)를 반드시 함께 넣어야 한다.
+     * <p>⚠️ 이 경로는 <b>마지막 ADMIN 보호(F006)를 검사하지 않고, 농장 행 잠금도 잡지 않는다</b>.
+     * 1차 방어선은 호출자({@code UserService#withdraw})의 A006 가드다 — ADMIN 멤버십을 하나라도
+     * 가진 유저의 탈퇴를 통째로 막으므로, 정상 흐름에서 여기 도달한 유저에게는 ADMIN 멤버십이 없다.
+     *
+     * <p>다만 <b>"필요 없다"고 단정할 수는 없다</b>(리뷰 P3-2 정정). A006 검사와 이 벌크 삭제
+     * 사이에 농장 행 잠금이 없어, 그 구간에 다른 트랜잭션이 이 유저를 ADMIN으로 승격시키면
+     * 승격된 멤버십까지 함께 지워질 수 있다(유저 행 잠금은 같은 유저의 동시 탈퇴만 막을 뿐,
+     * 제3자의 역할 변경은 막지 못한다). 실현 창이 좁고 A006이 대부분을 걸러 내므로 이번 사이클에서는
+     * 후속으로 분리했다 — 닫으려면 농장별 잠금 + 마지막 ADMIN 검사를 이 메서드에 넣어야 하며,
+     * A006을 완화한다면 그 작업이 <b>선행 조건</b>이다.
      *
      * <p>초대 무효화용 farmId는 벌크 DELETE 전에 프로젝션으로 선조회한다. 엔티티
      * select-then-deleteAll이 아닌 벌크 DELETE라 동시 탈퇴의 패자도 0건 삭제로 조용히

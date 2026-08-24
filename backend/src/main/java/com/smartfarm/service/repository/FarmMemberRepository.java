@@ -27,6 +27,27 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
     /** farm 스코프 필수 — memberId 단독 조회 금지(cross-tenant IDOR 차단) */
     Optional<FarmMember> findByIdAndFarmId(Long id, Long farmId);
 
+    /**
+     * 역할만 <b>스칼라로</b> 재조회한다 — "마지막 ADMIN 보호"(F006) 판정 전용(이슈 #122 리뷰 P2-1).
+     *
+     * <p>⚠️ <b>왜 엔티티가 아니라 스칼라인가</b>: {@link #findByIdAndFarmId}는 SQL을 실제로 날려
+     * fresh row를 읽어도, 그 id의 엔티티가 이미 영속성 컨텍스트에 관리 중이면 <b>기존 인스턴스를
+     * 반환하고 방금 읽은 상태를 버린다</b>(JPA 엔티티 동일성 보장). 본인 탈퇴·본인 역할 변경처럼
+     * 대상이 요청자 자신인 경로에서는 가드가 이미 그 행을 로드해 두었으므로, 잠금을 잡은 뒤
+     * 다시 읽어도 <b>잠금 이전 스냅샷</b>이 나온다. {@code @Lock}을 붙여도 마찬가지다 — 버전 없는
+     * 관리 엔티티는 잠금 SQL을 쏴도 상태가 갱신되지 않는다.
+     *
+     * <p>그 결과 다음 인터리빙에서 마지막 관리자가 빠져나갈 수 있었다(A=ADMIN, B=OPERATOR):
+     * ① B가 본인 탈퇴 요청 → 가드가 B를 role=OPERATOR로 로드(잠금 전) ② A가 B를 ADMIN으로 승격
+     * ③ A가 자신을 강등(잠금 안 count=2라 통과) ④ B의 트랜잭션이 락을 얻고 <b>stale OPERATOR</b>로
+     * 판정 → F006을 건너뛰고 삭제 → <b>ADMIN 0명, 복구 불가</b>.
+     *
+     * <p>스칼라 프로젝션은 엔티티 캐시를 타지 않으므로 항상 DB의 현재 값을 돌려준다.
+     * 반드시 농장 행 잠금을 잡은 뒤 호출한다.
+     */
+    @Query("SELECT fm.role FROM FarmMember fm WHERE fm.id = :id AND fm.farmId = :farmId")
+    Optional<FarmRole> findRoleByIdAndFarmId(@Param("id") Long id, @Param("farmId") Long farmId);
+
     boolean existsByFarmIdAndUserId(Long farmId, Long userId);
 
     /**

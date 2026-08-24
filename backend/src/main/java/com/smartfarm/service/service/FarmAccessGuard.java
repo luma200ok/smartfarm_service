@@ -54,14 +54,39 @@ public class FarmAccessGuard {
      * 여기서 한 번 하면 조회·제어·구조 변경 전 표면에서 성립한다.
      */
     public FarmAccess requireMember(Long farmId, Long userId) {
-        FarmMember membership = farmMemberRepository.findLiveByFarmIdAndUserId(farmId, userId)
-                .orElseThrow(() -> new CustomException(ErrorCode.F002));
+        // ⚠️ PENDING 판정은 농장 조회보다 앞이다(클래스 javadoc 검사 순서) — 헬퍼로 묶지 않고
+        // 순서를 눈에 보이게 유지한다.
+        FarmMember membership = findLiveMembershipOrThrow(farmId, userId);
         if (!membership.getRole().isActive()) {
             throw new CustomException(ErrorCode.F008);
         }
-        Farm farm = farmRepository.findById(farmId)
+        return new FarmAccess(findLiveFarmOrThrow(farmId), membership);
+    }
+
+    /**
+     * 승인 여부와 무관하게 멤버십만 확인한다 — <b>{@code PENDING}도 통과시킨다</b>.
+     *
+     * <p>⚠️ <b>일반 farm 표면에 쓰면 안 된다</b>(PENDING 차단이 무력화된다). 정당한 사용처는
+     * "본인 멤버십 자체를 정리하는" 단 하나의 경로다: 승인 대기자가 자기 대기 상태를 취소하는
+     * 본인 탈퇴({@code FarmMemberService#removeMember}, 이슈 #122 리뷰 P3-4). 승인 대기 중에는
+     * 농장을 볼 수도(F008) 없고 재수락도 F005라, 이 예외가 없으면 잘못 수락한 사용자가 농장에
+     * 영구히 묶인다. 자기 행을 지우는 것이라 다른 농장 데이터에 닿지 않는다.
+     *
+     * <p>호출자는 <b>대상이 요청자 본인인지 반드시 직접 검증</b>해야 한다 — 이 메서드는
+     * 그 검사를 하지 않는다.
+     */
+    public FarmAccess requireAnyMembership(Long farmId, Long userId) {
+        return new FarmAccess(findLiveFarmOrThrow(farmId), findLiveMembershipOrThrow(farmId, userId));
+    }
+
+    private FarmMember findLiveMembershipOrThrow(Long farmId, Long userId) {
+        return farmMemberRepository.findLiveByFarmIdAndUserId(farmId, userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.F002));
+    }
+
+    private Farm findLiveFarmOrThrow(Long farmId) {
+        return farmRepository.findById(farmId)
                 .orElseThrow(() -> new CustomException(ErrorCode.F001));
-        return new FarmAccess(farm, membership);
     }
 
     /**

@@ -40,10 +40,14 @@ public enum FarmRole {
     }
 
     /**
-     * 승인된 멤버인가 — {@code PENDING}만 false.
-     * farm-scoped 표면의 최소 자격이다({@code FarmAccessGuard#requireMember}).
+     * 승인된 멤버인가 — farm-scoped 표면의 최소 자격이다({@code FarmAccessGuard#requireMember}).
+     *
+     * <p>{@code != PENDING}이 아니라 <b>{@code atLeast(VIEWER)}로 표현한다</b>(이슈 #122 리뷰).
+     * 전자는 "PENDING만 아니면 통과"라, 나중에 PENDING보다 더 낮은 상태(예: 정지·차단)가 추가되면
+     * 그 역할이 <b>조용히 활성 멤버로 취급된다</b> — 서열 기반으로 쓰면 새 하위 역할이 기본적으로
+     * 차단되는 쪽(fail-closed)으로 붙는다.
      */
     public boolean isActive() {
-        return this != PENDING;
+        return atLeast(VIEWER);
     }
 }
