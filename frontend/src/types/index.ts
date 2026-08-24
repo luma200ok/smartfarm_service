@@ -21,7 +21,9 @@ export type NutrientStage = "SEEDLING" | "VEGETATIVE" | "FRUITING" | "HARVEST";
 
 // 존·랙·장비 레지스트리 enum (contract §4.10, 이슈 #89)
 export type DeviceKind = "SENSOR" | "CONTROLLER" | "GATEWAY";
-export type DeviceStatus = "NORMAL" | "WARNING" | "FAULT" | "OFFLINE";
+// OFF는 2026-08-24 사이클 3(제어 도메인, contract §4.12)에서 추가 — 통신두절(OFFLINE, 장애)과
+// 구분되는 "의도적으로 꺼진 상태"(제어 조작 결과)다.
+export type DeviceStatus = "NORMAL" | "WARNING" | "FAULT" | "OFFLINE" | "OFF";
 
 // 센서 측정 지표 enum (contract §4.11, 이슈 #90) — unit은 서버가 응답에 함께 실어준다.
 export type SensorMetric = "TEMPERATURE" | "HUMIDITY" | "CO2" | "EC" | "PH" | "PPFD" | "POWER";
@@ -73,7 +75,12 @@ export type ErrorCode =
   | "CH002"
   | "N001"
   | "N002"
-  | "N003";
+  | "N003"
+  | "CT001"
+  | "CT002"
+  | "CT003"
+  | "CT004"
+  | "CT005";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
@@ -531,11 +538,14 @@ export interface DeviceSummaryByModel {
   status: DeviceStatus;
 }
 
+// off는 2026-08-24 사이클 3에서 추가(§4.10 리뷰 반영) — 불변식: total = normal + warning +
+// faultOrOffline + off. 없으면 비상 정지 직후 농장 전체가 멈췄는데 "이상 없음"으로 보인다.
 export interface DeviceSummaryResponse {
   total: number;
   normal: number;
   warning: number;
   faultOrOffline: number;
+  off: number;
   calibrationDueSoon: number;
   byModel: DeviceSummaryByModel[];
 }
@@ -605,6 +615,110 @@ export interface LevelSummaryResponse {
   range: string;
   simulated: boolean;
   levels: LevelSummaryLevelRow[];
+}
+
+// ── 제어 도메인 (contract §4.12, 이슈 #100/#108) ──────────────
+// 응답 DTO는 backend/src/main/java/com/smartfarm/service/dto/Control*.java 9개를 그대로 반영.
+export type OperationMode = "AUTO" | "MANUAL";
+export type ControlChangeKind = "SETPOINT" | "DEVICE";
+export type ControlChangeStatus = "PENDING" | "APPLIED" | "DISCARDED";
+
+// 제어 가능한 지표(백엔드 SensorMetric#isControllable) — 목표값 카드가 항상 이 4종 전부를 싣는다.
+export type ControllableMetric = Extract<SensorMetric, "TEMPERATURE" | "HUMIDITY" | "CO2" | "PPFD">;
+
+export interface ControlSetpointResponse {
+  metric: SensorMetric;
+  unit: string;
+  targetValue: number | null;
+  updatedBy: number | null;
+  updatedAt: string | null;
+}
+
+export interface ControlDeviceResponse {
+  id: number;
+  name: string;
+  kind: DeviceKind;
+  status: DeviceStatus;
+}
+
+export interface ControlChangeResponse {
+  id: number;
+  kind: ControlChangeKind;
+  metric: SensorMetric | null;
+  unit: string | null;
+  deviceId: number | null;
+  fromValue: string | null;
+  toValue: string;
+  status: ControlChangeStatus;
+  createdBy: number;
+  createdAt: string;
+  appliedBy: number | null;
+  appliedAt: string | null;
+}
+
+export interface ControlApplyLogResponse {
+  id: number;
+  summary: string;
+  itemCount: number;
+  appliedBy: number;
+  appliedAt: string;
+}
+
+export interface ControlStateResponse {
+  zoneId: number;
+  zoneName: string;
+  mode: OperationMode;
+  modeUpdatedBy: number | null;
+  modeUpdatedAt: string | null;
+  simulated: boolean;
+  setpoints: ControlSetpointResponse[];
+  devices: ControlDeviceResponse[];
+  pendingChanges: ControlChangeResponse[];
+  recentApplyLogs: ControlApplyLogResponse[];
+}
+
+export interface ControlModeRequest {
+  mode: OperationMode;
+}
+
+// kind별 필수 필드가 다르다 — SETPOINT는 metric·targetValue, DEVICE는 deviceId·targetStatus.
+export interface ControlChangeRequest {
+  kind: ControlChangeKind;
+  metric?: SensorMetric;
+  targetValue?: number;
+  deviceId?: number;
+  // 켜기(NORMAL)/끄기(OFF)만 허용(contract §4.12) — 나머지 상태는 관측 결과라 조작 대상이 아니다.
+  targetStatus?: Extract<DeviceStatus, "NORMAL" | "OFF">;
+}
+
+// expectedChangeIds는 필수(낙관적 검증) — 빈 배열도 유효한 값("지금 큐가 비어있다고 알고 있다").
+export interface ControlApplyRequest {
+  expectedChangeIds: number[];
+}
+
+export interface ControlApplyResponse {
+  zoneId: number;
+  appliedCount: number;
+  skippedCount: number;
+  appliedAt: string;
+  simulated: boolean;
+  state: ControlStateResponse;
+}
+
+export interface EmergencyStopResponse {
+  farmId: number;
+  zoneCount: number;
+  stoppedDeviceCount: number;
+  discardedChangeCount: number;
+  stoppedAt: string;
+  simulated: boolean;
+}
+
+// CT005 전용 오류 본문(contract §4.12 동시성 1) — 표준 {timestamp,code,message}에
+// pendingChanges만 덧붙인 상위 호환 형태. 클라이언트는 이 목록을 그대로 화면에 반영해
+// 재확인시킨다(별도 GET 왕복 불필요).
+export interface ControlQueueConflictResponse extends ApiErrorResponse {
+  pendingChanges: ControlChangeResponse[];
 }
 
 // ── 페이지네이션 ──────────────────────────────────

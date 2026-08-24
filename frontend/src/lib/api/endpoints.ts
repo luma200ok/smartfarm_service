@@ -54,6 +54,18 @@ export const ENDPOINTS = {
     readingsSeries: (farmId: number | string) => `/api/farms/${farmId}/readings/series`,
     readingsLatest: (farmId: number | string) => `/api/farms/${farmId}/readings/latest`,
     readingsLevelSummary: (farmId: number | string) => `/api/farms/${farmId}/readings/level-summary`,
+    // 제어 도메인 (contract §4.12, 이슈 #100/#108)
+    control: (farmId: number | string, zoneId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}/control`,
+    controlMode: (farmId: number | string, zoneId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}/control/mode`,
+    controlChanges: (farmId: number | string, zoneId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}/control/changes`,
+    controlChangeDetail: (farmId: number | string, zoneId: number | string, changeId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}/control/changes/${changeId}`,
+    controlApply: (farmId: number | string, zoneId: number | string) =>
+      `/api/farms/${farmId}/zones/${zoneId}/control/apply`,
+    emergencyStop: (farmId: number | string) => `/api/farms/${farmId}/control/emergency-stop`,
   },
   invitations: {
     accept: "/api/invitations/accept",

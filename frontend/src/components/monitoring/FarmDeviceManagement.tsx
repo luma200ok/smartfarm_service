@@ -28,7 +28,7 @@ type KindFilter = "ALL" | DeviceKind;
 type StatusFilter = "ALL" | DeviceStatus;
 
 const KIND_FILTERS: KindFilter[] = ["ALL", "SENSOR", "CONTROLLER", "GATEWAY"];
-const STATUS_FILTERS: StatusFilter[] = ["ALL", "NORMAL", "WARNING", "FAULT", "OFFLINE"];
+const STATUS_FILTERS: StatusFilter[] = ["ALL", "NORMAL", "WARNING", "FAULT", "OFFLINE", "OFF"];
 
 // 장비·센서 관리 탭(이슈 #99, contract §4.10) — 요약 KPI + 필터 목록 + CRUD.
 // 목업의 사용자·권한(멤버 탭 이미 있음)·시스템 로그(대응 API 없음)는 뺐다(handoff 요건 2).
@@ -180,11 +180,14 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-6">
           <KpiCard label="전체" value={summary.total} />
           <KpiCard label="정상" value={summary.normal} tone="ok" />
           <KpiCard label="주의" value={summary.warning} tone="warning" />
           <KpiCard label="고장/통신두절" value={summary.faultOrOffline} tone="critical" />
+          {/* off(정지) KPI — 없으면 비상 정지 직후 {total, normal:0, warning:0, faultOrOffline:0}이 되어
+              "이상 없음"으로 오인될 수 있다(contract §4.10, 이슈 #108 요건 ①). */}
+          <KpiCard label="정지(OFF)" value={summary.off} />
           <KpiCard label="보정 임박(30일)" value={summary.calibrationDueSoon} />
         </div>
       )}
@@ -383,6 +386,10 @@ function StatusChip({ status }: { status: DeviceStatus }) {
       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
       : status === "WARNING"
         ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
-        : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400";
+        : status === "OFF"
+          ? // OFF는 장애가 아니라 제어 조작 결과다(contract §4.12) — FAULT/OFFLINE과 같은 빨강을 쓰면
+            // "고장"으로 오인된다.
+            "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+          : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400";
   return <span className={`rounded px-2 py-0.5 text-xs font-semibold ${style}`}>{DEVICE_STATUS_LABELS[status]}</span>;
 }

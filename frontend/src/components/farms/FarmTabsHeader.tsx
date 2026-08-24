@@ -53,6 +53,11 @@ function buildTabs(farmId: string): TabItem[] {
       label: "장비",
       isActive: (pathname) => pathname === `${base}/devices`,
     },
+    {
+      href: `${base}/control`,
+      label: "제어",
+      isActive: (pathname) => pathname === `${base}/control`,
+    },
     { href: `${base}/members`, label: "멤버", isActive: (pathname) => pathname === `${base}/members` },
     {
       href: `${base}/chat`,
