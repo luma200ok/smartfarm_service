@@ -74,7 +74,11 @@ public enum ErrorCode {
     CT002(HttpStatus.CONFLICT, "CT002", "통신이 두절된 장비는 조작할 수 없습니다."),
     CT003(HttpStatus.CONFLICT, "CT003", "현재 운전 모드에서 허용되지 않는 조작입니다."),
     CT004(HttpStatus.CONFLICT, "CT004", "적용 대기 큐 상한(존당 50건)을 초과했습니다."),
-    CT005(HttpStatus.CONFLICT, "CT005", "대기 큐가 변경되었습니다. 최신 큐를 확인한 뒤 다시 적용해주세요.");
+    CT005(HttpStatus.CONFLICT, "CT005", "대기 큐가 변경되었습니다. 최신 큐를 확인한 뒤 다시 적용해주세요."),
+
+    // Alarm Event (알람 이벤트 도메인 — 이슈 #116)
+    AL001(HttpStatus.NOT_FOUND, "AL001", "알람 이벤트를 찾을 수 없습니다."),
+    AL002(HttpStatus.CONFLICT, "AL002", "현재 상태에서는 처리할 수 없는 알람입니다.");
 
     private final HttpStatus status;
     private final String code;
