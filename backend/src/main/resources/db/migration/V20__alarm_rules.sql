@@ -109,3 +109,37 @@ WHERE r.threshold_id IS NOT NULL
   AND r.farm_id = e.farm_id
   AND e.status <> 'RESOLVED'
   AND e.metric_key = r.metric || CASE r.comparator WHEN 'LT' THEN '_LOW' WHEN 'GT' THEN '_HIGH' END;
+
+-- ⚠️ 재매핑되지 못한 미해결 레거시 알람 해소 (#118 리뷰 P2-1)
+-- 위 INSERT는 `t.enabled = TRUE AND m.bound IS NOT NULL`인 경계만 규칙으로 만들므로, 다음 두 경우엔
+-- 대응 규칙이 없어 재매핑 UPDATE가 이벤트를 건드리지 못한다:
+--   ① 알람이 열린 채로 임계치 설정을 enabled=false로 내려 둔 농장
+--   ② 알람이 열린 채로 그 방향 경계값만 null로 지운 농장
+-- 그렇게 남은 이벤트는 옛 키(예: INDOOR_TEMP_HIGH)를 유지하는데, 사용자가 나중에 설정을 다시
+-- 켜면 EnvThresholdService가 <b>새 id</b>의 파생 규칙을 만들어 키가 'RULE_{새id}'가 된다. 즉 그
+-- 이벤트는 어떤 평가 경로로도 조회되지 않는 <b>영구 유령 알람</b>이 된다(자동 해소 불가, 사용자가
+-- 수동 처리하는 것 외엔 방법이 없다).
+-- 감시 근거(규칙)가 사라진 알람이므로 시스템 자동 해소로 닫는다 — §4.13의 자동 해소 규약대로
+-- resolved_by=NULL이며, 타임라인에 사유를 남겨 감사 추적이 끊기지 않게 한다.
+-- 순서 주의: 대상 판별 조건이 status를 보므로 로그를 먼저 남기고 그 다음에 상태를 바꾼다.
+INSERT INTO alarm_event_logs (alarm_event_id, action, actor_id, note, created_at)
+SELECT id, 'RESOLVED', NULL,
+       'V20 마이그레이션 자동 해소 — 이 알람을 만든 임계치 설정이 비활성이거나 경계값이 지워져 '
+       || '대응 알람 규칙이 없습니다(#118).',
+       NOW()
+FROM alarm_events
+WHERE status <> 'RESOLVED'
+  AND source_type = 'ENV_THRESHOLD'
+  AND metric_key NOT LIKE 'RULE\_%';
+
+UPDATE alarm_events
+SET status      = 'RESOLVED',
+    resolved_at = NOW(),
+    resolved_by = NULL
+WHERE status <> 'RESOLVED'
+  AND source_type = 'ENV_THRESHOLD'
+  AND metric_key NOT LIKE 'RULE\_%';
+
+-- 규칙 삭제 시 alarm_events.rule_id의 ON DELETE SET NULL이 타는 경로 — 인덱스가 없으면 규칙 하나를
+-- 지울 때마다 alarm_events 전체 스캔이 돈다(#118 리뷰 P3-2).
+CREATE INDEX ix_alarm_events_rule_id ON alarm_events (rule_id);
