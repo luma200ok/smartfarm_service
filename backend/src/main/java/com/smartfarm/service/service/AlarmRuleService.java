@@ -11,6 +11,7 @@ import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.AlarmRuleRepository;
+import com.smartfarm.service.repository.FarmRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,7 @@ public class AlarmRuleService {
     static final int MAX_RULES_PER_FARM = 50;
 
     private final AlarmRuleRepository alarmRuleRepository;
+    private final FarmRepository farmRepository;
     private final AlarmScopeResolver alarmScopeResolver;
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
@@ -65,6 +67,14 @@ public class AlarmRuleService {
         demoAccountGuard.rejectDemoAccount(userId);
         farmAccessGuard.requireOwner(farmId, userId);
 
+        // ⚠️ 상한 판정은 농장 행을 잠근 뒤에 한다(#118 보안 리뷰 P2-2, #91 TOCTOU 교훈 ·
+        // ControlService의 존 단위 잠금 선례). "세어 보고 → 저장"은 check-then-act라 잠금이 없으면
+        // 병렬 POST가 전부 검사를 통과해 상한을 넘긴다. 이 상한은 UX 제한이 아니라 자원 방어선이다 —
+        // 규칙 1개가 매 틱 조회 1~2개를 유발하고 스케줄러가 전 농장 규칙을 한 루프로 돌기 때문에,
+        // 한 농장의 초과가 다른 농장의 알람 지연으로 번진다. 잠금은 이 트랜잭션이 커밋될 때 풀리므로
+        // 판정과 저장 사이에 다른 트랜잭션이 끼어들 수 없다.
+        farmRepository.findByIdForUpdate(farmId)
+                .orElseThrow(() -> new CustomException(ErrorCode.F001));
         if (alarmRuleRepository.countByFarmId(farmId) >= MAX_RULES_PER_FARM) {
             throw new CustomException(ErrorCode.ALR002,
                     "농장당 알람 규칙은 최대 " + MAX_RULES_PER_FARM + "개까지 등록할 수 있습니다.");
@@ -76,7 +86,7 @@ public class AlarmRuleService {
 
         AlarmRule rule = alarmRuleRepository.save(AlarmRule.builder()
                 .farmId(farmId)
-                .name(request.name())
+                .name(request.name().trim())
                 .enabled(request.enabled() == null || request.enabled())
                 .source(request.source())
                 .metric(request.metric())
@@ -109,8 +119,8 @@ public class AlarmRuleService {
                 request.thresholdMax() != null ? request.thresholdMax() : rule.getThresholdMax());
 
         boolean wasEnabled = rule.isEnabled();
-        rule.update(request.name(), request.enabled(), request.thresholdValue(), request.thresholdMin(),
-                request.thresholdMax(), request.durationSeconds(), request.severity());
+        rule.update(normalizedName(request.name()), request.enabled(), request.thresholdValue(),
+                request.thresholdMin(), request.thresholdMax(), request.durationSeconds(), request.severity());
 
         if (wasEnabled && !rule.isEnabled()) {
             // 비활성화된 규칙은 더 이상 평가되지 않아 평가 엔진의 자동 해소가 돌지 않는다 —
@@ -133,10 +143,28 @@ public class AlarmRuleService {
         // ON DELETE SET NULL로 감사 이력으로 보존된다(이벤트를 지우면 확인/처리 이력이 함께 사라진다).
         alarmEventService.autoResolveIfOpen(farmId, rule.metricKey());
         alarmRuleRepository.delete(rule);
-        envThresholdAlertService.resetFarm(farmId);
+        // 삭제는 resetFarm(지속시간만 리셋)이 아니라 forgetRule — 이 규칙은 다시 평가되지 않으므로
+        // 쿨다운까지 버려야 맵에 죽은 항목이 남지 않는다.
+        envThresholdAlertService.forgetRule(farmId, ruleId);
     }
 
     // ── 검증 ────────────────────────────────────────────────────────────────────
+
+    /**
+     * PATCH의 {@code name} 정규화(#118 보안 리뷰 P3-1) — 미전송(null)은 미변경이지만, 보냈다면
+     * 공백일 수 없다. 규칙 이름은 알람 메시지와 Discord 웹훅 본문의 앞머리에 그대로 실리므로 빈
+     * 이름을 허용하면 "  — EC 상한 초과" 같은 정체불명 알림이 나간다. DTO의 {@code @NotBlank}로는
+     * 표현할 수 없다(그 제약은 null도 거부해 부분 수정 자체를 막는다 — DTO 주석 참고).
+     */
+    private String normalizedName(String name) {
+        if (name == null) {
+            return null;
+        }
+        if (name.isBlank()) {
+            throw new CustomException(ErrorCode.ALR003, "규칙 이름은 공백일 수 없습니다.");
+        }
+        return name.trim();
+    }
 
     /** 소스별로 {@code metric}이 그 소스의 지표 enum 값이어야 한다(V20 ck_alarm_rules_metric의 앞단). */
     private void validateSourceAndMetric(AlarmRuleSource source, String metric) {

@@ -52,14 +52,25 @@ public interface DeviceRepository extends JpaRepository<Device, Long>, DeviceRep
     // 존/랙 스코프에 랙·층 소속 장비까지 잡히는 것은 §4.10 "부모 FK 자동 채움"으로 저장되는 위치
     // 삼중조가 항상 완전하기 때문이다(층에 매단 센서도 zoneId·rackId가 채워져 있다).
 
+    // ⚠️ 넷 다 farm_id 술어를 함께 건다(#118 보안 리뷰 P2-1). alarm_rules.scope_id는 zone/rack/level을
+    // 가리키는 다형 참조라 <b>FK도, farm 정합성 CHECK도 걸 수 없다</b> — 규칙 생성 시점의 애플리케이션
+    // 검증(AlarmScopeResolver)이 유일한 방어선이고, 그게 뚫리거나 데이터가 어긋나는 순간 scope_id
+    // 단독 조회는 <b>타 농장 장비를 이 농장 알람 메시지와 Discord 웹훅 본문으로 흘린다</b>. 같은
+    // 서비스의 센서 경로(SensorReadingRepository#findLatestInScope)가 farm_id를 CTE·바깥 SELECT
+    // 양쪽에 박아 두 겹으로 고정하는 것과 같은 원칙이다.
+
     /** FARM 스코프(id 오름차순 고정 — 평가 순서가 결정적이어야 테스트 재현이 가능). */
     List<Device> findByFarmIdOrderByIdAsc(Long farmId);
 
-    /** RACK 스코프. (ZONE 스코프는 제어 도메인과 공유하는 {@link #findByZoneIdOrderByIdAsc}를 쓴다.) */
-    List<Device> findByRackIdOrderByIdAsc(Long rackId);
+    /** ZONE 스코프. (제어 도메인이 쓰는 {@link #findByZoneIdOrderByIdAsc}는 이미 존 소속을 R001로
+     * 검증한 뒤 호출되는 별개 경로라 그대로 둔다 — 여기서만 farm 술어를 더한다.) */
+    List<Device> findByFarmIdAndZoneIdOrderByIdAsc(Long farmId, Long zoneId);
+
+    /** RACK 스코프. */
+    List<Device> findByFarmIdAndRackIdOrderByIdAsc(Long farmId, Long rackId);
 
     /** LEVEL 스코프. */
-    List<Device> findByRackLevelIdOrderByIdAsc(Long rackLevelId);
+    List<Device> findByFarmIdAndRackLevelIdOrderByIdAsc(Long farmId, Long rackLevelId);
 
     /** levelCount 축소 시 잘려나가는 층들에 장비가 매달려 있는지 확인(R004 판정용). */
     boolean existsByRackLevelIdIn(List<Long> rackLevelIds);

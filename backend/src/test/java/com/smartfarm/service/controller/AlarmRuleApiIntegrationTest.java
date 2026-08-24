@@ -348,6 +348,67 @@ class AlarmRuleApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("보안 P3-1: PATCH로 이름을 공백으로 만들 수 없다(400 ALR003) — 규칙 이름은 알람 "
+            + "메시지·웹훅 본문 앞머리에 그대로 실린다. 단 이름 미전송 부분 수정은 그대로 허용된다")
+    void blankNameIsRejectedButOmittedNameIsFine() throws Exception {
+        String token = signupAndLogin("이름주인");
+        long farmId = createFarm(token, "이름농장");
+        long ruleId = readJson(createRule(token, farmId, SENSOR_EC_RULE)).get("id").asLong();
+
+        mockMvc.perform(patch("/api/farms/" + farmId + "/alarm-rules/" + ruleId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ALR003"));
+
+        // 이름을 아예 보내지 않는 부분 수정은 정상이어야 한다(@NotBlank를 DTO에 달면 이것도 400이 된다).
+        mockMvc.perform(patch("/api/farms/" + farmId + "/alarm-rules/" + ruleId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"thresholdValue\":3.0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("급액 EC 경보"));
+    }
+
+    @Test
+    @DisplayName("규칙 이름은 앞뒤 공백을 제거하고 저장한다")
+    void ruleNameIsTrimmed() throws Exception {
+        String token = signupAndLogin("트림주인");
+        long farmId = createFarm(token, "트림농장");
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/alarm-rules")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"  급액 EC 경보  ","source":"SENSOR_READING","metric":"EC",
+                                 "comparator":"GT","thresholdValue":2.8,"durationSeconds":300,
+                                 "severity":"CRITICAL","scopeType":"FARM"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("급액 EC 경보"));
+    }
+
+    @Test
+    @DisplayName("데모 계정은 규칙 수정(PATCH)·삭제(DELETE)도 403 A007로 차단된다")
+    void demoAccountCannotModifyOrDeleteRule() throws Exception {
+        String demoToken = demoAccountLogin();
+        long demoFarmId = demoAccountFarmId(demoToken);
+
+        mockMvc.perform(patch("/api/farms/" + demoFarmId + "/alarm-rules/1")
+                        .header("Authorization", "Bearer " + demoToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"thresholdValue\":3.0}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
+
+        mockMvc.perform(delete("/api/farms/" + demoFarmId + "/alarm-rules/1")
+                        .header("Authorization", "Bearer " + demoToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A007"));
+    }
+
+    @Test
     @DisplayName("농장당 규칙 상한(50건)을 넘기면 409 ALR002다(#91 리소스 생성 상한 정책)")
     void ruleCountLimitIsEnforced() throws Exception {
         String token = signupAndLogin("상한주인");

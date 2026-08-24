@@ -3,6 +3,7 @@ package com.smartfarm.service.service;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -42,6 +43,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -224,6 +226,43 @@ class EnvThresholdAlertServiceUnitTest {
     }
 
     @Test
+    @DisplayName("보안 P3-3: resetFarm은 지속시간 상태만 지우고 30분 웹훅 쿨다운은 보존한다 — "
+            + "이탈 중인 규칙에 PATCH를 반복해 쿨다운을 우회하고 틱마다 외부 발송을 유발할 수 없어야 한다")
+    void resetFarmPreservesWebhookCooldown() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 발동 — 웹훅 1회
+
+        // 규칙 PATCH를 흉내내 반복 리셋한 뒤, 매번 지속시간을 다시 채워 발동시킨다.
+        for (int i = 0; i < 3; i++) {
+            service.resetFarm(FARM_ID);
+            service.evaluate(new Indoor(36.0, 50.0, true));
+            tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120));
+        }
+
+        // 쿨다운(30분)이 보존되므로 추가 발송은 없다. 상태를 통째로 지우던 옛 구현이면 4회가 된다.
+        verify(notifier, times(1)).notifyBreach(any(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("forgetRule은 그 규칙 상태를 통째로 버린다(삭제된 규칙 — 보존할 쿨다운이 없다)")
+    void forgetRuleDropsCooldownToo() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 발동 — 웹훅 1회
+
+        service.forgetRule(FARM_ID, 10L); // 규칙 삭제(같은 id로 재생성되지 않는 것이 정상)
+        service.evaluate(new Indoor(36.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120));
+
+        verify(notifier, times(2)).notifyBreach(any(), any(), anyString());
+    }
+
+    @Test
     @DisplayName("쿨다운 중 재이탈에도 알람 이벤트 기록은 계속 시도한다(멱등은 AlarmEventService 책임)")
     void alarmEventRecordedEvenDuringWebhookCooldown() {
         when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
@@ -339,7 +378,7 @@ class EnvThresholdAlertServiceUnitTest {
                 AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
         when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
-        when(deviceRepository.findByZoneIdOrderByIdAsc(9L))
+        when(deviceRepository.findByFarmIdAndZoneIdOrderByIdAsc(FARM_ID, 9L))
                 .thenReturn(List.of(device("게이트웨이-1", DeviceStatus.OFFLINE)));
 
         service.evaluate(null);
@@ -356,7 +395,7 @@ class EnvThresholdAlertServiceUnitTest {
         AlarmRule heartbeatRule = rule(30L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
                 AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
         when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
-        when(deviceRepository.findByZoneIdOrderByIdAsc(9L))
+        when(deviceRepository.findByFarmIdAndZoneIdOrderByIdAsc(FARM_ID, 9L))
                 .thenReturn(List.of(device("게이트웨이-1", DeviceStatus.NORMAL)));
 
         service.evaluate(null);
@@ -371,7 +410,7 @@ class EnvThresholdAlertServiceUnitTest {
         AlarmRule heartbeatRule = rule(30L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
                 AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
         when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
-        when(deviceRepository.findByZoneIdOrderByIdAsc(9L)).thenReturn(List.of());
+        when(deviceRepository.findByFarmIdAndZoneIdOrderByIdAsc(FARM_ID, 9L)).thenReturn(List.of());
 
         service.evaluate(null);
 
@@ -405,7 +444,7 @@ class EnvThresholdAlertServiceUnitTest {
                 AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
         when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
         when(alarmScopeResolver.exists(FARM_ID, AlarmScopeType.ZONE, 9L)).thenReturn(true);
-        when(deviceRepository.findByZoneIdOrderByIdAsc(9L)).thenReturn(List.of());
+        when(deviceRepository.findByFarmIdAndZoneIdOrderByIdAsc(FARM_ID, 9L)).thenReturn(List.of());
 
         service.evaluate(null);
 
@@ -479,6 +518,36 @@ class EnvThresholdAlertServiceUnitTest {
         verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.WARNING),
                 eq(AlarmSourceType.ENV_THRESHOLD), eq("RULE_10"), any(), any(), any());
         verifyNoInteractions(webhookRestClient);
+    }
+
+    @Test
+    @DisplayName("보안 P3-2: 웹훅 본문의 @everyone은 멘션으로 해석되지 않는다 — payload에 "
+            + "allowed_mentions.parse=[]가 실린다(규칙 이름은 사용자 입력이라 멘션 폭탄 벡터다)")
+    void webhookPayloadSuppressesMentions() {
+        RestClient webhookRestClient = mock(RestClient.class);
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        when(webhookRestClient.post()).thenReturn(uriSpec);
+        when(uriSpec.uri(anyString())).thenReturn(bodySpec);
+        when(bodySpec.contentType(any())).thenReturn(bodySpec);
+        when(bodySpec.body(any())).thenReturn(bodySpec);
+        when(bodySpec.retrieve()).thenReturn(responseSpec);
+
+        EnvThresholdWebhookNotifier realNotifier = new EnvThresholdWebhookNotifier(
+                new WebhookProperties(Duration.ofSeconds(5), "https://farm.luma200ok.com"), webhookRestClient);
+        Farm farmWithWebhook = farm();
+        ReflectionTestUtils.setField(farmWithWebhook, "webhookUrl",
+                "https://discord.com/api/webhooks/1/token");
+
+        realNotifier.notifyBreach(farmWithWebhook, AlarmSeverity.CRITICAL, "@everyone 급액 EC 경보 — 이탈");
+
+        ArgumentCaptor<Object> bodyCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(bodySpec).body(bodyCaptor.capture());
+        String payload = bodyCaptor.getValue().toString();
+        assertThat(payload).contains("@everyone");        // 문자열 자체는 그대로 보인다
+        assertThat(payload).contains("allowedMentions");  // 억제 필드가 실려 있다
+        assertThat(payload).contains("parse=[]");         // 어떤 멘션도 해석하지 않는다
     }
 
     @Test

@@ -54,7 +54,7 @@ public class EnvThresholdWebhookNotifier {
             webhookRestClient.post()
                     .uri(webhookUrl)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new DiscordPayload(content))
+                    .body(DiscordWebhookPayload.of(content))
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException e) {
@@ -73,7 +73,4 @@ public class EnvThresholdWebhookNotifier {
                 + webhookProperties.detailBaseUrl() + "/farms/" + farm.getId();
     }
 
-    /** 디스코드 웹훅 payload 최소 스키마 — content 필드만 사용. */
-    private record DiscordPayload(String content) {
-    }
 }

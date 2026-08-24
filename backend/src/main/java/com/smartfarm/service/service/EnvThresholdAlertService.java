@@ -299,12 +299,19 @@ public class EnvThresholdAlertService {
                 + (silent.size() > 1 ? " 외 " + (silent.size() - 1) + "대" : ""));
     }
 
+    /**
+     * ⚠️ 네 갈래 모두 {@code farmId}를 함께 넘긴다(#118 보안 리뷰 P2-1) — {@code scope_id}는 FK도
+     * farm 정합성 CHECK도 없는 다형 참조라, scope_id 단독 조회는 값이 어긋나는 순간 타 농장 장비명을
+     * 이 농장 알람 메시지·Discord 웹훅 본문으로 유출한다. 센서 경로가 farm_id를 두 겹으로 고정하는
+     * 것과 같은 원칙(자세한 근거는 {@code DeviceRepository}의 해당 메서드 주석).
+     */
     private List<Device> devicesInScope(AlarmRule rule) {
+        Long farmId = rule.getFarmId();
         return switch (rule.getScopeType()) {
-            case FARM -> deviceRepository.findByFarmIdOrderByIdAsc(rule.getFarmId());
-            case ZONE -> deviceRepository.findByZoneIdOrderByIdAsc(rule.getScopeId());
-            case RACK -> deviceRepository.findByRackIdOrderByIdAsc(rule.getScopeId());
-            case LEVEL -> deviceRepository.findByRackLevelIdOrderByIdAsc(rule.getScopeId());
+            case FARM -> deviceRepository.findByFarmIdOrderByIdAsc(farmId);
+            case ZONE -> deviceRepository.findByFarmIdAndZoneIdOrderByIdAsc(farmId, rule.getScopeId());
+            case RACK -> deviceRepository.findByFarmIdAndRackIdOrderByIdAsc(farmId, rule.getScopeId());
+            case LEVEL -> deviceRepository.findByFarmIdAndRackLevelIdOrderByIdAsc(farmId, rule.getScopeId());
         };
     }
 
@@ -355,9 +362,29 @@ public class EnvThresholdAlertService {
      *
      * <p>⚠️ 이 리셋 뒤에도 <b>자동 해소는 계속 동작해야 한다</b>(이슈 #116 리뷰 P2-A) — 그 보장은
      * {@link #evaluateRule}의 무조건 {@code autoResolveIfOpen} 호출에 있다.
+     *
+     * <p>⚠️ <b>{@code lastNotifiedAt}(30분 웹훅 쿨다운)은 보존한다</b>(#118 보안 리뷰 P3-3).
+     * 예전엔 상태 객체를 통째로 지워 쿨다운까지 날아갔는데, 그러면 이탈 중인 규칙에 PATCH를 반복하는
+     * 것만으로 쿨다운을 우회해 <b>틱당 1건씩 외부 발송</b>(Discord)을 유발할 수 있었다. 리셋의 목적은
+     * "바뀐 기준으로 이탈 시간을 다시 센다"이지 "알림 rate limit을 푼다"가 아니다 — 그 둘은 다른
+     * 관심사이므로 지속시간 상태만 지운다.
      */
     public void resetFarm(Long farmId) {
-        states.keySet().removeIf(key -> key.farmId().equals(farmId));
+        states.forEach((key, state) -> {
+            if (key.farmId().equals(farmId)) {
+                state.firstBreachAt.set(null);
+            }
+        });
+    }
+
+    /**
+     * 규칙이 <b>삭제</b>됐을 때 그 규칙의 인메모리 상태를 통째로 버린다({@code AlarmRuleService}가
+     * 직후 호출). {@link #resetFarm}과 달리 쿨다운까지 지우는 것이 맞다 — 그 규칙은 다시 평가되지
+     * 않으므로 보존할 rate limit 자체가 없고, 남겨 두면 삭제된 규칙의 항목이 맵에 영구히 쌓인다
+     * (resetFarm이 항목을 지우지 않게 된 뒤로는 이 경로가 유일한 정리 지점이다).
+     */
+    public void forgetRule(Long farmId, Long ruleId) {
+        states.remove(new AlertKey(farmId, ruleId));
     }
 
     private record AlertKey(Long farmId, Long ruleId) {
