@@ -1,6 +1,8 @@
 package com.smartfarm.service.service;
 
 import com.smartfarm.service.dto.AiEnvironmentResponse;
+import com.smartfarm.service.entity.AlarmSeverity;
+import com.smartfarm.service.entity.AlarmSourceType;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.FarmEnvThreshold;
 import com.smartfarm.service.repository.FarmEnvThresholdRepository;
@@ -8,6 +10,7 @@ import com.smartfarm.service.repository.FarmRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,6 +35,7 @@ public class EnvThresholdAlertService {
     private final FarmEnvThresholdRepository farmEnvThresholdRepository;
     private final FarmRepository farmRepository;
     private final EnvThresholdWebhookNotifier notifier;
+    private final AlarmEventService alarmEventService;
     private final Clock clock;
 
     private final ConcurrentHashMap<AlertKey, AlertState> states = new ConcurrentHashMap<>();
@@ -39,18 +43,21 @@ public class EnvThresholdAlertService {
     @Autowired
     public EnvThresholdAlertService(FarmEnvThresholdRepository farmEnvThresholdRepository,
                                      FarmRepository farmRepository,
-                                     EnvThresholdWebhookNotifier notifier) {
-        this(farmEnvThresholdRepository, farmRepository, notifier, Clock.systemDefaultZone());
+                                     EnvThresholdWebhookNotifier notifier,
+                                     AlarmEventService alarmEventService) {
+        this(farmEnvThresholdRepository, farmRepository, notifier, alarmEventService, Clock.systemDefaultZone());
     }
 
     /** 테스트 전용 — 30분 쿨다운 만료를 실시간 대기 없이 검증하기 위해 Clock을 주입한다(package-private). */
     EnvThresholdAlertService(FarmEnvThresholdRepository farmEnvThresholdRepository,
                               FarmRepository farmRepository,
                               EnvThresholdWebhookNotifier notifier,
+                              AlarmEventService alarmEventService,
                               Clock clock) {
         this.farmEnvThresholdRepository = farmEnvThresholdRepository;
         this.farmRepository = farmRepository;
         this.notifier = notifier;
+        this.alarmEventService = alarmEventService;
         this.clock = clock;
     }
 
@@ -85,13 +92,23 @@ public class EnvThresholdAlertService {
         AlertState state = states.computeIfAbsent(key, k -> new AlertState());
 
         if (!breached) {
-            state.consecutiveBreaches.set(0);
+            // getAndSet(0) == 0이면 이미 정상이던 틱이라 열린 알람이 있을 수 없어 조회를 생략한다
+            // (이슈 #116 — 매 정상 틱마다 DB 조회하는 낭비 방지, previousConsecutive>0일 때만
+            // "브리치 → 정상 복귀" 전이가 실제로 발생했다는 뜻).
+            int previousConsecutive = state.consecutiveBreaches.getAndSet(0);
+            if (previousConsecutive > 0) {
+                alarmEventService.autoResolveIfOpen(threshold.getFarmId(), metricKeyOf(metric, direction));
+            }
             return;
         }
         int consecutive = state.consecutiveBreaches.incrementAndGet();
         if (consecutive < CONSECUTIVE_THRESHOLD) {
             return;
         }
+
+        // 알람 이벤트 생성은 웹훅 쿨다운과 무관하게(멱등이라 안전) 연속 임계치 확정 시점에 시도한다
+        // — 웹훅 쿨다운은 알림 스팸 방지용 rate limit이지 알람 존재 자체를 막을 이유는 아니다.
+        recordAlarmBreach(threshold, metric, direction, value, boundary);
 
         Instant now = Instant.now(clock);
         Instant lastNotifiedAt = state.lastNotifiedAt.get();
@@ -102,6 +119,25 @@ public class EnvThresholdAlertService {
 
         farmRepository.findById(threshold.getFarmId())
                 .ifPresent(farm -> notifier.notifyBreach(farm, metric, direction, value, boundary));
+    }
+
+    /**
+     * 알람 이벤트 생성 훅(이슈 #116) — {@link AlarmEventService#recordBreach}가 멱등을 보장하므로
+     * (같은 farm×metricKey 조합 미해결 이벤트 존재 시 no-op) 매 확정 이탈마다 호출해도 안전하다.
+     * severity는 현재 CRITICAL/WARNING을 구분하는 별도 기준이 없어 전부 WARNING으로 기록한다
+     * (후속 이슈 — 항목별/이탈폭별 등급 분화).
+     */
+    private void recordAlarmBreach(FarmEnvThreshold threshold, EnvMetric metric, EnvDirection direction,
+                                    double value, double boundary) {
+        String message = metric.label() + " " + direction.label()
+                + " (현재 " + value + metric.unit() + " / 기준 " + boundary + metric.unit() + ")";
+        alarmEventService.recordBreach(threshold.getFarmId(), AlarmSeverity.WARNING, AlarmSourceType.ENV_THRESHOLD,
+                metricKeyOf(metric, direction), message, LocalDateTime.now(clock), threshold.getId());
+    }
+
+    /** farm×항목×방향 조합을 표현하는 alarm_events.metric_key 값(예: INDOOR_TEMP_HIGH, 이슈 #116). */
+    private static String metricKeyOf(EnvMetric metric, EnvDirection direction) {
+        return metric.name() + "_" + direction.name();
     }
 
     /** 테스트 격리용 — 싱글턴 빈이라 통합 테스트 간 상태가 새지 않도록 초기화한다. */

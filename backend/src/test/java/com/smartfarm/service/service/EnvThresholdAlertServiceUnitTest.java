@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.smartfarm.service.dto.AiEnvironmentResponse.Indoor;
+import com.smartfarm.service.entity.AlarmSeverity;
+import com.smartfarm.service.entity.AlarmSourceType;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.FarmEnvThreshold;
@@ -35,10 +37,11 @@ class EnvThresholdAlertServiceUnitTest {
     private final FarmEnvThresholdRepository thresholdRepository = mock(FarmEnvThresholdRepository.class);
     private final FarmRepository farmRepository = mock(FarmRepository.class);
     private final EnvThresholdWebhookNotifier notifier = mock(EnvThresholdWebhookNotifier.class);
+    private final AlarmEventService alarmEventService = mock(AlarmEventService.class);
     private final MutableClock clock = new MutableClock(Instant.parse("2026-08-22T00:00:00Z"));
 
     private final EnvThresholdAlertService service =
-            new EnvThresholdAlertService(thresholdRepository, farmRepository, notifier, clock);
+            new EnvThresholdAlertService(thresholdRepository, farmRepository, notifier, alarmEventService, clock);
 
     private FarmEnvThreshold thresholdEnabled(Double tempMin, Double tempMax) {
         FarmEnvThreshold threshold = FarmEnvThreshold.builder()
@@ -160,6 +163,74 @@ class EnvThresholdAlertServiceUnitTest {
         service.evaluate(null);
 
         verify(thresholdRepository, never()).findEnabledWithWebhookConfigured();
+    }
+
+    // ── 알람 이벤트 훅(이슈 #116) ────────────────────────────────────
+
+    @Test
+    @DisplayName("1틱만 이탈하면 알람 이벤트도 생성하지 않는다(연속 2틱 미달)")
+    void singleTickDoesNotRecordAlarmEvent() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
+
+        verify(alarmEventService, never()).recordBreach(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("연속 2틱 이탈하면 웹훅 쿨다운과 무관하게 알람 이벤트를 기록한다")
+    void twoConsecutiveTicksRecordAlarmEvent() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
+        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 확정
+
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.WARNING),
+                eq(AlarmSourceType.ENV_THRESHOLD), eq("INDOOR_TEMP_HIGH"), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("쿨다운 중 재이탈에도 알람 이벤트 기록은 계속 시도한다(멱등은 AlarmEventService 책임)")
+    void alarmEventRecordedEvenDuringWebhookCooldown() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
+        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 확정(웹훅 발송 1회)
+        clock.advance(Duration.ofMinutes(10));
+        service.evaluate(new Indoor(37.0, 50.0, true)); // 웹훅은 쿨다운 중이지만 알람 기록은 계속 호출
+
+        verify(alarmEventService, times(2)).recordBreach(eq(FARM_ID), any(), any(),
+                eq("INDOOR_TEMP_HIGH"), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("정상 범위로 복귀하면 자동 해소를 시도한다")
+    void inRangeTriggersAutoResolve() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈
+        service.evaluate(new Indoor(25.0, 50.0, true)); // 정상 복귀
+
+        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "INDOOR_TEMP_HIGH");
+    }
+
+    @Test
+    @DisplayName("이미 정상이던 틱은 자동 해소를 재시도하지 않는다(불필요 조회 방지)")
+    void alreadyNormalTickDoesNotRetryAutoResolve() {
+        when(thresholdRepository.findEnabledWithWebhookConfigured())
+                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+
+        service.evaluate(new Indoor(25.0, 50.0, true)); // 처음부터 정상
+        service.evaluate(new Indoor(26.0, 50.0, true)); // 계속 정상
+
+        verify(alarmEventService, never()).autoResolveIfOpen(any(), any());
     }
 
     /** 30분 쿨다운 만료를 실시간 대기 없이 재현하기 위한 수동 진행 Clock. */
