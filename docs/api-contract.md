@@ -121,7 +121,8 @@
 
 - **EnvironmentHistoryResponse** `{range, points: [{capturedAt, outdoorTemp?, outdoorHumidity?, indoorTemp?, indoorHumidity?}]}` — 다운샘플: 24h=원본(60s), 7d=30분 평균, 30d=2시간 평균(DB 집계, 빈 구간은 점 생략).
 - **EnvThresholdsRequest/Response** `{enabled, indoorTempMin?, indoorTempMax?, indoorHumidityMin?, indoorHumidityMax?}`(+Response에 `updatedAt`) — 검증: min<max, 온도 -50~80, 습도 0~100(위반 C001). 저장=`farm_env_thresholds`(farm당 1행).
-- **임계치 알림**: 폴러가 적재 직후 `enabled=true`이고 `webhook_url` 설정된 농장 대상 **indoor 온·습도** 평가. **연속 2틱 이탈 시 발동**, 농장×항목×방향별 **쿨다운 30분**(단일 인스턴스 전제 — 메모리 상태 허용, 재시작 시 초기화 수용). 발송은 기존 디스코드 웹훅 노티파이어 컨벤션(타임아웃 5s·실패는 로그만·URL 마스킹) 준수. 신규 ErrorCode 없음(검증은 C001 재사용).
+- **임계치 알림**: 폴러가 적재 직후 `enabled=true`인 농장 대상 **indoor 온·습도** 평가. **연속 2틱 이탈 시 발동**, 농장×항목×방향별 **쿨다운 30분**(단일 인스턴스 전제 — 메모리 상태 허용, 재시작 시 초기화 수용). 발송은 기존 디스코드 웹훅 노티파이어 컨벤션(타임아웃 5s·실패는 로그만·URL 마스킹) 준수. 신규 ErrorCode 없음(검증은 C001 재사용).
+  - ⚠️ **2026-08-24 변경(#116/PR #117)**: 평가 대상이 "웹훅 설정된 농장"에서 **`enabled=true` 전체**로 확대됐다. 웹훅(알림 채널)과 알람 이벤트(영속 기록)는 다른 관심사라, 웹훅 URL 미설정 농장도 §4.12 알람 이벤트는 쌓인다. 웹훅 발송만 `webhook_url == null`이면 스킵. 단 soft delete된 농장은 계속 제외된다(`findEnabled()`가 Farm 서브쿼리로 `@SQLRestriction` 상속 — 이 서브쿼리 제거 시 삭제 농장에 알람이 무한 축적되므로 유지 필수).
 - **마이그레이션**: V9 `env_snapshots`, V10 `farm_env_thresholds` (V8은 #49 데모 선점 — **#49 먼저 머지**, out-of-order=true 확인됨).
 
 ## 4.7 AI 챗봇 (2026-08-23 확정, 이슈 #54·#55 — 다함 벤치마킹 3. ai-server 무변경 원칙 3번째 해제: smartfarm_ai 신규 챗 라우트)
@@ -408,6 +409,32 @@
 
 - **마이그레이션**: **V18** `control_modes`·`control_setpoints`·`control_changes`·`control_apply_logs`
 
+## 4.13 알람 이벤트 (2026-08-24 확정, 이슈 #116 — 미구현 도메인 정리 1순위)
+
+- **목적**: 임계치 이탈을 **영속 기록**해 알람 화면·TopBar "미확인 알람 N건" 배지의 데이터 소스가 된다. §4.6 임계치 알림(웹훅=알림 채널)과 **관심사 분리** — 웹훅 미설정 농장도 이벤트는 쌓인다.
+- **상태 전이**: `UNACKNOWLEDGED → ACKNOWLEDGED → RESOLVED`. 역방향·건너뛰기 금지(AL002). 정상 복귀 감지 시 시스템이 **자동 RESOLVED**(`resolvedBy=null`, 타임라인에 `note="자동 해소"`).
+- **멱등성**: 같은 `farm × metricKey` 조합으로 미해결(UNACKNOWLEDGED/ACKNOWLEDGED) 이벤트가 있으면 **새로 만들지 않는다**. 애플리케이션 조회(1차) + DB partial unique index `(farm_id, metric_key) WHERE status<>'RESOLVED'`(2차). `metricKey`=`{EnvMetric}_{EnvDirection}`(예: `INDOOR_TEMP_HIGH`).
+- **동시성**: `@Version` 낙관적 락. 충돌 시 **409 C005**(공통 코드 — `@Version`을 쓰는 모든 엔티티에 적용).
+
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/alarm-events` | 멤버 | `?status=&severity=&page=&size=` | 200 `Page<AlarmEventResponse>` |
+| GET | `/api/farms/{farmId}/alarm-events/{id}` | 멤버 | — | 200 AlarmEventDetailResponse(+타임라인) |
+| PATCH | `/api/farms/{farmId}/alarm-events/{id}/acknowledge` | 멤버 | — | 200 AlarmEventResponse |
+| POST | `/api/farms/{farmId}/alarm-events/{id}/resolve` | 멤버 | — | 200 AlarmEventResponse |
+| POST | `/api/farms/{farmId}/alarm-events/{id}/memo` | 멤버 | AlarmMemoRequest | 200 AlarmEventDetailResponse |
+| POST | `/api/farms/{farmId}/alarm-events/acknowledge-all` | 멤버 | — | 200 AlarmAcknowledgeAllResponse |
+| GET | `/api/farms/{farmId}/alarm-events/stats` | 멤버 | `?days=7` (1~90, 위반 C001) | 200 AlarmStatsResponse |
+| GET | `/api/farms/{farmId}/alarm-events/unacknowledged-count` | 멤버 | — | 200 AlarmUnacknowledgedCountResponse |
+
+- **AlarmEventResponse** `{id, severity, sourceType, metricKey, message, status, occurredAt, acknowledgedAt?, acknowledgedBy?, resolvedAt?, resolvedBy?}` — `acknowledgedBy`/`resolvedBy`는 raw userId(이름 치환은 후속). `resolvedBy=null`+status=RESOLVED = 시스템 자동 해소.
+- **AlarmEventDetailResponse** = 위 + `timeline: [{action, actorId?, note?, createdAt}]` (action=CREATED/ACKNOWLEDGED/RESOLVED/MEMO_ADDED)
+- **AlarmMemoRequest** `{note}` — `@NotBlank`, 최대 1000자, 저장 시 trim. 상태 전이 없이 타임라인에만 추가.
+- **AlarmStatsResponse** `{days, countBySeverity: {CRITICAL, WARNING}, avgAcknowledgeMinutes?}` — DB 집계(`GROUP BY severity` + `EXTRACT(EPOCH)/60`). 평균은 초 정밀도(구 구현의 분 단위 버림과 다름).
+- ⚠️ **severity는 현재 전부 WARNING** — 등급 분화 기준이 아직 없다. **#118(알람 규칙 확장)에서 규칙이 등급을 결정**하도록 바뀐다. 그때까지 `countBySeverity.CRITICAL`은 항상 0.
+- **접근 제어**: 전 엔드포인트 `requireMember(farmId, userId)` 선행 + `findByIdAndFarmId`로 조회(경로변수 불일치 IDOR 차단). actor는 `@AuthenticationPrincipal`에서만(요청 바디 미수용).
+- **마이그레이션**: **V19** `alarm_events`·`alarm_event_logs`
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -418,6 +445,7 @@
 | C002 | 500 | 내부 서버 오류 |
 | C003 | 404 | 존재하지 않는 경로 |
 | C004 | 405 | 허용되지 않는 메서드 |
+| C005 | 409 | 낙관적 락 충돌 — 다른 사용자가 먼저 처리(`@Version` 쓰는 모든 엔티티 공통) |
 | A001 | 409 | 이메일 중복 |
 | A002 | 401 | 이메일/비밀번호 불일치 |
 | A003 | 401 | access 토큰 만료(refresh로 회복 가능) |
@@ -458,6 +486,8 @@
 | CT003 | 409 | 현재 운전 모드에서 허용되지 않는 조작 |
 | CT004 | 409 | 적용 대기 큐 상한 초과(존당 50건) |
 | CT005 | 409 | 대기 큐가 변경됨 — 최신 큐로 재확인 후 재적용 |
+| AL001 | 404 | 알람 이벤트 없음(타 농장 소속 포함) |
+| AL002 | 409 | 현재 상태에서 처리할 수 없는 알람(잘못된 상태 전이) |
 
 ## 6. 환경변수 · CORS
 
