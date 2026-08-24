@@ -140,11 +140,16 @@ export interface FarmResponse {
   createdAt: string;
 }
 
+// ⚠️ id는 농장 id, memberId는 요청자 본인의 멤버십 id다(백엔드 FarmSummaryResponse javadoc,
+// 이슈 #122) — 혼동해서 DELETE /members/{memberId}에 농장 id를 넣으면 F008이 난다.
+// memberId는 승인 대기(PENDING) 본인이 스스로 대기를 취소(DELETE .../members/{memberId})할
+// 유일한 도달 경로라서 실린다 — 멤버 목록·농장 상세엔 이 값이 없다.
 export interface FarmSummaryResponse {
   id: number;
   name: string;
   cropType: CropType;
   myRole: FarmRole;
+  memberId: number;
 }
 
 // ── 초대 ──────────────────────────────────────────
