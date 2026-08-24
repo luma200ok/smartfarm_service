@@ -217,7 +217,10 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
                       ))}
                     </select>
                   )}
-                  {isAdmin && m.role !== "ADMIN" && !isSelf && (
+                  {/* 관리자가 여럿이면 ADMIN도 제거·탈퇴할 수 있다 — 마지막 1명만 서버가 F006으로
+                      차단한다(contract §3, 이슈 #122 리뷰 P3-a). role로 미리 숨기지 않고 항상
+                      보여준 뒤 서버 응답에 맡긴다. */}
+                  {isAdmin && !isSelf && (
                     <button
                       type="button"
                       disabled={actionBusy}
@@ -227,7 +230,7 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
                       제거
                     </button>
                   )}
-                  {isSelf && m.role !== "ADMIN" && (
+                  {isSelf && (
                     <button
                       type="button"
                       disabled={actionBusy}
