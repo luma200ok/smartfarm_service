@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Card, StatusBadge } from "@/components/monitoring/ui";
 import EnvironmentHistoryChart from "@/components/environment/EnvironmentHistoryChart";
 import EnvThresholdForm from "@/components/environment/EnvThresholdForm";
 import EnvironmentWidget from "@/components/environment/EnvironmentWidget";
@@ -24,6 +25,8 @@ interface FarmOverviewProps {
 
 // 농장 상세 "개요" 탭(이슈 #43) — 농장 정보 표시+수정/삭제만 담당.
 // 진단하기/처방받기 풀폭 버튼과 초대코드·멤버 목록은 탭바(진단/처방/멤버)로 이동했다.
+// 위젯(EnvironmentWidget 등)은 컨테이너인 이 화면이 배치·카드 스타일만 통일하고
+// props·조회 로직은 그대로 둔다(이슈 #109 A그룹 특이사항).
 export default function FarmOverview({ farmId }: FarmOverviewProps) {
   const router = useRouter();
   const [farm, setFarm] = useState<FarmResponse | null>(null);
@@ -60,7 +63,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
 
   if (notFound) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-dp-sub">
         농장을 찾을 수 없거나 접근 권한이 없습니다.{" "}
         <Link href="/farms" className="underline">
           농장 목록으로
@@ -70,11 +73,11 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
   }
 
   if (loadError) {
-    return <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>;
+    return <p className="text-sm text-dp-red-ink">{loadError}</p>;
   }
 
   if (!farm) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>;
+    return <p className="text-sm text-dp-sub">불러오는 중...</p>;
   }
 
   const isOwner = farm.myRole === "OWNER";
@@ -122,7 +125,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
       </div>
       <EnvironmentHistoryChart farmId={farmId} />
 
-      <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+      <Card className="flex flex-col gap-3 p-4">
         {editing ? (
           <div className="flex flex-col gap-3">
             <FormField
@@ -142,14 +145,14 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
                 type="button"
                 disabled={actionBusy}
                 onClick={handleEditSubmit}
-                className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900"
+                className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-60"
               >
                 저장
               </button>
               <button
                 type="button"
                 onClick={() => setEditing(false)}
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+                className="rounded-md border border-dp-line-strong px-3 py-1.5 text-sm text-dp-body"
               >
                 취소
               </button>
@@ -158,22 +161,20 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">{farm.name}</h2>
-              <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                {ROLE_LABELS[farm.myRole] ?? farm.myRole}
-              </span>
+              <h2 className="text-xl font-semibold text-dp-ink">{farm.name}</h2>
+              <StatusBadge label={ROLE_LABELS[farm.myRole] ?? farm.myRole} tone="neutral" />
             </div>
-            <dl className="grid grid-cols-2 gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+            <dl className="grid grid-cols-2 gap-2 text-sm text-dp-sub">
               <div>
-                <dt className="text-zinc-400 dark:text-zinc-500">작물</dt>
+                <dt className="text-dp-faint">작물</dt>
                 <dd>{CROP_LABELS[farm.cropType] ?? farm.cropType}</dd>
               </div>
               <div>
-                <dt className="text-zinc-400 dark:text-zinc-500">위치</dt>
+                <dt className="text-dp-faint">위치</dt>
                 <dd>{farm.location || "-"}</dd>
               </div>
               <div>
-                <dt className="text-zinc-400 dark:text-zinc-500">멤버 수</dt>
+                <dt className="text-dp-faint">멤버 수</dt>
                 <dd>{farm.memberCount}명</dd>
               </div>
             </dl>
@@ -182,7 +183,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+                  className="rounded-md border border-dp-line-strong px-3 py-1.5 text-sm text-dp-body"
                 >
                   수정
                 </button>
@@ -190,7 +191,7 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
                   type="button"
                   disabled={actionBusy}
                   onClick={handleDelete}
-                  className="rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-600 disabled:opacity-60 dark:border-red-900 dark:text-red-400"
+                  className="rounded-md border border-dp-red-line px-3 py-1.5 text-sm text-dp-red-ink disabled:opacity-60"
                 >
                   농장 삭제
                 </button>
@@ -198,9 +199,9 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
             )}
           </>
         )}
-      </section>
+      </Card>
 
-      {actionError && <p className="text-sm text-red-600 dark:text-red-400">{actionError}</p>}
+      {actionError && <p className="text-sm text-dp-red-ink">{actionError}</p>}
 
       {isOwner && <EnvThresholdForm farmId={farmId} />}
     </div>

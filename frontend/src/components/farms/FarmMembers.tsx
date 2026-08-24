@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Card, CardTitle, StatusBadge } from "@/components/monitoring/ui";
 import { resolveErrorMessage, isNotFound } from "@/lib/api/errorMessage";
 import { getMe } from "@/lib/api/auth";
 import { createInvitation, getFarm, listMembers, removeMember } from "@/lib/api/farms";
@@ -16,6 +17,7 @@ interface FarmMembersProps {
 
 // 농장 상세 "멤버" 탭(이슈 #43) — 기존 FarmDetail의 초대코드 발급+멤버 목록을
 // 로직 무변경으로 이동/분리했다.
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle·StatusBadge)로 통일한다(이슈 #109).
 export default function FarmMembers({ farmId }: FarmMembersProps) {
   const router = useRouter();
   const [farm, setFarm] = useState<FarmResponse | null>(null);
@@ -65,7 +67,7 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
 
   if (notFound) {
     return (
-      <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="px-6 py-6 text-sm text-dp-sub">
         농장을 찾을 수 없거나 접근 권한이 없습니다.{" "}
         <Link href="/farms" className="underline">
           농장 목록으로
@@ -75,11 +77,11 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
   }
 
   if (loadError) {
-    return <p className="px-6 py-6 text-sm text-red-600 dark:text-red-400">{loadError}</p>;
+    return <p className="px-6 py-6 text-sm text-dp-red-ink">{loadError}</p>;
   }
 
   if (!farm || !members) {
-    return <p className="px-6 py-6 text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>;
+    return <p className="px-6 py-6 text-sm text-dp-sub">불러오는 중...</p>;
   }
 
   const isOwner = farm.myRole === "OWNER";
@@ -131,45 +133,42 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
       {isOwner && (
-        <section className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">초대코드 발급</h3>
+        <Card className="flex flex-col gap-2 p-4">
+          <CardTitle>초대코드 발급</CardTitle>
           <button
             type="button"
             disabled={actionBusy}
             onClick={handleInvite}
-            className="self-start rounded-md border border-zinc-300 px-3 py-1.5 text-sm disabled:opacity-60 dark:border-zinc-700"
+            className="self-start rounded-md border border-dp-line-strong px-3 py-1.5 text-sm text-dp-body disabled:opacity-60"
           >
             초대코드 발급
           </button>
           {invitation && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              코드: <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-50">{invitation.code}</span>{" "}
-              (만료: {new Date(invitation.expiresAt).toLocaleString()})
+            <p className="text-sm text-dp-sub">
+              코드: <span className="font-mono font-semibold text-dp-ink">{invitation.code}</span> (만료:{" "}
+              {new Date(invitation.expiresAt).toLocaleString()})
             </p>
           )}
-        </section>
+        </Card>
       )}
 
-      <section className="flex flex-col gap-2 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">멤버 ({members.length})</h3>
+      <Card className="flex flex-col gap-2 p-4">
+        <CardTitle>멤버 ({members.length})</CardTitle>
         <ul className="flex flex-col gap-2">
           {members.map((m) => {
             const isSelf = myUserId !== null && m.userId === myUserId;
             return (
               <li key={m.memberId} className="flex items-center justify-between text-sm">
-                <span>
-                  {m.nickname}{" "}
-                  <span className="text-zinc-400 dark:text-zinc-500">
-                    ({ROLE_LABELS[m.role] ?? m.role}
-                    {isSelf ? " · 나" : ""})
-                  </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-dp-ink">{m.nickname}</span>
+                  <StatusBadge label={`${ROLE_LABELS[m.role] ?? m.role}${isSelf ? " · 나" : ""}`} tone="neutral" />
                 </span>
                 {isOwner && m.role !== "OWNER" && !isSelf && (
                   <button
                     type="button"
                     disabled={actionBusy}
                     onClick={() => handleRemoveMember(m.memberId)}
-                    className="text-xs text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
+                    className="text-xs text-dp-red-ink hover:underline disabled:opacity-60"
                   >
                     제거
                   </button>
@@ -179,7 +178,7 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
                     type="button"
                     disabled={actionBusy}
                     onClick={() => handleLeaveFarm(m.memberId)}
-                    className="text-xs text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
+                    className="text-xs text-dp-red-ink hover:underline disabled:opacity-60"
                   >
                     탈퇴하기
                   </button>
@@ -188,9 +187,9 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
             );
           })}
         </ul>
-      </section>
+      </Card>
 
-      {actionError && <p className="text-sm text-red-600 dark:text-red-400">{actionError}</p>}
+      {actionError && <p className="text-sm text-dp-red-ink">{actionError}</p>}
     </div>
   );
 }

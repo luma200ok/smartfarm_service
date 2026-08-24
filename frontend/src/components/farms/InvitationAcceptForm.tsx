@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Card, CardTitle } from "@/components/monitoring/ui";
 import FormField from "@/components/ui/FormField";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { acceptInvitation } from "@/lib/api/farms";
@@ -14,6 +15,7 @@ interface InvitationAcceptFormProps {
 }
 
 // 초대코드 입력 → 수락 화면 (contract §3 POST /api/invitations/accept).
+// 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle)로 통일한다(이슈 #109).
 export default function InvitationAcceptForm({ variant = "card" }: InvitationAcceptFormProps) {
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -41,18 +43,9 @@ export default function InvitationAcceptForm({ variant = "card" }: InvitationAcc
     }
   }
 
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className={
-        variant === "card"
-          ? "flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
-          : "flex flex-col gap-4"
-      }
-    >
-      {variant === "card" && (
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">초대코드로 농장 합류</h2>
-      )}
+  const form = (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {variant === "card" && <CardTitle>초대코드로 농장 합류</CardTitle>}
       <FormField
         id="invitation-code"
         label="초대코드"
@@ -61,14 +54,18 @@ export default function InvitationAcceptForm({ variant = "card" }: InvitationAcc
         value={code}
         onChange={(e) => setCode(e.target.value)}
       />
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-dp-red-ink">{error}</p>}
       <button
         type="submit"
         disabled={submitting}
-        className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {submitting ? "확인 중..." : "합류하기"}
       </button>
     </form>
   );
+
+  if (variant === "plain") return form;
+
+  return <Card className="p-4">{form}</Card>;
 }

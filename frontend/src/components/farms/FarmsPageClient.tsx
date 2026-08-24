@@ -9,6 +9,7 @@ import InvitationAcceptForm from "./InvitationAcceptForm";
 type OpenModal = "create" | "join" | null;
 
 // /farms 페이지 클라이언트 오케스트레이터 — 목록 중심 화면 + 생성/합류는 모달로 분리(이슈 #32).
+// 표현은 --dp-* 토큰으로 통일한다(이슈 #109).
 export default function FarmsPageClient() {
   const [openModal, setOpenModal] = useState<OpenModal>(null);
 
@@ -18,14 +19,14 @@ export default function FarmsPageClient() {
         <button
           type="button"
           onClick={() => setOpenModal("join")}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-4 py-2 text-sm font-medium text-dp-body transition-colors hover:bg-dp-inset"
         >
           초대코드로 합류
         </button>
         <button
           type="button"
           onClick={() => setOpenModal("create")}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90"
         >
           + 새 농장
         </button>
