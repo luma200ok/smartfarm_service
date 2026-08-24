@@ -126,7 +126,8 @@ class AlarmRuleMigrationV20IntegrationTest extends FarmTestSupport {
         assertThat(rules).allSatisfy(rule -> {
             assertThat(rule.getSource()).isEqualTo(AlarmRuleSource.ENV_SNAPSHOT);
             assertThat(rule.getScopeType()).isEqualTo(AlarmScopeType.FARM);
-            assertThat(rule.getDurationSeconds()).isEqualTo(120);
+            // 60 = 기존 "연속 2틱"의 초 환산(틱 간격 1회분) — 이관은 동작 보존이 원칙
+            assertThat(rule.getDurationSeconds()).isEqualTo(60);
             assertThat(rule.getSeverity()).isEqualTo(AlarmSeverity.WARNING);
             assertThat(rule.isEnabled()).isTrue();
             assertThat(rule.getThresholdId()).isEqualTo(threshold.getId());

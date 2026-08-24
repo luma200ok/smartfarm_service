@@ -64,7 +64,7 @@ class EnvThresholdDerivedRuleIntegrationTest extends FarmTestSupport {
 
     @Test
     @DisplayName("임계치를 저장하면 대응 파생 규칙 4개가 만들어진다(V20 이관 명세와 동일: "
-            + "ENV_SNAPSHOT·FARM·120초·WARNING, 하한=LT/상한=GT)")
+            + "ENV_SNAPSHOT·FARM·60초·WARNING, 하한=LT/상한=GT)")
     void savingThresholdsCreatesFourDerivedRules() throws Exception {
         String token = signupAndLogin("파생주인1");
         long farmId = createFarm(token, "파생농장1");
@@ -77,7 +77,8 @@ class EnvThresholdDerivedRuleIntegrationTest extends FarmTestSupport {
             assertThat(rule.getSource()).isEqualTo(AlarmRuleSource.ENV_SNAPSHOT);
             assertThat(rule.getScopeType()).isEqualTo(AlarmScopeType.FARM);
             assertThat(rule.getScopeId()).isNull();
-            assertThat(rule.getDurationSeconds()).isEqualTo(120);
+            // 60 = 기존 "연속 2틱"의 초 환산(틱 간격 1회분) — V20 이관 DML과 같은 값
+            assertThat(rule.getDurationSeconds()).isEqualTo(60);
             assertThat(rule.getSeverity()).isEqualTo(AlarmSeverity.WARNING);
             assertThat(rule.isEnabled()).isTrue();
             assertThat(rule.getThresholdId()).isNotNull();

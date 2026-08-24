@@ -33,8 +33,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class EnvThresholdService {
 
-    /** 기존 "연속 2틱"(폴러 60s fixedDelay × 2)의 초 환산 — V20 이관 SQL과 같은 값이어야 한다. */
-    static final int DERIVED_DURATION_SECONDS = 120;
+    /**
+     * 기존 "연속 2틱"의 초 환산 — V20 이관 SQL과 같은 값이어야 한다. 폴러 60s fixedDelay 기준으로
+     * 최초 이탈 틱(경과 0초)과 다음 틱(경과 60초)에서 발동했으므로 실제 경과는 틱 간격 1회분인
+     * 60초다(120초로 두면 기존 사용자의 알람이 한 틱 늦어지는 행동 변경이 된다).
+     */
+    static final int DERIVED_DURATION_SECONDS = 60;
 
     private final FarmAccessGuard farmAccessGuard;
     private final FarmEnvThresholdRepository farmEnvThresholdRepository;

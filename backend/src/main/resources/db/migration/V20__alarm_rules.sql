@@ -24,7 +24,8 @@ CREATE TABLE alarm_rules (
     threshold_value  DOUBLE PRECISION,
     threshold_min    DOUBLE PRECISION,
     threshold_max    DOUBLE PRECISION,
-    -- 지속시간(초). 기존 "연속 2틱"(폴러 60s × 2 = 120초) 하드코딩을 이 값으로 일반화한다.
+    -- 지속시간(초) — 최초 이탈 시각부터 이 시간이 지나야 발동한다. 기존 "연속 2틱" 하드코딩을
+    -- 이 값으로 일반화한다(이관값은 60 — 아래 이관 DML 주석 참고).
     duration_seconds INTEGER      NOT NULL,
     -- 규칙이 등급을 결정한다 — #116의 "severity 전부 WARNING 고정"을 여기서 해소한다.
     severity         VARCHAR(20)  NOT NULL,
@@ -75,12 +76,14 @@ ALTER TABLE alarm_events ADD COLUMN scope_id BIGINT;
 
 -- ── 기존 farm_env_thresholds 설정 이관 ───────────────────────────────────────
 -- enabled=true인 설정의 값이 채워진 경계마다 규칙 1개씩(최대 4개). 하한=LT, 상한=GT.
--- duration_seconds=120은 기존 "연속 2틱"(폴러 60s fixedDelay × 2)의 초 환산이다.
+-- duration_seconds=60 — 기존 동작을 그대로 보존한다. "연속 2틱"은 최초 이탈 틱(경과 0초)과
+-- 다음 틱(경과 60초)에서 발동했으므로 실제 경과 시간은 틱 간격 1회분인 60초다(120초로 두면
+-- 발동이 한 틱 늦어지는 행동 변경이 된다 — 이관은 동작 보존이 원칙).
 INSERT INTO alarm_rules (farm_id, name, enabled, source, metric, comparator, threshold_value,
                          duration_seconds, severity, scope_type, scope_id, threshold_id,
                          created_at, updated_at)
 SELECT t.farm_id, m.rule_name, TRUE, 'ENV_SNAPSHOT', m.metric, m.comparator, m.bound,
-       120, 'WARNING', 'FARM', NULL, t.id, NOW(), NOW()
+       60, 'WARNING', 'FARM', NULL, t.id, NOW(), NOW()
 FROM farm_env_thresholds t
 CROSS JOIN LATERAL (
     VALUES ('실내 온도 하한', 'INDOOR_TEMP', 'LT', t.indoor_temp_min),
