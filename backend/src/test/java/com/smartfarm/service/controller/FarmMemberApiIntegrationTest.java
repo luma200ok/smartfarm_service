@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -17,24 +18,32 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
     // ── 목록 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("멤버는 멤버 목록을 조회한다 — memberId/userId/nickname/role/joinedAt, 합류순 정렬")
+    @DisplayName("멤버는 멤버 목록을 조회한다 — memberId/userId/nickname/role/pending/joinedAt, 합류순 정렬")
     void findMembersAsMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
+        String waitingToken = signupAndLogin("대기자");
         long farmId = createFarm(ownerToken, "명단 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
+        // 승인 대기자도 목록에 보여야 관리자가 승인할 대상을 알 수 있다(#122)
+        acceptInvitation(waitingToken, createInvitationCode(ownerToken, farmId));
 
         mockMvc.perform(get("/api/farms/" + farmId + "/members")
                         .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.length()").value(3))
                 .andExpect(jsonPath("$[0].nickname").value("주인장"))
-                .andExpect(jsonPath("$[0].role").value("OWNER"))
+                .andExpect(jsonPath("$[0].role").value("ADMIN"))
+                .andExpect(jsonPath("$[0].pending").value(false))
                 .andExpect(jsonPath("$[0].memberId").isNumber())
                 .andExpect(jsonPath("$[0].userId").isNumber())
                 .andExpect(jsonPath("$[0].joinedAt").exists())
                 .andExpect(jsonPath("$[1].nickname").value("일꾼이"))
-                .andExpect(jsonPath("$[1].role").value("MEMBER"));
+                .andExpect(jsonPath("$[1].role").value("OPERATOR"))
+                .andExpect(jsonPath("$[1].pending").value(false))
+                .andExpect(jsonPath("$[2].nickname").value("대기자"))
+                .andExpect(jsonPath("$[2].role").value("PENDING"))
+                .andExpect(jsonPath("$[2].pending").value(true));
     }
 
     @Test
@@ -53,15 +62,15 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
     // ── 제거/탈퇴 ─────────────────────────────────────────
 
     @Test
-    @DisplayName("OWNER가 멤버를 제거하면 204, 제거된 멤버는 F002가 되고 기존 활성 코드도 무효화된다")
+    @DisplayName("ADMIN이 멤버를 제거하면 204, 제거된 멤버는 F002가 되고 기존 활성 코드도 무효화된다")
     void ownerRemovesMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         String lateJoinerToken = signupAndLogin("뒷북이");
         long farmId = createFarm(ownerToken, "해고 농장");
+        long memberId = joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
+        // 제거 시 무효화되는지 확인할 "제거 시점의 활성 코드"
         String code = createInvitationCode(ownerToken, farmId);
-        acceptInvitation(memberToken, code);
-        long memberId = memberIdOf(ownerToken, farmId, "일꾼이");
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/members/" + memberId)
                         .header("Authorization", "Bearer " + ownerToken))
@@ -87,14 +96,14 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("MEMBER 본인 탈퇴 시 기존 코드는 무효화(F004)되고, OWNER가 재발급한 새 코드로만 재합류할 수 있다")
+    @DisplayName("OPERATOR 본인 탈퇴 시 기존 코드는 무효화(F004)되고, ADMIN이 재발급한 새 코드로만 재합류할 수 있다")
     void memberLeavesAndRejoins() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "이직 농장");
+        long myMemberId = joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
+        // 탈퇴 시 무효화되는지 확인할 "탈퇴 시점의 활성 코드"
         String code = createInvitationCode(ownerToken, farmId);
-        acceptInvitation(memberToken, code);
-        long myMemberId = memberIdOf(memberToken, farmId, "일꾼이");
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/members/" + myMemberId)
                         .header("Authorization", "Bearer " + memberToken))
@@ -113,26 +122,23 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("F004"));
 
-        // OWNER가 재발급한 새 코드로는 재합류 가능
-        String newCode = createInvitationCode(ownerToken, farmId);
-        acceptInvitation(memberToken, newCode);
+        // ADMIN이 재발급한 새 코드로는 재합류 가능 — 재합류도 PENDING부터 시작해 승인을 받는다(#122)
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         mockMvc.perform(get("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.myRole").value("MEMBER"));
+                .andExpect(jsonPath("$.myRole").value("OPERATOR"));
     }
 
     @Test
-    @DisplayName("MEMBER가 다른 멤버를 제거하려 하면 403 F003을 반환한다")
+    @DisplayName("OPERATOR가 다른 멤버를 제거하려 하면 403 F003을 반환한다")
     void memberRemovesOtherMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String member1Token = signupAndLogin("일꾼일");
         String member2Token = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "내분 농장");
-        String code = createInvitationCode(ownerToken, farmId);
-        acceptInvitation(member1Token, code);
-        acceptInvitation(member2Token, code);
-        long member2Id = memberIdOf(member1Token, farmId, "일꾼이");
+        joinFarmAs(ownerToken, farmId, member1Token, FarmRole.OPERATOR);
+        long member2Id = joinFarmAs(ownerToken, farmId, member2Token, FarmRole.OPERATOR);
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/members/" + member2Id)
                         .header("Authorization", "Bearer " + member1Token))
@@ -141,7 +147,7 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("OWNER 본인 탈퇴 시도는 400 F006을 반환한다 (농장 삭제로만 가능)")
+    @DisplayName("유일한 ADMIN의 본인 탈퇴 시도는 400 F006을 반환한다 (마지막 관리자 보호)")
     void ownerCannotLeave() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         long farmId = createFarm(ownerToken, "독박 농장");
@@ -168,7 +174,7 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("OWNER가 존재하지 않는 memberId 제거 시 204 no-op이다 (멱등 DELETE)")
+    @DisplayName("ADMIN이 존재하지 않는 memberId 제거 시 204 no-op이다 (멱등 DELETE)")
     void ownerRemovesNonexistentMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         long farmId = createFarm(ownerToken, "멱등 농장");
@@ -218,10 +224,10 @@ class FarmMemberApiIntegrationTest extends FarmTestSupport {
         String memberToken = signupAndLogin("일꾼이");
         long farm1 = createFarm(ownerAToken, "갑의 농장");
         long farm2 = createFarm(ownerBToken, "을의 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerBToken, farm2));
+        joinFarmAs(ownerBToken, farm2, memberToken, FarmRole.OPERATOR);
         long farm2MemberId = memberIdOf(ownerBToken, farm2, "일꾼이");
 
-        // 농장1 OWNER가 자기 farmId + 타 농장 memberId로 삭제 시도 → 스코프 밖이라 no-op
+        // 농장1 ADMIN이 자기 farmId + 타 농장 memberId로 삭제 시도 → 스코프 밖이라 no-op
         mockMvc.perform(delete("/api/farms/" + farm1 + "/members/" + farm2MemberId)
                         .header("Authorization", "Bearer " + ownerAToken))
                 .andExpect(status().isNoContent());

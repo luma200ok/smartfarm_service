@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -56,7 +57,7 @@ class ZoneApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("농장주-존권한");
         String memberToken = signupAndLogin("멤버-존권한");
         long farmId = createFarm(ownerToken, "권한 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(post("/api/farms/" + farmId + "/zones")
                         .header("Authorization", "Bearer " + memberToken)
@@ -180,7 +181,7 @@ class ZoneApiIntegrationTest extends FarmTestSupport {
         String memberToken = signupAndLogin("멤버-존수정F003");
         long farmId = createFarm(ownerToken, "존수정F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(patch("/api/farms/" + farmId + "/zones/" + zoneId)
                         .header("Authorization", "Bearer " + memberToken)
@@ -251,7 +252,7 @@ class ZoneApiIntegrationTest extends FarmTestSupport {
         String memberToken = signupAndLogin("멤버-존삭제F003");
         long farmId = createFarm(ownerToken, "존삭제F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/zones/" + zoneId)
                         .header("Authorization", "Bearer " + memberToken))

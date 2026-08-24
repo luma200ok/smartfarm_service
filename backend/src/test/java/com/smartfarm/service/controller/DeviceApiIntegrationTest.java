@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -334,7 +335,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
         String memberToken = signupAndLogin("멤버-장비등록F003");
         long farmId = createFarm(ownerToken, "장비등록F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(post("/api/farms/" + farmId + "/devices")
                         .header("Authorization", "Bearer " + memberToken)
@@ -495,7 +496,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
         long farmId = createFarm(ownerToken, "장비수정F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
         long deviceId = createDevice(ownerToken, farmId, zoneId, "센서", DeviceKind.SENSOR, "SN-F003", DeviceStatus.NORMAL);
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(patch("/api/farms/" + farmId + "/devices/" + deviceId)
                         .header("Authorization", "Bearer " + memberToken)
@@ -655,7 +656,7 @@ class DeviceApiIntegrationTest extends FarmTestSupport {
         long farmId = createFarm(ownerToken, "장비삭제F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
         long deviceId = createDevice(ownerToken, farmId, zoneId, "센서", DeviceKind.SENSOR, "SN-DF003", DeviceStatus.NORMAL);
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/devices/" + deviceId)
                         .header("Authorization", "Bearer " + memberToken))

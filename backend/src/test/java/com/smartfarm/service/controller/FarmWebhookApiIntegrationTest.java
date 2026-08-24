@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -87,7 +88,7 @@ class FarmWebhookApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "권한 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(patch("/api/farms/" + farmId + "/webhook")
                         .header("Authorization", "Bearer " + memberToken)

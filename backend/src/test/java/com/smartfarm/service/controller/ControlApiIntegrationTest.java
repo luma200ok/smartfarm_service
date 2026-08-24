@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -216,16 +217,15 @@ class ControlApiIntegrationTest extends FarmTestSupport {
     // ── 취소 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("개별 취소: 작성자 본인이 아니고 OWNER도 아니면 403 A005")
+    @DisplayName("개별 취소: 작성자 본인이 아니고 ADMIN도 아니면 403 A005")
     void cancelByOtherMemberRejected() throws Exception {
         String ownerToken = signupAndLogin("제어-주인장");
         String memberA = signupAndLogin("제어-멤버A");
         String memberB = signupAndLogin("제어-멤버B");
         long farmId = createFarm(ownerToken, "취소권한 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
-        String code = createInvitationCode(ownerToken, farmId);
-        acceptInvitation(memberA, code);
-        acceptInvitation(memberB, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberA, FarmRole.OPERATOR);
+        joinFarmAs(ownerToken, farmId, memberB, FarmRole.OPERATOR);
 
         long changeId = enqueueSetpoint(memberA, farmId, zoneId, SensorMetric.TEMPERATURE, 23.0);
 
@@ -234,7 +234,7 @@ class ControlApiIntegrationTest extends FarmTestSupport {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("A005"));
 
-        // OWNER는 남의 항목도 취소할 수 있다(contract §4.12 권한 표).
+        // ADMIN은 남의 항목도 취소할 수 있다(contract §4.12 권한 표).
         mockMvc.perform(delete(controlPath(farmId, zoneId) + "/changes/" + changeId)
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isNoContent());
@@ -479,17 +479,26 @@ class ControlApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("비상 정지는 OWNER만 — 일반 멤버는 403 F003")
-    void emergencyStopRequiresOwner() throws Exception {
+    @DisplayName("비상 정지는 OPERATOR 이상 — OPERATOR는 성공하고 VIEWER는 403 F007 (#122 결정 ⓐ)")
+    void emergencyStopRequiresOperator() throws Exception {
+        // ⚠️ 구 계약은 OWNER 전용이었다. 이슈 #122에서 "장비를 켜고 끄는 건 되면서 비상 정지만
+        // 막히는" 불일치를 해소하려고 OPERATOR 이상으로 완화했다 — 구 MEMBER(→OPERATOR)는
+        // 권한을 잃지 않고 오히려 획득한다(기능 회귀 아님).
         String ownerToken = signupAndLogin("제어-정지주인");
-        String memberToken = signupAndLogin("제어-정지멤버");
+        String operatorToken = signupAndLogin("제어-정지멤버");
+        String viewerToken = signupAndLogin("제어-정지조회");
         long farmId = createFarm(ownerToken, "정지권한 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, operatorToken, FarmRole.OPERATOR);
+        joinFarmAs(ownerToken, farmId, viewerToken, FarmRole.VIEWER);
 
         mockMvc.perform(post("/api/farms/" + farmId + "/control/emergency-stop")
-                        .header("Authorization", "Bearer " + memberToken))
+                        .header("Authorization", "Bearer " + operatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/farms/" + farmId + "/control/emergency-stop")
+                        .header("Authorization", "Bearer " + viewerToken))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("F003"));
+                .andExpect(jsonPath("$.code").value("F007"));
     }
 
     // ── 테넌트 격리 · 데모 차단 ─────────────────────────────

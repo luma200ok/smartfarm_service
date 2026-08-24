@@ -175,7 +175,7 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
         farmMemberRepository.save(FarmMember.builder()
                 .farmId(farmId)
                 .userId(withdrawnUserId)
-                .role(FarmRole.MEMBER)
+                .role(FarmRole.OPERATOR)
                 .build());
 
         // 잔존 행이 있어도 가드의 User join(@SQLRestriction)이 차단 → F002
@@ -266,7 +266,7 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
         // 구 계정을 농장 MEMBER로 소속시켜 "구 데이터 미연결"을 검증할 대상 생성
         String owner = signupAndLogin("재가입농장주");
         long farmId = createFarm(owner, "재가입검증농장");
-        acceptInvitation(firstAccess, createInvitationCode(owner, farmId));
+        joinFarmAs(owner, farmId, firstAccess, FarmRole.OPERATOR);
 
         performWithdraw(firstAccess, PASSWORD).andExpect(status().isNoContent());
 

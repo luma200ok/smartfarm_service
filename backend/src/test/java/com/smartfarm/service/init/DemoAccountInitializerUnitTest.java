@@ -100,7 +100,7 @@ class DemoAccountInitializerUnitTest {
         initializer.seed(); // 예외 없이 수렴
 
         verify(farmMemberRepository).existsLiveFarmMembershipByUserIdAndRole(
-                winner.getId(), FarmRole.OWNER);
+                winner.getId(), FarmRole.ADMIN);
         verify(farmRepository, never()).save(any());
         verify(farmMemberRepository, never()).save(any());
     }

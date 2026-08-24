@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -288,7 +289,7 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "조회 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         enqueueOkResponse();
         long diagnosisId = createDiagnosis(ownerToken, farmId);
 

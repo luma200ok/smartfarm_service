@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -252,7 +253,7 @@ class RackApiIntegrationTest extends FarmTestSupport {
         String memberToken = signupAndLogin("멤버-랙생성F003");
         long farmId = createFarm(ownerToken, "랙생성F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(post("/api/farms/" + farmId + "/zones/" + zoneId + "/racks")
                         .header("Authorization", "Bearer " + memberToken)
@@ -303,7 +304,7 @@ class RackApiIntegrationTest extends FarmTestSupport {
         long farmId = createFarm(ownerToken, "랙수정F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
         long rackId = createRack(ownerToken, farmId, zoneId, "R1", 1);
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(patch("/api/farms/" + farmId + "/racks/" + rackId)
                         .header("Authorization", "Bearer " + memberToken)
@@ -350,7 +351,7 @@ class RackApiIntegrationTest extends FarmTestSupport {
         long farmId = createFarm(ownerToken, "랙삭제F003 농장");
         long zoneId = createZone(ownerToken, farmId, "A동");
         long rackId = createRack(ownerToken, farmId, zoneId, "R1", 1);
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/racks/" + rackId)
                         .header("Authorization", "Bearer " + memberToken))

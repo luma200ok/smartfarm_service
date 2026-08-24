@@ -1,5 +1,6 @@
 package com.smartfarm.service.controller;
 
+import com.smartfarm.service.entity.FarmRole;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,7 +27,7 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
     // ── 발급 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("OWNER는 초대코드를 발급받는다 — URL-safe 43자 코드와 expiresAt 반환")
+    @DisplayName("ADMIN은 초대코드를 발급받는다 — URL-safe 43자 코드와 expiresAt 반환")
     void createInvitationAsOwner() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         long farmId = createFarm(ownerToken, "초대 농장");
@@ -40,12 +41,12 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("MEMBER가 초대코드 발급 시 403 F003을 반환한다")
+    @DisplayName("OPERATOR가 초대코드 발급 시 403 F003을 반환한다")
     void createInvitationAsMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "초대 권한 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(post("/api/farms/" + farmId + "/invitations")
                         .header("Authorization", "Bearer " + memberToken))
@@ -69,7 +70,7 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
     // ── 수락 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("초대 수락 시 200 FarmResponse(MEMBER)를 반환하고 멤버로 합류한다")
+    @DisplayName("초대 수락 시 200 FarmResponse(PENDING)를 반환한다 — 관리자 승인 전까지 접근 불가(#122)")
     void acceptInvitationSuccess() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String joinerToken = signupAndLogin("신입이");
@@ -82,7 +83,8 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
                         .content(objectMapper.writeValueAsString(new AcceptInvitationRequest(code))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(farmId))
-                .andExpect(jsonPath("$.myRole").value("MEMBER"))
+                .andExpect(jsonPath("$.myRole").value("PENDING"))
+                // 승인 대기자도 멤버 수에 포함된다 — 관리자가 "승인할 사람이 있다"를 인지해야 한다
                 .andExpect(jsonPath("$.memberCount").value(2));
     }
 
@@ -139,7 +141,7 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("OWNER가 코드를 수락하면 이미 멤버이므로 409 F005를 반환한다")
+    @DisplayName("ADMIN이 코드를 수락하면 이미 멤버이므로 409 F005를 반환한다")
     void acceptOwnRoleReturnsF005() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         long farmId = createFarm(ownerToken, "셀프 수락 농장");
@@ -187,11 +189,12 @@ class InvitationApiIntegrationTest extends FarmTestSupport {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("F004"));
 
-        acceptInvitation(joinerToken, newCode);
+        // 신 코드로는 실제 합류가 되는지 — 수락(PENDING) 후 ADMIN 승인까지 태워 확인한다(#122)
+        joinFarmAs(ownerToken, farmId, joinerToken, FarmRole.OPERATOR);
         mockMvc.perform(get("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + joinerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.myRole").value("MEMBER"));
+                .andExpect(jsonPath("$.myRole").value("OPERATOR"));
     }
 
     @Test
