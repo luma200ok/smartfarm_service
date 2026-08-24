@@ -10,6 +10,7 @@ import com.smartfarm.service.entity.AlarmEvent;
 import com.smartfarm.service.entity.AlarmEventLog;
 import com.smartfarm.service.entity.AlarmEventLogAction;
 import com.smartfarm.service.entity.AlarmEventStatus;
+import com.smartfarm.service.entity.AlarmRule;
 import com.smartfarm.service.entity.AlarmSeverity;
 import com.smartfarm.service.entity.AlarmSourceType;
 import com.smartfarm.service.entity.User;
@@ -152,10 +153,14 @@ public class AlarmEventService {
      * 브리치 감지 시 알람 이벤트를 생성한다 — 멱등: 같은 farm×metricKey 조합의 미해결 이벤트가
      * 이미 있으면 아무 것도 하지 않는다(이슈 #116). 1차 방어선(이 조회)과 DB partial unique
      * index(V19, 2차 방어선)가 이중으로 중복 생성을 막는다.
+     *
+     * <p>{@code rule}(이슈 #118)은 발단 규칙이다 — 이벤트에 {@code ruleId}·{@code scopeType}·
+     * {@code scopeId}(프리뷰의 위치 표기용)와 파생 규칙이면 {@code thresholdId}(§4.6 하위호환)를
+     * 함께 남긴다. null이면 규칙 밖에서 온 브리치로 보고 그 필드들을 비운다(테스트·향후 소스용).
      */
     @Transactional
     public void recordBreach(Long farmId, AlarmSeverity severity, AlarmSourceType sourceType, String metricKey,
-                              String message, LocalDateTime occurredAt, Long thresholdId) {
+                              String message, LocalDateTime occurredAt, AlarmRule rule) {
         if (alarmEventRepository.findOpenEventByFarmAndMetric(farmId, metricKey).isPresent()) {
             return;
         }
@@ -166,7 +171,10 @@ public class AlarmEventService {
                 .metricKey(metricKey)
                 .message(message)
                 .occurredAt(occurredAt)
-                .thresholdId(thresholdId)
+                .thresholdId(rule != null ? rule.getThresholdId() : null)
+                .ruleId(rule != null ? rule.getId() : null)
+                .scopeType(rule != null ? rule.getScopeType() : null)
+                .scopeId(rule != null ? rule.getScopeId() : null)
                 .build());
         alarmEventLogRepository.save(AlarmEventLog.of(event, AlarmEventLogAction.CREATED, null, null));
     }

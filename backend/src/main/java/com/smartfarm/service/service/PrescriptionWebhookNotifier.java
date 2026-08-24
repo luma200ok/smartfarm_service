@@ -69,7 +69,7 @@ public class PrescriptionWebhookNotifier {
             webhookRestClient.post()
                     .uri(webhookUrl)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new DiscordPayload(content))
+                    .body(DiscordWebhookPayload.of(content))
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException e) {
@@ -103,7 +103,4 @@ public class PrescriptionWebhookNotifier {
         return question.length() <= QUESTION_TRUNCATE ? question : question.substring(0, QUESTION_TRUNCATE) + "…";
     }
 
-    /** 디스코드 웹훅 payload 최소 스키마 — content 필드만 사용(embeds는 1차 미사용). */
-    private record DiscordPayload(String content) {
-    }
 }

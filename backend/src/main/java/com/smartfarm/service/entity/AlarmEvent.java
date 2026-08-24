@@ -28,10 +28,13 @@ import lombok.NoArgsConstructor;
  * 막는다 — {@link jakarta.persistence.Version}(낙관적 락)과 이중 방어선을 이룬다(동시 acknowledge
  * 요청 중 하나는 상태 검증에서, 그보다 더 좁은 경합은 OptimisticLockException에서 막힌다).
  *
- * <p>{@code metricKey}는 소스별 의미가 다른 문자열 키다 — ENV_THRESHOLD는
- * "{@code EnvMetric}_{@code EnvDirection}"(예: {@code INDOOR_TEMP_HIGH}) 형태로 farm×항목×방향
- * 조합을 표현하며, 같은 조합의 미해결(RESOLVED 아님) 이벤트가 있으면 새로 만들지 않는다(멱등성 —
- * DB에도 partial unique index로 2차 방어선을 둔다, V19 참고).
+ * <p>{@code metricKey}는 멱등성 키다 — 같은 farm×metricKey 조합의 미해결(RESOLVED 아님) 이벤트가
+ * 있으면 새로 만들지 않는다(DB에도 partial unique index로 2차 방어선을 둔다, V19 참고).
+ * <b>#118부터 값은 {@link AlarmRule#metricKey()}(=`RULE_{ruleId}`)</b>이며, 규칙 단위로 유일해야
+ * 하는 이유는 그 메서드의 javadoc에 있다. #116~#117의 옛 형식
+ * ({@code "{EnvMetric}_{EnvDirection}"}, 예: {@code INDOOR_TEMP_HIGH})으로 저장된 <b>미해결</b>
+ * 이벤트는 V20 마이그레이션이 새 형식으로 재매핑했고(그러지 않으면 새 평가 경로가 찾지 못해 자동
+ * 해소 불가), 이미 RESOLVED된 과거 이력만 옛 형식으로 남아 있다.
  */
 @Entity
 @Table(name = "alarm_events")
@@ -83,6 +86,21 @@ public class AlarmEvent {
     @Column(name = "threshold_id")
     private Long thresholdId;
 
+    /** 발단이 된 알람 규칙(V20, 이슈 #118) — 규칙이 삭제되면 ON DELETE SET NULL로 null이 된다. */
+    @Column(name = "rule_id")
+    private Long ruleId;
+
+    /**
+     * 규칙의 평가 스코프 스냅샷(V20, 이슈 #118) — 프리뷰의 위치 표기("군산1 · B3랙 4층")용.
+     * V19 시절 생성된 과거 이벤트는 null이며, 그건 농장 단위로 읽는다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scope_type", length = 20)
+    private AlarmScopeType scopeType;
+
+    @Column(name = "scope_id")
+    private Long scopeId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -92,7 +110,8 @@ public class AlarmEvent {
 
     @Builder
     private AlarmEvent(Long farmId, AlarmSeverity severity, AlarmSourceType sourceType, String metricKey,
-                        String message, LocalDateTime occurredAt, Long thresholdId) {
+                        String message, LocalDateTime occurredAt, Long thresholdId, Long ruleId,
+                        AlarmScopeType scopeType, Long scopeId) {
         this.farmId = farmId;
         this.severity = severity;
         this.sourceType = sourceType;
@@ -101,6 +120,9 @@ public class AlarmEvent {
         this.status = AlarmEventStatus.UNACKNOWLEDGED;
         this.occurredAt = occurredAt;
         this.thresholdId = thresholdId;
+        this.ruleId = ruleId;
+        this.scopeType = scopeType;
+        this.scopeId = scopeId;
     }
 
     @PrePersist
