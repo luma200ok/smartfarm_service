@@ -11,10 +11,13 @@ public interface FarmEnvThresholdRepository extends JpaRepository<FarmEnvThresho
     Optional<FarmEnvThreshold> findByFarmId(Long farmId);
 
     /**
-     * 임계치 평가 대상(contract §4.6) — enabled=true이고 웹훅이 설정된 농장만. Farm 서브쿼리는
-     * {@code @SQLRestriction("deleted_at IS NULL")}이 자동 적용돼 soft delete된 농장은 제외된다.
+     * 알람 이벤트·웹훅 평가 대상(contract §4.6) — enabled=true 전체(웹훅 URL 유무 무관, 이슈 #116
+     * 리뷰 P2-B). 예전엔 웹훅이 설정된 농장만 조회했지만(findEnabledWithWebhookConfigured),
+     * 웹훅(알림 채널)과 알람 이벤트(영속 기록)는 서로 다른 관심사라 그 조회로 평가 대상을 제한하면
+     * 웹훅 URL을 아직 안 넣은 농장은 알람 이벤트가 전혀 쌓이지 않는 문제가 있었다. 웹훅 발송 스킵은
+     * {@code EnvThresholdWebhookNotifier#notifyBreach}가 개별 farm의 webhookUrl==null을 보고 이미
+     * 내부에서 처리한다.
      */
-    @Query("SELECT t FROM FarmEnvThreshold t WHERE t.enabled = true "
-            + "AND t.farmId IN (SELECT f.id FROM Farm f WHERE f.webhookUrl IS NOT NULL)")
-    List<FarmEnvThreshold> findEnabledWithWebhookConfigured();
+    @Query("SELECT t FROM FarmEnvThreshold t WHERE t.enabled = true")
+    List<FarmEnvThreshold> findEnabled();
 }

@@ -68,7 +68,12 @@ public class EnvThresholdAlertService {
         if (indoor == null) {
             return;
         }
-        List<FarmEnvThreshold> thresholds = farmEnvThresholdRepository.findEnabledWithWebhookConfigured();
+        // 알람 이벤트(영속 기록)와 웹훅(알림 채널)은 다른 관심사다(이슈 #116 리뷰 P2-B) — 임계치가
+        // enabled=true인 농장 전체를 평가 대상으로 삼는다(웹훅 URL 설정 여부 무관). 웹훅 URL을
+        // 아직 안 넣은 농장도 알람 이벤트는 정상적으로 쌓여야 대시보드가 빈 화면이 되지 않는다.
+        // 웹훅 발송 스킵은 EnvThresholdWebhookNotifier#notifyBreach가 개별 farm의 webhookUrl==null을
+        // 보고 이미 내부에서 처리한다(아래 notifyBreach 호출부 변경 불필요).
+        List<FarmEnvThreshold> thresholds = farmEnvThresholdRepository.findEnabled();
         for (FarmEnvThreshold threshold : thresholds) {
             evaluateMetric(threshold, EnvMetric.INDOOR_TEMP, indoor.temp(),
                     threshold.getIndoorTempMin(), threshold.getIndoorTempMax());
@@ -95,13 +100,18 @@ public class EnvThresholdAlertService {
         AlertState state = states.computeIfAbsent(key, k -> new AlertState());
 
         if (!breached) {
-            // getAndSet(0) == 0이면 이미 정상이던 틱이라 열린 알람이 있을 수 없어 조회를 생략한다
-            // (이슈 #116 — 매 정상 틱마다 DB 조회하는 낭비 방지, previousConsecutive>0일 때만
-            // "브리치 → 정상 복귀" 전이가 실제로 발생했다는 뜻).
-            int previousConsecutive = state.consecutiveBreaches.getAndSet(0);
-            if (previousConsecutive > 0) {
-                alarmEventService.autoResolveIfOpen(threshold.getFarmId(), metricKeyOf(metric, direction));
-            }
+            // 인메모리 연속 카운트(previousConsecutive)만으로 "열린 알람이 없다"고 단정할 수 없다
+            // (이슈 #116 리뷰 P2-A) — states는 ConcurrentHashMap이라 앱 재시작이나
+            // EnvThresholdService.updateThresholds()의 resetFarm 호출(설정을 저장할 때마다 발생 —
+            // 앱 재시작보다 훨씬 흔하다)로 카운트가 0으로 리셋될 수 있는데, 그 시점에도 DB엔 여전히
+            // 열린 이벤트가 남아 있을 수 있다. 그 상태로 정상 틱이 와도 과거 로직처럼
+            // previousConsecutive==0이라며 조회를 건너뛰면 그 이벤트는 사용자가 수동 resolve할
+            // 때까지 유령 알람으로 영구 고착된다. 따라서 인메모리 카운트와 무관하게 정상 틱마다
+            // DB 상태를 직접 확인해 자동 해소를 시도한다 — (farm_id, status) 인덱스 히트에
+            // 농장×지표2종×방향2 규모라 쿼리 비용은 미미하고, autoResolveIfOpen 자체도 열린 이벤트가
+            // 없으면 no-op이라 안전하다.
+            state.consecutiveBreaches.set(0);
+            alarmEventService.autoResolveIfOpen(threshold.getFarmId(), metricKeyOf(metric, direction));
             return;
         }
         int consecutive = state.consecutiveBreaches.incrementAndGet();
