@@ -2,7 +2,10 @@ package com.smartfarm.service.service;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -13,16 +16,27 @@ import static org.mockito.Mockito.when;
 
 import com.smartfarm.service.config.WebhookProperties;
 import com.smartfarm.service.dto.AiEnvironmentResponse.Indoor;
+import com.smartfarm.service.entity.AlarmComparator;
+import com.smartfarm.service.entity.AlarmRule;
+import com.smartfarm.service.entity.AlarmRuleSource;
+import com.smartfarm.service.entity.AlarmScopeType;
 import com.smartfarm.service.entity.AlarmSeverity;
 import com.smartfarm.service.entity.AlarmSourceType;
 import com.smartfarm.service.entity.CropType;
+import com.smartfarm.service.entity.Device;
+import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.DeviceStatus;
 import com.smartfarm.service.entity.Farm;
-import com.smartfarm.service.entity.FarmEnvThreshold;
-import com.smartfarm.service.repository.FarmEnvThresholdRepository;
+import com.smartfarm.service.entity.SensorMetric;
+import com.smartfarm.service.repository.AlarmRuleRepository;
+import com.smartfarm.service.repository.DeviceRepository;
 import com.smartfarm.service.repository.FarmRepository;
+import com.smartfarm.service.repository.ReadingScopeLatestProjection;
+import com.smartfarm.service.repository.SensorReadingRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -30,181 +44,366 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestClient;
 
 /**
- * {@link EnvThresholdAlertService} 단위 테스트(contract §4.6) — 연속 2틱 발동·농장×항목×방향별
- * 30분 쿨다운·webhook 미설정/enabled=false 미발송을 검증한다. 쿨다운은 {@link MutableClock}으로
- * 실시간 대기 없이 만료를 재현한다(EnvironmentCache의 package-private TTL 주입 선례와 동일 원칙).
+ * {@link EnvThresholdAlertService} 단위 테스트(contract §4.6·§4.13, 이슈 #52 → #116 → #118).
+ *
+ * <p>두 갈래를 함께 검증한다:
+ * <ol>
+ *   <li><b>#118 신규</b> — 지속시간 판정 · 지표 소스 3종 라우팅 · 스코프별 독립 알람 · 등급 분화</li>
+ *   <li><b>PR #117 불변식 회귀</b> — 규칙 단위 예외 격리 · 멱등성 2차 방어선 흡수 · 정상 틱마다
+ *       무조건 자동 해소 · resetFarm 이후에도 자동 해소 지속. (soft delete 농장 제외는 리포지토리
+ *       쿼리의 책임이라 이 목킹 테스트로는 원리적으로 검증할 수 없어
+ *       {@code AlarmRuleRepositoryIntegrationTest}가 실제 Postgres로 검증한다.)</li>
+ * </ol>
+ *
+ * <p>지속시간·쿨다운 만료는 {@link MutableClock}으로 실시간 대기 없이 재현한다.
  */
 class EnvThresholdAlertServiceUnitTest {
 
     private static final long FARM_ID = 1L;
     private static final long FARM_ID_2 = 2L;
 
-    private final FarmEnvThresholdRepository thresholdRepository = mock(FarmEnvThresholdRepository.class);
+    /** #117까지의 "연속 2틱"에 대응하는 지속시간(폴러 60s × 2) — V20 이관 SQL과 같은 값. */
+    private static final int DURATION_120S = 120;
+
+    private final AlarmRuleRepository alarmRuleRepository = mock(AlarmRuleRepository.class);
     private final FarmRepository farmRepository = mock(FarmRepository.class);
+    private final SensorReadingRepository sensorReadingRepository = mock(SensorReadingRepository.class);
+    private final DeviceRepository deviceRepository = mock(DeviceRepository.class);
     private final EnvThresholdWebhookNotifier notifier = mock(EnvThresholdWebhookNotifier.class);
     private final AlarmEventService alarmEventService = mock(AlarmEventService.class);
-    private final MutableClock clock = new MutableClock(Instant.parse("2026-08-22T00:00:00Z"));
+    private final MutableClock clock = new MutableClock(Instant.parse("2026-08-24T00:00:00Z"));
 
-    private final EnvThresholdAlertService service =
-            new EnvThresholdAlertService(thresholdRepository, farmRepository, notifier, alarmEventService, clock);
+    private final EnvThresholdAlertService service = newService(notifier);
 
-    private FarmEnvThreshold thresholdEnabled(Double tempMin, Double tempMax) {
-        FarmEnvThreshold threshold = FarmEnvThreshold.builder()
-                .farmId(FARM_ID)
+    private EnvThresholdAlertService newService(EnvThresholdWebhookNotifier notifierToUse) {
+        return new EnvThresholdAlertService(alarmRuleRepository, farmRepository, sensorReadingRepository,
+                deviceRepository, notifierToUse, alarmEventService, clock);
+    }
+
+    /**
+     * 규칙 id는 {@link AlarmRule#metricKey()}(멱등성 키)의 근거라 목킹 테스트에서도 반드시 채워야
+     * 한다 — 영속화를 거치지 않으므로 리플렉션으로 주입한다(SensorSimulatorServiceTest 선례).
+     */
+    private AlarmRule rule(long id, long farmId, AlarmRuleSource source, String metric,
+                            AlarmComparator comparator, Double value, AlarmSeverity severity,
+                            AlarmScopeType scopeType, Long scopeId) {
+        AlarmRule rule = AlarmRule.builder()
+                .farmId(farmId)
+                .name("규칙" + id)
                 .enabled(true)
-                .indoorTempMin(tempMin)
-                .indoorTempMax(tempMax)
+                .source(source)
+                .metric(metric)
+                .comparator(comparator)
+                .thresholdValue(value)
+                .durationSeconds(DURATION_120S)
+                .severity(severity)
+                .scopeType(scopeType)
+                .scopeId(scopeId)
                 .build();
-        return threshold;
+        ReflectionTestUtils.setField(rule, "id", id);
+        return rule;
+    }
+
+    /** 실내 온도 상한(GT) 규칙 — #117 테스트의 {@code thresholdEnabled(20, 30)} 상한 방향에 대응. */
+    private AlarmRule tempMaxRule(long id, long farmId, double max) {
+        return rule(id, farmId, AlarmRuleSource.ENV_SNAPSHOT, "INDOOR_TEMP", AlarmComparator.GT, max,
+                AlarmSeverity.WARNING, AlarmScopeType.FARM, null);
     }
 
     private Farm farm() {
         return Farm.builder().name("농장").cropType(CropType.TOMATO).build();
     }
 
+    /** 지속시간 게이트를 넘기기 위해 시계를 진행시키며 같은 값을 다시 관측한다. */
+    private void tick(Indoor indoor, Duration advance) {
+        clock.advance(advance);
+        service.evaluate(indoor);
+    }
+
+    // ── 지속시간 판정(#118) ─────────────────────────────────────────────────────
+
     @Test
-    @DisplayName("1틱만 이탈하면 발동하지 않는다(연속 2틱 미달)")
-    void singleTickDoesNotTrigger() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+    @DisplayName("지속시간 미달이면 발동하지 않는다(최초 이탈 관측 직후)")
+    void breachShorterThanDurationDoesNotTrigger() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈(상한 초과)
+        service.evaluate(new Indoor(35.0, 50.0, true));           // 최초 이탈 — 경과 0초
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(60)); // 경과 60초 < 120초
 
-        verify(notifier, never()).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble());
+        verify(notifier, never()).notifyBreach(any(), any(), anyString());
+        verify(alarmEventService, never()).recordBreach(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("연속 2틱 이탈하면 발동한다")
-    void twoConsecutiveTicksTrigger() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+    @DisplayName("지속시간을 채우면 발동한다(duration_seconds 기반 — 틱 수가 아니라 경과 시간)")
+    void breachLongerThanDurationTriggers() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 발동
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 경과 120초 >= 120초 — 발동
 
-        verify(notifier, times(1)).notifyBreach(any(), eq(EnvMetric.INDOOR_TEMP), eq(EnvDirection.HIGH),
-                eq(36.0), eq(30.0));
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.WARNING),
+                eq(AlarmSourceType.ENV_THRESHOLD), eq("RULE_10"), any(), any(), any());
+        verify(notifier, times(1)).notifyBreach(any(), eq(AlarmSeverity.WARNING), anyString());
     }
 
     @Test
-    @DisplayName("정상 범위로 복귀하면 연속 카운트가 리셋된다")
-    void inRangeResetsConsecutiveCount() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+    @DisplayName("폴링 간격이 길어져도(1틱 = 180초) 지속시간만 채우면 발동한다 — 틱 수 하드코딩 제거 확인")
+    void singleLongTickSatisfiesDuration() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈
-        service.evaluate(new Indoor(25.0, 50.0, true)); // 정상 범위 — 리셋
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 다시 1틱째(연속 아님)
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(180));
 
-        verify(notifier, never()).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble());
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), any(), any(), eq("RULE_10"),
+                any(), any(), any());
     }
 
     @Test
-    @DisplayName("resetFarm 호출 후에는 이전 연속 카운트가 사라져 다음 이탈이 다시 1틱부터 시작한다"
-            + "(리뷰 P3 — 설정 변경 직후 EnvThresholdService가 호출)")
-    void resetFarmClearsConsecutiveCount() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
-        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+    @DisplayName("정상 범위로 복귀하면 누적된 이탈 시간이 사라져 다음 이탈이 처음부터 다시 시작한다")
+    void inRangeResetsElapsedBreachTime() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈
-        service.resetFarm(FARM_ID); // 설정 변경 — 상태 리셋
-        service.evaluate(new Indoor(36.0, 50.0, true)); // 리셋 후 다시 1틱째 — 아직 미발동
+        service.evaluate(new Indoor(35.0, 50.0, true));            // 이탈 시작
+        tick(new Indoor(25.0, 50.0, true), Duration.ofSeconds(60)); // 정상 복귀 — 리셋
+        tick(new Indoor(35.0, 50.0, true), Duration.ofSeconds(60)); // 다시 이탈 시작(경과 0초)
+        tick(new Indoor(35.0, 50.0, true), Duration.ofSeconds(60)); // 경과 60초 < 120초
 
-        verify(notifier, never()).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble());
+        verify(notifier, never()).notifyBreach(any(), any(), anyString());
     }
+
+    @Test
+    @DisplayName("resetFarm 호출 후에는 누적 이탈 시간이 사라져 다음 이탈이 처음부터 다시 시작한다"
+            + "(설정·규칙 변경 직후 EnvThresholdService·AlarmRuleService가 호출)")
+    void resetFarmClearsElapsedBreachTime() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
+
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        service.resetFarm(FARM_ID);                                 // 설정 변경 — 상태 리셋
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 리셋 후 다시 경과 0초
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(60));  // 경과 60초 < 120초 — 아직 미발동
+
+        verify(notifier, never()).notifyBreach(any(), any(), anyString());
+    }
+
+    // ── 쿨다운(§4.6) ───────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("발동 후 30분 쿨다운 내 재이탈은 재발송하지 않는다")
     void cooldownSuppressesReNotification() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 발동(1회)
-        clock.advance(Duration.ofMinutes(10));
-        service.evaluate(new Indoor(37.0, 50.0, true)); // 계속 이탈, 쿨다운 중 — 미발송
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 발동(1회)
+        tick(new Indoor(37.0, 50.0, true), Duration.ofMinutes(10));  // 계속 이탈, 쿨다운 중 — 미발송
 
-        verify(notifier, times(1)).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble());
+        verify(notifier, times(1)).notifyBreach(any(), any(), anyString());
     }
 
     @Test
     @DisplayName("쿨다운(30분) 경과 후 재이탈은 다시 발송한다")
     void reNotifiesAfterCooldownElapses() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 발동(1회)
-        clock.advance(Duration.ofMinutes(31));
-        service.evaluate(new Indoor(37.0, 50.0, true)); // 쿨다운 경과 — 재발송
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 발동(1회)
+        tick(new Indoor(37.0, 50.0, true), Duration.ofMinutes(31));  // 쿨다운 경과 — 재발송
 
-        verify(notifier, times(2)).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble());
+        verify(notifier, times(2)).notifyBreach(any(), any(), anyString());
     }
 
     @Test
-    @DisplayName("enabled=false 농장은 조회 대상에서 이미 제외되므로 평가하지 않는다")
-    void disabledFarmsAreExcludedByRepository() {
-        when(thresholdRepository.findEnabled()).thenReturn(List.of());
+    @DisplayName("쿨다운 중 재이탈에도 알람 이벤트 기록은 계속 시도한다(멱등은 AlarmEventService 책임)")
+    void alarmEventRecordedEvenDuringWebhookCooldown() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(35.0, 50.0, true));
+        tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120)); // 발동(웹훅 1회)
+        tick(new Indoor(37.0, 50.0, true), Duration.ofMinutes(10));  // 웹훅은 쿨다운 중
+
+        verify(alarmEventService, times(2)).recordBreach(eq(FARM_ID), any(), any(), eq("RULE_10"),
+                any(), any(), any());
+    }
+
+    // ── 평가 대상·관측 부재 ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("enabled=false 규칙은 조회 대상에서 이미 제외되므로 평가하지 않는다")
+    void disabledRulesAreExcludedByRepository() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of());
 
         service.evaluate(new Indoor(99.0, 99.0, true));
 
-        verify(notifier, never()).notifyBreach(any(), any(), any(), org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble());
+        verify(notifier, never()).notifyBreach(any(), any(), anyString());
     }
 
     @Test
-    @DisplayName("indoor가 null(부분 응답)이면 평가 자체를 스킵한다")
-    void nullIndoorSkipsEvaluation() {
+    @DisplayName("indoor가 null(ai-server 부분 응답)이어도 ENV_SNAPSHOT 규칙만 건너뛴다 — 자동 해소도"
+            + " 하지 않는다(관측 부재는 정상 복귀가 아니다)")
+    void nullIndoorSkipsOnlyEnvSnapshotRules() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
+
         service.evaluate(null);
 
-        verify(thresholdRepository, never()).findEnabled();
-    }
-
-    // ── 알람 이벤트 훅(이슈 #116) ────────────────────────────────────
-
-    @Test
-    @DisplayName("1틱만 이탈하면 알람 이벤트도 생성하지 않는다(연속 2틱 미달)")
-    void singleTickDoesNotRecordAlarmEvent() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
-
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-
+        verify(alarmEventService, never()).autoResolveIfOpen(anyLong(), anyString());
         verify(alarmEventService, never()).recordBreach(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("연속 2틱 이탈하면 웹훅 쿨다운과 무관하게 알람 이벤트를 기록한다")
-    void twoConsecutiveTicksRecordAlarmEvent() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+    @DisplayName("indoor가 null이어도 센서 규칙 평가는 계속된다(#117까지는 여기서 즉시 return했다)")
+    void nullIndoorStillEvaluatesSensorRules() {
+        AlarmRule sensorRule = rule(20L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
+                AlarmComparator.GT, 2.8, AlarmSeverity.CRITICAL, AlarmScopeType.FARM, null);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(sensorRule));
+        when(sensorReadingRepository.findLatestInScope(eq(FARM_ID), eq("EC"), any(), any(), any(), any()))
+                .thenReturn(List.of(latest(2.0)));
+
+        service.evaluate(null);
+
+        // 정상 범위이므로 발동은 없지만, 평가 자체는 수행돼 자동 해소가 호출된다.
+        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "RULE_20");
+    }
+
+    // ── 지표 소스 라우팅(#118) ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("SENSOR_READING 규칙은 sensor_readings 스코프 최신값으로 판정한다(프리뷰 '급액 EC > 2.8')")
+    void sensorReadingRuleUsesScopedLatestValue() {
+        AlarmRule ecRule = rule(20L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
+                AlarmComparator.GT, 2.8, AlarmSeverity.CRITICAL, AlarmScopeType.LEVEL, 77L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(ecRule));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+        when(sensorReadingRepository.findLatestInScope(eq(FARM_ID), eq("EC"), any(), isNull(), isNull(), eq(77L)))
+                .thenReturn(List.of(latest(3.1)));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 확정
+        service.evaluate(null);
+        clock.advance(Duration.ofSeconds(120));
+        service.evaluate(null);
 
-        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.WARNING),
-                eq(AlarmSourceType.ENV_THRESHOLD), eq("INDOOR_TEMP_HIGH"), any(), any(), any());
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.CRITICAL),
+                eq(AlarmSourceType.SENSOR_THRESHOLD), eq("RULE_20"), any(), any(), any());
     }
 
     @Test
-    @DisplayName("P2-B: 웹훅 URL 미설정 농장도 임계치 평가 대상에 포함돼 알람 이벤트는 정상 기록되지만"
-            + " 실제 웹훅 HTTP 요청은 발송되지 않는다(이슈 #116 리뷰 — findEnabled()가 웹훅 여부와"
-            + " 무관하게 enabled=true 전체를 대상으로 삼도록 바뀜, 예전 findEnabledWithWebhookConfigured"
-            + "였다면 이 농장은 평가 대상에서 아예 제외돼 알람 이벤트가 0건이었을 것)")
+    @DisplayName("신선한 측정값이 없으면 관측 부재로 보고 발동도 자동 해소도 하지 않는다")
+    void staleSensorScopeIsTreatedAsNoObservation() {
+        AlarmRule ecRule = rule(20L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
+                AlarmComparator.GT, 2.8, AlarmSeverity.CRITICAL, AlarmScopeType.FARM, null);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(ecRule));
+        when(sensorReadingRepository.findLatestInScope(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        service.evaluate(null);
+        clock.advance(Duration.ofSeconds(300));
+        service.evaluate(null);
+
+        verify(alarmEventService, never()).recordBreach(any(), any(), any(), any(), any(), any(), any());
+        verify(alarmEventService, never()).autoResolveIfOpen(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("DEVICE_HEARTBEAT 규칙은 스코프 안 OFFLINE 장비를 무응답으로 판정한다"
+            + "(프리뷰 '게이트웨이 응답 없음 · 3분 지속')")
+    void deviceHeartbeatRuleDetectsOfflineDevice() {
+        AlarmRule heartbeatRule = rule(30L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
+                AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+        when(deviceRepository.findByZoneIdOrderByIdAsc(9L))
+                .thenReturn(List.of(device("게이트웨이-1", DeviceStatus.OFFLINE)));
+
+        service.evaluate(null);
+        clock.advance(Duration.ofSeconds(120));
+        service.evaluate(null);
+
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.CRITICAL),
+                eq(AlarmSourceType.DEVICE_HEARTBEAT), eq("RULE_30"), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("스코프의 장비가 전부 정상이면 자동 해소를 시도한다")
+    void healthyDevicesTriggerAutoResolve() {
+        AlarmRule heartbeatRule = rule(30L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
+                AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
+        when(deviceRepository.findByZoneIdOrderByIdAsc(9L))
+                .thenReturn(List.of(device("게이트웨이-1", DeviceStatus.NORMAL)));
+
+        service.evaluate(null);
+
+        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "RULE_30");
+    }
+
+    @Test
+    @DisplayName("스코프에 활성 장비가 없으면 관측 부재로 보고 자동 해소하지 않는다"
+            + "(장비를 모두 지운 존에서 열린 알람이 근거 없이 닫히면 안 된다)")
+    void emptyDeviceScopeIsTreatedAsNoObservation() {
+        AlarmRule heartbeatRule = rule(30L, FARM_ID, AlarmRuleSource.DEVICE_HEARTBEAT, null,
+                AlarmComparator.ABSENT, null, AlarmSeverity.CRITICAL, AlarmScopeType.ZONE, 9L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(heartbeatRule));
+        when(deviceRepository.findByZoneIdOrderByIdAsc(9L)).thenReturn(List.of());
+
+        service.evaluate(null);
+
+        verify(alarmEventService, never()).autoResolveIfOpen(anyLong(), anyString());
+    }
+
+    // ── 스코프별 독립 알람 · 등급 분화(#118) ────────────────────────────────────
+
+    @Test
+    @DisplayName("같은 지표라도 스코프가 다르면 서로 다른 멱등성 키로 독립 알람이 생성된다"
+            + "(V19 partial unique index가 한쪽을 조용히 삼키면 안 된다)")
+    void sameMetricDifferentScopesProduceIndependentAlarms() {
+        AlarmRule rackA = rule(41L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
+                AlarmComparator.GT, 2.8, AlarmSeverity.WARNING, AlarmScopeType.RACK, 100L);
+        AlarmRule rackB = rule(42L, FARM_ID, AlarmRuleSource.SENSOR_READING, SensorMetric.EC.name(),
+                AlarmComparator.GT, 2.8, AlarmSeverity.WARNING, AlarmScopeType.RACK, 200L);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(rackA, rackB));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+        when(sensorReadingRepository.findLatestInScope(eq(FARM_ID), eq("EC"), any(), isNull(), eq(100L), isNull()))
+                .thenReturn(List.of(latest(3.5)));
+        when(sensorReadingRepository.findLatestInScope(eq(FARM_ID), eq("EC"), any(), isNull(), eq(200L), isNull()))
+                .thenReturn(List.of(latest(3.9)));
+
+        service.evaluate(null);
+        clock.advance(Duration.ofSeconds(120));
+        service.evaluate(null);
+
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), any(), any(), eq("RULE_41"),
+                any(), any(), any());
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), any(), any(), eq("RULE_42"),
+                any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("규칙의 severity가 알람 이벤트 등급이 된다(#116의 WARNING 고정 해소)")
+    void ruleSeverityDecidesEventSeverity() {
+        AlarmRule criticalRule = rule(50L, FARM_ID, AlarmRuleSource.ENV_SNAPSHOT, "INDOOR_HUMIDITY",
+                AlarmComparator.GT, 90.0, AlarmSeverity.CRITICAL, AlarmScopeType.FARM, null);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(criticalRule));
+        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+
+        service.evaluate(new Indoor(25.0, 95.0, true));
+        tick(new Indoor(25.0, 95.0, true), Duration.ofSeconds(120));
+
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.CRITICAL),
+                any(), eq("RULE_50"), any(), any(), any());
+    }
+
+    // ── PR #116/#117 불변식 회귀 ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("P2-B: 웹훅 URL 미설정 농장도 평가 대상에 포함돼 알람 이벤트는 정상 기록되지만"
+            + " 실제 웹훅 HTTP 요청은 발송되지 않는다(이슈 #116 리뷰)")
     void alarmEventRecordedWithoutWebhookConfigButNoActualHttpRequestSent() {
         // notifier를 Mockito mock 대신 실제 구현체로 둬서(RestClient만 mock) webhookUrl==null일 때
         // 실제로 HTTP 요청을 시도하지 않는지까지 관찰한다 — 클래스 필드 notifier(mock)로는 내부
@@ -212,141 +411,149 @@ class EnvThresholdAlertServiceUnitTest {
         RestClient webhookRestClient = mock(RestClient.class);
         EnvThresholdWebhookNotifier realNotifier = new EnvThresholdWebhookNotifier(
                 new WebhookProperties(Duration.ofSeconds(5), "https://farm.luma200ok.com"), webhookRestClient);
-        EnvThresholdAlertService serviceWithRealNotifier = new EnvThresholdAlertService(
-                thresholdRepository, farmRepository, realNotifier, alarmEventService, clock);
+        EnvThresholdAlertService serviceWithRealNotifier = newService(realNotifier);
 
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
         // farm()은 webhookUrl을 설정하지 않아 기본값 null — 웹훅 미설정 농장.
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
 
-        serviceWithRealNotifier.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-        serviceWithRealNotifier.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 확정
+        serviceWithRealNotifier.evaluate(new Indoor(35.0, 50.0, true));
+        clock.advance(Duration.ofSeconds(120));
+        serviceWithRealNotifier.evaluate(new Indoor(36.0, 50.0, true));
 
-        // 알람 이벤트는 웹훅 설정과 무관하게 기록된다.
         verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID), eq(AlarmSeverity.WARNING),
-                eq(AlarmSourceType.ENV_THRESHOLD), eq("INDOOR_TEMP_HIGH"), any(), any(), any());
-        // 웹훅 URL이 없으므로 EnvThresholdWebhookNotifier가 즉시 return하고, RestClient는 전혀
-        // 호출되지 않는다(실제 HTTP 요청 미발송).
+                eq(AlarmSourceType.ENV_THRESHOLD), eq("RULE_10"), any(), any(), any());
         verifyNoInteractions(webhookRestClient);
-    }
-
-    @Test
-    @DisplayName("쿨다운 중 재이탈에도 알람 이벤트 기록은 계속 시도한다(멱등은 AlarmEventService 책임)")
-    void alarmEventRecordedEvenDuringWebhookCooldown() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
-        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
-
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-        service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — 확정(웹훅 발송 1회)
-        clock.advance(Duration.ofMinutes(10));
-        service.evaluate(new Indoor(37.0, 50.0, true)); // 웹훅은 쿨다운 중이지만 알람 기록은 계속 호출
-
-        verify(alarmEventService, times(2)).recordBreach(eq(FARM_ID), any(), any(),
-                eq("INDOOR_TEMP_HIGH"), any(), any(), any());
     }
 
     @Test
     @DisplayName("정상 범위로 복귀하면 자동 해소를 시도한다")
     void inRangeTriggersAutoResolve() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
-        when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈
-        service.evaluate(new Indoor(25.0, 50.0, true)); // 정상 복귀
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 이탈
+        tick(new Indoor(25.0, 50.0, true), Duration.ofSeconds(60)); // 정상 복귀
 
-        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "INDOOR_TEMP_HIGH");
+        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "RULE_10");
     }
 
     @Test
     @DisplayName("P1-B: 멱등성 2차 방어선(partial unique index) 위반은 스케줄러 틱을 끊지 않고 흡수한다"
-            + "(이슈 #116 리뷰 — recordBreach가 DataIntegrityViolationException을 던져도 evaluate는 "
-            + "정상 완료하고 웹훅 발송까지 이어진다)")
+            + "(recordBreach가 DataIntegrityViolationException을 던져도 evaluate는 정상 완료하고 "
+            + "웹훅 발송까지 이어진다)")
     void dataIntegrityViolationOnRecordBreachIsSwallowed() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
         when(farmRepository.findById(FARM_ID)).thenReturn(Optional.of(farm()));
         doThrow(new DataIntegrityViolationException("ux_alarm_events_open_farm_metric 위반(레이스 가정)"))
-                .when(alarmEventService).recordBreach(eq(FARM_ID), any(), any(), eq("INDOOR_TEMP_HIGH"),
+                .when(alarmEventService).recordBreach(eq(FARM_ID), any(), any(), eq("RULE_10"),
                         any(), any(), any());
 
         assertThatCode(() -> {
-            service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱
-            service.evaluate(new Indoor(36.0, 50.0, true)); // 2틱 — recordBreach가 예외를 던짐
+            service.evaluate(new Indoor(35.0, 50.0, true));
+            tick(new Indoor(36.0, 50.0, true), Duration.ofSeconds(120));
         }).doesNotThrowAnyException();
 
-        // 알람 이벤트 저장은 실패했지만, 뒤이은 웹훅 발송(같은 evaluateDirection 호출)은 정상 진행돼야
-        // 한다 — recordAlarmBreach의 catch가 evaluateDirection 이후 로직을 끊지 않는다는 뜻.
-        verify(notifier, times(1)).notifyBreach(any(), eq(EnvMetric.INDOOR_TEMP), eq(EnvDirection.HIGH),
-                eq(36.0), eq(30.0));
+        // 알람 이벤트 저장은 실패했지만, 뒤이은 웹훅 발송(같은 evaluateRule 호출)은 정상 진행돼야
+        // 한다 — recordAlarmBreach의 catch가 그 이후 로직을 끊지 않는다는 뜻.
+        verify(notifier, times(1)).notifyBreach(any(), eq(AlarmSeverity.WARNING), anyString());
     }
 
     @Test
-    @DisplayName("P2-A: 이미 정상이던 틱도 매번 자동 해소를 시도한다(인메모리 카운트만으로 열린 알람"
-            + " 없음을 단정할 수 없음 — 이슈 #116 리뷰, 예전엔 여기서 조회를 생략했었다)")
+    @DisplayName("P2-A: 이미 정상이던 틱도 매번 자동 해소를 시도한다(인메모리 상태만으로 열린 알람"
+            + " 없음을 단정할 수 없음 — 이슈 #116 리뷰)")
     void alreadyNormalTickStillAttemptsAutoResolve() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
 
         service.evaluate(new Indoor(25.0, 50.0, true)); // 처음부터 정상
-        service.evaluate(new Indoor(26.0, 50.0, true)); // 계속 정상
+        tick(new Indoor(26.0, 50.0, true), Duration.ofSeconds(60)); // 계속 정상
 
         // autoResolveIfOpen 자체가 열린 이벤트 없으면 no-op이라 매 정상 틱마다 호출해도 안전하다 —
-        // 이 무조건 호출이 P2-A의 핵심 수정이다(resetFarm·앱 재시작으로 인메모리 카운트가 0으로
-        // 리셋돼도 DB의 열린 이벤트를 놓치지 않기 위함).
-        verify(alarmEventService, times(2)).autoResolveIfOpen(FARM_ID, "INDOOR_TEMP_HIGH");
+        // 이 무조건 호출이 P2-A의 핵심 수정이다.
+        verify(alarmEventService, times(2)).autoResolveIfOpen(FARM_ID, "RULE_10");
     }
 
     @Test
-    @DisplayName("P2-A: resetFarm으로 인메모리 연속 카운트가 초기화된 뒤에도 정상 틱이 오면 DB의 "
-            + "열린 이벤트를 자동 해소한다(EnvThresholdService.updateThresholds가 설정 저장마다 "
-            + "resetFarm을 호출하는데, 그 직후에도 유령 알람이 고착되지 않아야 함)")
-    void autoResolveStillHappensAfterResetFarmClearsConsecutiveCount() {
-        when(thresholdRepository.findEnabled())
-                .thenReturn(List.of(thresholdEnabled(20.0, 30.0)));
+    @DisplayName("P2-A: resetFarm으로 인메모리 상태가 초기화된 뒤에도 정상 틱이 오면 DB의 열린 이벤트를"
+            + " 자동 해소한다(설정 저장마다 resetFarm이 호출되므로 유령 알람이 고착되면 안 된다)")
+    void autoResolveStillHappensAfterResetFarmClearsState() {
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(tempMaxRule(10L, FARM_ID, 30.0)));
 
-        service.evaluate(new Indoor(35.0, 50.0, true)); // 1틱 이탈(DB에 열린 이벤트가 있다고 가정)
-        service.resetFarm(FARM_ID); // 설정 저장 — 인메모리 연속 카운트가 0으로 리셋됨
-        service.evaluate(new Indoor(25.0, 50.0, true)); // 리셋 후 첫 정상 틱
+        service.evaluate(new Indoor(35.0, 50.0, true)); // 이탈(DB에 열린 이벤트가 있다고 가정)
+        service.resetFarm(FARM_ID);                     // 설정 저장 — 인메모리 상태 소멸
+        tick(new Indoor(25.0, 50.0, true), Duration.ofSeconds(60)); // 리셋 후 첫 정상 틱
 
-        // 리셋으로 previousConsecutive는 이미 0이었지만, 그와 무관하게 자동 해소를 시도해야 한다 —
-        // 옛 로직(previousConsecutive>0일 때만 호출)이면 이 시나리오에서 영원히 호출되지 않는다.
-        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "INDOOR_TEMP_HIGH");
+        verify(alarmEventService, times(1)).autoResolveIfOpen(FARM_ID, "RULE_10");
     }
 
     @Test
-    @DisplayName("회귀-A: 한 농장의 autoResolveIfOpen이 낙관적 락 충돌로 예외를 던져도 evaluate()는 "
-            + "멈추지 않고 뒤 순서 농장 평가를 계속 진행한다(이슈 #116 리뷰 — evaluate() 루프 바디를 "
-            + "농장 단위로 격리, recordAlarmBreach만 감싸던 개별 방어로는 autoResolveIfOpen 예외가 "
-            + "여전히 for 루프를 끊었던 P1-B와 동일한 유실 경로)")
-    void oneFarmAutoResolveFailureDoesNotBlockLaterFarms() {
-        FarmEnvThreshold farm1Threshold = thresholdEnabled(20.0, 30.0); // FARM_ID — 정상 범위로 유지
-        FarmEnvThreshold farm2Threshold = FarmEnvThreshold.builder()
-                .farmId(FARM_ID_2)
-                .enabled(true)
-                .indoorTempMin(20.0)
-                .indoorTempMax(24.0) // farm1보다 좁혀서 같은 indoor 값에 이탈하도록
-                .build();
-        when(thresholdRepository.findEnabled()).thenReturn(List.of(farm1Threshold, farm2Threshold));
+    @DisplayName("회귀-A: 한 규칙의 autoResolveIfOpen이 낙관적 락 충돌로 예외를 던져도 evaluate()는 "
+            + "멈추지 않고 뒤 순서 규칙 평가를 계속 진행한다(evaluate() 루프 바디의 규칙 단위 격리)")
+    void oneRuleFailureDoesNotBlockLaterRules() {
+        AlarmRule failing = tempMaxRule(10L, FARM_ID, 30.0);   // 정상 범위 유지 → autoResolve 경로
+        AlarmRule later = tempMaxRule(11L, FARM_ID_2, 24.0);   // 같은 값에 이탈하도록 좁힌 규칙
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(failing, later));
         when(farmRepository.findById(FARM_ID_2)).thenReturn(Optional.of(farm()));
-        // farm1은 정상 범위라 매 틱 autoResolveIfOpen이 호출되는데, 동시 acknowledge/resolve로 인한
-        // 낙관적 락 충돌을 흉내내 예외를 던지게 한다.
         doThrow(new ObjectOptimisticLockingFailureException("AlarmEvent", FARM_ID))
                 .when(alarmEventService).autoResolveIfOpen(eq(FARM_ID), any());
 
         assertThatCode(() -> {
-            service.evaluate(new Indoor(25.0, 50.0, true)); // farm1 정상(예외 발생·흡수), farm2 1틱 이탈
-            service.evaluate(new Indoor(25.0, 50.0, true)); // farm1 다시 예외, farm2 2틱 — 확정
+            service.evaluate(new Indoor(25.0, 50.0, true)); // rule10 예외 흡수, rule11 이탈 시작
+            tick(new Indoor(25.0, 50.0, true), Duration.ofSeconds(120)); // rule11 지속시간 충족
         }).doesNotThrowAnyException();
 
-        // farm1의 예외와 무관하게 farm2는 정상적으로 연속 2틱 이탈이 누적돼 알람 이벤트가 기록된다.
-        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID_2), any(), any(),
-                eq("INDOOR_TEMP_HIGH"), any(), any(), any());
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID_2), any(), any(), eq("RULE_11"),
+                any(), any(), any());
     }
 
-    /** 30분 쿨다운 만료를 실시간 대기 없이 재현하기 위한 수동 진행 Clock. */
+    @Test
+    @DisplayName("회귀-A 확장: 데이터 소스 조회(sensor_readings) 실패도 뒤 순서 규칙을 끊지 않는다"
+            + "(#118에서 늘어난 실패 경로)")
+    void sensorQueryFailureDoesNotBlockLaterRules() {
+        AlarmRule failingSensorRule = rule(20L, FARM_ID, AlarmRuleSource.SENSOR_READING,
+                SensorMetric.EC.name(), AlarmComparator.GT, 2.8, AlarmSeverity.WARNING,
+                AlarmScopeType.FARM, null);
+        AlarmRule later = tempMaxRule(11L, FARM_ID_2, 24.0);
+        when(alarmRuleRepository.findEnabled()).thenReturn(List.of(failingSensorRule, later));
+        when(farmRepository.findById(FARM_ID_2)).thenReturn(Optional.of(farm()));
+        when(sensorReadingRepository.findLatestInScope(any(), any(), any(), any(), any(), any()))
+                .thenThrow(new DataIntegrityViolationException("측정값 조회 실패(가정)"));
+
+        assertThatCode(() -> {
+            service.evaluate(new Indoor(25.0, 50.0, true));
+            tick(new Indoor(25.0, 50.0, true), Duration.ofSeconds(120));
+        }).doesNotThrowAnyException();
+
+        verify(alarmEventService, times(1)).recordBreach(eq(FARM_ID_2), any(), any(), eq("RULE_11"),
+                any(), any(), any());
+    }
+
+    // ── 테스트 픽스처 ───────────────────────────────────────────────────────────
+
+    private ReadingScopeLatestProjection latest(double value) {
+        return new ReadingScopeLatestProjection() {
+            @Override
+            public Double getValue() {
+                return value;
+            }
+
+            @Override
+            public LocalDateTime getMeasuredAt() {
+                return LocalDateTime.now(clock);
+            }
+        };
+    }
+
+    private Device device(String name, DeviceStatus status) {
+        return Device.builder()
+                .farmId(FARM_ID)
+                .zoneId(9L)
+                .name(name)
+                .kind(DeviceKind.GATEWAY)
+                .status(status)
+                .build();
+    }
+
+    /** 지속시간·쿨다운 만료를 실시간 대기 없이 재현하기 위한 수동 진행 Clock. */
     private static final class MutableClock extends Clock {
         private Instant instant;
 
