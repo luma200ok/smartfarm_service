@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.FarmLogRequest;
 import com.smartfarm.service.entity.FarmLogType;
+import com.smartfarm.service.entity.FarmRole;
 import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -181,7 +182,7 @@ class FarmLogApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장-수정");
         String memberToken = signupAndLogin("일꾼이-수정");
         long farmId = createFarm(ownerToken, "권한 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         long logId = createLog(memberToken, farmId, LocalDate.of(2026, 8, 10), FarmLogType.WATERING);
 
         // OWNER조차 작성자가 아니면 수정 불가(PATCH는 "작성자 본인만" — DELETE와 다른 규칙)
@@ -272,7 +273,7 @@ class FarmLogApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장-삭제");
         String memberToken = signupAndLogin("일꾼이-삭제");
         long farmId = createFarm(ownerToken, "OWNER삭제 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         long logId = createLog(memberToken, farmId, LocalDate.of(2026, 8, 10), FarmLogType.WATERING);
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/logs/" + logId)
@@ -287,8 +288,8 @@ class FarmLogApiIntegrationTest extends FarmTestSupport {
         String authorToken = signupAndLogin("작성자-삭제2");
         String bystanderToken = signupAndLogin("구경꾼-삭제2");
         long farmId = createFarm(ownerToken, "제3자 농장");
-        acceptInvitation(authorToken, createInvitationCode(ownerToken, farmId));
-        acceptInvitation(bystanderToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, authorToken, FarmRole.OPERATOR);
+        joinFarmAs(ownerToken, farmId, bystanderToken, FarmRole.OPERATOR);
         long logId = createLog(authorToken, farmId, LocalDate.of(2026, 8, 10), FarmLogType.WATERING);
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/logs/" + logId)

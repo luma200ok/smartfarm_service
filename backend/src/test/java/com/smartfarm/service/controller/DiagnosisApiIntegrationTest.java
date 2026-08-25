@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.smartfarm.service.DiagnosisApiTestSupport;
 import com.smartfarm.service.entity.Diagnosis;
+import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.repository.DiagnosisRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -288,7 +289,7 @@ class DiagnosisApiIntegrationTest extends DiagnosisApiTestSupport {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "조회 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         enqueueOkResponse();
         long diagnosisId = createDiagnosis(ownerToken, farmId);
 

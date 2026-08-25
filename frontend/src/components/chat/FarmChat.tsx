@@ -5,7 +5,9 @@ import { Card, CardTitle } from "@/components/monitoring/ui";
 import { VALIDATION } from "@/constants";
 import { isTooManyRequests, resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listChatMessages, sendChatMessage } from "@/lib/api/chat";
-import type { ChatMessageResponse, PageResponse } from "@/types";
+import { getFarm } from "@/lib/api/farms";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
+import type { ChatMessageResponse, FarmResponse, PageResponse } from "@/types";
 
 interface FarmChatProps {
   farmId: string;
@@ -33,6 +35,26 @@ export default function FarmChat({ farmId }: FarmChatProps) {
   // CH002(429, AI 서버 혼잡)는 실패가 아니라 재시도 유도 안내라 별도 스타일로 렌더한다
   // (PrescriptionCreateForm의 limitExceeded와 동일 관례). status 기반 분기 — 문자열 매칭 금지.
   const [retryHint, setRetryHint] = useState<string | null>(null);
+  const [farm, setFarm] = useState<FarmResponse | null>(null);
+
+  // 채팅 전송은 OPERATOR 이상(contract §2, 이슈 #122/#123 리뷰 P2-B) — 이력 조회는 requireMember라
+  // VIEWER도 볼 수 있으니 목록은 그대로 두고 입력창만 안내 문구로 대체한다. 조회 실패해도
+  // 조용히 canWrite=false로 남긴다(보수적으로 숨김).
+  useEffect(() => {
+    let cancelled = false;
+    getFarm(farmId)
+      .then((res) => {
+        if (!cancelled) setFarm(res);
+      })
+      .catch(() => {
+        // no-op
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
+
+  const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
   useEffect(() => {
     let cancelled = false;
@@ -161,40 +183,44 @@ export default function FarmChat({ farmId }: FarmChatProps) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-dp-line pt-4">
-        <label htmlFor="chat-question" className="sr-only">
-          질문
-        </label>
-        <textarea
-          id="chat-question"
-          rows={3}
-          required
-          maxLength={VALIDATION.chatQuestion.maxLength}
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="병해·재배 환경에 대해 물어보세요"
-          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
-        />
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-dp-faint">
-            {question.length} / {VALIDATION.chatQuestion.maxLength}자 (남은 {Math.max(0, remaining)}자)
-          </span>
-          <button
-            type="submit"
-            disabled={submitting || question.trim().length === 0}
-            className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
-          >
-            {submitting ? "전송 중..." : "전송"}
-          </button>
-        </div>
+      {canWrite ? (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-dp-line pt-4">
+          <label htmlFor="chat-question" className="sr-only">
+            질문
+          </label>
+          <textarea
+            id="chat-question"
+            rows={3}
+            required
+            maxLength={VALIDATION.chatQuestion.maxLength}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="병해·재배 환경에 대해 물어보세요"
+            className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-dp-faint">
+              {question.length} / {VALIDATION.chatQuestion.maxLength}자 (남은 {Math.max(0, remaining)}자)
+            </span>
+            <button
+              type="submit"
+              disabled={submitting || question.trim().length === 0}
+              className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
+            >
+              {submitting ? "전송 중..." : "전송"}
+            </button>
+          </div>
 
-        {retryHint && (
-          <p className="rounded-md border border-dp-amber-line bg-dp-amber-tint px-3 py-2 text-sm text-dp-amber-deep">
-            {retryHint}
-          </p>
-        )}
-        {sendError && <p className="text-sm text-dp-red-ink">{sendError}</p>}
-      </form>
+          {retryHint && (
+            <p className="rounded-md border border-dp-amber-line bg-dp-amber-tint px-3 py-2 text-sm text-dp-amber-deep">
+              {retryHint}
+            </p>
+          )}
+          {sendError && <p className="text-sm text-dp-red-ink">{sendError}</p>}
+        </form>
+      ) : (
+        <p className="border-t border-dp-line pt-4 text-sm text-dp-faint">조회 전용 역할입니다.</p>
+      )}
     </div>
   );
 }

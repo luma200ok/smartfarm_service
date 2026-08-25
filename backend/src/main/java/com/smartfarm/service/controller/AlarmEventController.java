@@ -71,7 +71,7 @@ public class AlarmEventController {
         return ResponseEntity.ok(alarmEventService.unacknowledgedCount(farmId, userId));
     }
 
-    @Operation(summary = "미확인 알람 전체 확인 처리 (멤버)")
+    @Operation(summary = "미확인 알람 전체 확인 처리 (OPERATOR 이상)")
     @PostMapping("/acknowledge-all")
     public ResponseEntity<AlarmAcknowledgeAllResponse> acknowledgeAll(@AuthenticationPrincipal Long userId,
                                                                        @PathVariable Long farmId) {
@@ -86,7 +86,7 @@ public class AlarmEventController {
         return ResponseEntity.ok(alarmEventService.get(farmId, userId, alarmEventId));
     }
 
-    @Operation(summary = "알람 확인 처리 (멤버) — UNACKNOWLEDGED → ACKNOWLEDGED")
+    @Operation(summary = "알람 확인 처리 (OPERATOR 이상) — UNACKNOWLEDGED → ACKNOWLEDGED")
     @PatchMapping("/{alarmEventId}/acknowledge")
     public ResponseEntity<AlarmEventResponse> acknowledge(@AuthenticationPrincipal Long userId,
                                                             @PathVariable Long farmId,
@@ -94,7 +94,7 @@ public class AlarmEventController {
         return ResponseEntity.ok(alarmEventService.acknowledge(farmId, userId, alarmEventId));
     }
 
-    @Operation(summary = "알람 조치 완료 처리 (멤버) — ACKNOWLEDGED → RESOLVED")
+    @Operation(summary = "알람 조치 완료 처리 (OPERATOR 이상) — ACKNOWLEDGED → RESOLVED")
     @PostMapping("/{alarmEventId}/resolve")
     public ResponseEntity<AlarmEventResponse> resolve(@AuthenticationPrincipal Long userId,
                                                         @PathVariable Long farmId,
@@ -102,7 +102,7 @@ public class AlarmEventController {
         return ResponseEntity.ok(alarmEventService.resolve(farmId, userId, alarmEventId));
     }
 
-    @Operation(summary = "알람 메모 추가 (멤버) — 상태 전이 없이 타임라인에만 기록")
+    @Operation(summary = "알람 메모 추가 (OPERATOR 이상) — 상태 전이 없이 타임라인에만 기록")
     @PostMapping("/{alarmEventId}/memo")
     public ResponseEntity<AlarmEventDetailResponse> addMemo(@AuthenticationPrincipal Long userId,
                                                               @PathVariable Long farmId,

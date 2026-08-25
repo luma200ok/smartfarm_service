@@ -34,9 +34,14 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 알람 이벤트 도메인(이슈 #116) — 사용자 대면 CRUD(list/get/acknowledge/resolve/memo/stats)와
  * 시스템 훅({@link #recordBreach}, {@link #autoResolveIfOpen} — {@link EnvThresholdAlertService}가
- * 브리치/정상 복귀 감지 시점에 호출)을 함께 둔다. 사용자 대면 메서드는 전부
- * {@link FarmAccessGuard#requireMember}로 farm 스코프를 검증하지만, 시스템 훅은 스케줄러 스레드가
- * 호출하므로(요청 사용자가 없음) 가드를 거치지 않는다.
+ * 브리치/정상 복귀 감지 시점에 호출)을 함께 둔다. 시스템 훅은 스케줄러 스레드가 호출하므로
+ * (요청 사용자가 없음) 가드를 거치지 않는다.
+ *
+ * <p>사용자 대면 메서드의 가드는 이슈 #122로 둘로 갈렸다: <b>조회</b>(list·get·stats·
+ * unacknowledgedCount)는 {@link FarmAccessGuard#requireMember}, <b>처리</b>(acknowledge·resolve·
+ * acknowledgeAll·addMemo)는 {@link FarmAccessGuard#requireOperator}다 — 알람 확인/처리는 농장
+ * 운영 행위라 VIEWER(조회전용)가 남의 알람 상태를 바꾸면 안 된다. 메모도 타임라인에 남는 기록이므로
+ * 같은 자격을 요구한다.
  */
 @Slf4j
 @Service
@@ -66,7 +71,7 @@ public class AlarmEventService {
 
     @Transactional
     public AlarmEventResponse acknowledge(Long farmId, Long userId, Long alarmEventId) {
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         User user = findUserOrThrow(userId);
         AlarmEvent event = findEventOrThrow(farmId, alarmEventId);
 
@@ -78,7 +83,7 @@ public class AlarmEventService {
 
     @Transactional
     public AlarmEventResponse resolve(Long farmId, Long userId, Long alarmEventId) {
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         User user = findUserOrThrow(userId);
         AlarmEvent event = findEventOrThrow(farmId, alarmEventId);
 
@@ -90,7 +95,7 @@ public class AlarmEventService {
 
     @Transactional
     public AlarmAcknowledgeAllResponse acknowledgeAll(Long farmId, Long userId) {
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         User user = findUserOrThrow(userId);
 
         List<AlarmEvent> events = alarmEventRepository.findByFarmIdAndStatus(farmId,
@@ -105,7 +110,7 @@ public class AlarmEventService {
 
     @Transactional
     public AlarmEventDetailResponse addMemo(Long farmId, Long userId, Long alarmEventId, String note) {
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         AlarmEvent event = findEventOrThrow(farmId, alarmEventId);
 
         // 메모는 상태 전이를 수반하지 않는다(이슈 #116) — 타임라인에만 기록.

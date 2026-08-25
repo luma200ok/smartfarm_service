@@ -23,7 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <ul>
  *   <li><b>데모 유저</b>: 판정 키는 이메일이 아니라 <b>is_demo=true</b>다(리뷰 P1-A — 이메일 판정은
- *       is_demo=false 선점 계정을 데모로 오인해 데모 농장 OWNER로 승격시키는 결함). 있으면 그 유저를
+ *       is_demo=false 선점 계정을 데모로 오인해 데모 농장 ADMIN으로 승격시키는 결함). 있으면 그 유저를
  *       쓰고, 없으면 email {@link DemoAccountGuard#DEMO_EMAIL}·is_demo=true로 생성한다.
  *       비밀번호는 랜덤 UUID를 인코더로 해시해 저장 — 평문은 어디에도 저장·로그하지 않으며,
  *       아무도 모르는 값이므로 비밀번호 로그인 경로(login A002)로는 사실상 진입 불가.
@@ -34,8 +34,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       is_demo=true 유저가 영영 안 생겨 demo-login이 영구 C002가 된다. 선점 가입 자체는
  *       {@code AuthService#signup}의 예약 이메일 차단(A001)이 봉쇄하고, 이 분기는 그 이전에
  *       만들어진 잔존 행에 대한 최후 방어다.</li>
- *   <li><b>데모 농장</b>: 데모 유저가 살아있는 OWNER 농장을 하나도 갖고 있지 않을 때만
- *       1개 생성(OWNER 멤버십 동반). 데모 계정은 농장 생성이 A007로 차단되므로
+ *   <li><b>데모 농장</b>: 데모 유저가 살아있는 ADMIN 농장을 하나도 갖고 있지 않을 때만
+ *       1개 생성(ADMIN 멤버십 동반). 데모 계정은 농장 생성이 A007로 차단되므로
  *       {@code FarmService#createFarm}을 타지 않고 repository로 직접 구성한다.</li>
  * </ul>
  *
@@ -107,7 +107,7 @@ public class DemoAccountInitializer implements SmartLifecycle {
     }
 
     private void ensureDemoFarm(Long demoUserId) {
-        if (farmMemberRepository.existsLiveFarmMembershipByUserIdAndRole(demoUserId, FarmRole.OWNER)) {
+        if (farmMemberRepository.existsLiveFarmMembershipByUserIdAndRole(demoUserId, FarmRole.ADMIN)) {
             return;
         }
         Farm farm = farmRepository.save(Farm.builder()
@@ -117,7 +117,7 @@ public class DemoAccountInitializer implements SmartLifecycle {
         farmMemberRepository.save(FarmMember.builder()
                 .farmId(farm.getId())
                 .userId(demoUserId)
-                .role(FarmRole.OWNER)
+                .role(FarmRole.ADMIN)
                 .build());
         log.info("데모 계정 시드 — 데모 농장 생성 farmId={}", farm.getId());
     }

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.smartfarm.service.PrescriptionApiTestSupport;
 import com.smartfarm.service.dto.WithdrawRequest;
+import com.smartfarm.service.entity.FarmRole;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class WithdrawalPrescriptionIntegrationTest extends PrescriptionApiTestSupport {
         String owner = signupAndLogin("처방탈퇴오너");
         long farmId = createFarm(owner, "처방탈퇴농장");
         String member = signupAndLogin("처방탈퇴멤버");
-        acceptInvitation(member, createInvitationCode(owner, farmId));
+        joinFarmAs(owner, farmId, member, FarmRole.OPERATOR);
 
         String marker = "탈퇴검증질문-" + UUID.randomUUID();
         enqueuePrescriptionOk();

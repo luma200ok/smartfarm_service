@@ -52,7 +52,12 @@ public class PrescriptionService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public PrescriptionResponse createPrescription(Long farmId, Long userId, PrescriptionRequest request) {
-        farmAccessGuard.requireMember(farmId, userId);
+        // OPERATOR 이상(이슈 #122 리뷰 P2-2) — VIEWER("조회 전용")가 농장 공유 자원을
+        // 고갈시킬 수 있는 경로다. 데모 계정은 시드 농장의 ADMIN이라 계약 §4.5의
+        // "조회·진단·처방은 데모 허용"에는 영향이 없다.
+        // 여기서는 진행 중 상한이 농장당 3건이라, VIEWER 혼자 처방 큐를 점유해 정상 사용자가
+        // P004로 막히는 상태를 만들 수 있었다.
+        farmAccessGuard.requireOperator(farmId, userId);
 
         // 요청 자체의 오류(D001)를 혼잡(P004/429)보다 먼저 판정 — 잘못된 diagnosisId 요청이
         // 429로 오인되면 클라이언트가 "잠시 후 재시도"를 무한 반복하게 된다(reviewer P3).

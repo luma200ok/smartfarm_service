@@ -37,8 +37,8 @@ public class UserService {
      * 회원 탈퇴 (contract §3 탈퇴 절·탈퇴 봉쇄 ①~④) — 짧은 단일 트랜잭션, 외부 호출 없음.
      *
      * <p>순서: users 행 잠금(FOR UPDATE — 동시 탈퇴·탈퇴↔멤버십 생성 직렬화, 패자는 A004)
-     * → 비밀번호 재확인(A002 — OWNER 검사보다 먼저: 비밀번호 없는 토큰 탈취자에게 농장 보유
-     * 여부를 노출하지 않음) → OWNER 검사(A006) → 본인 farm_members 전부 벌크 삭제(각 농장
+     * → 비밀번호 재확인(A002 — ADMIN 검사보다 먼저: 비밀번호 없는 토큰 탈취자에게 농장 보유
+     * 여부를 노출하지 않음) → ADMIN 검사(A006) → 본인 farm_members 전부 벌크 삭제(각 농장
      * 활성 초대 무효화 동반) → 전 refresh token 무효화 → soft delete + PII 즉시 익명화.
      *
      * <p>잔존 access 토큰(stateless JWT, 최대 30분)의 봉쇄 관계 — 서명 자체는 만료까지
@@ -49,12 +49,19 @@ public class UserService {
      *   <li>farm 표면 — FarmAccessGuard 멤버십 조회가 User join으로 유저 생존을 함께
      *       검증(잔존 멤버십 행이 있어도 F002).</li>
      *   <li>가드 밖 진입점(농장 생성·초대 수락) — 각 진입부 유저 생존 검사(A004)로 유령
-     *       OWNER 농장 생성·멤버십 재획득 차단.</li>
+     *       ADMIN 농장 생성·멤버십 재획득 차단.</li>
      * </ul>
      *
-     * <p>OWNER 검사는 살아있는 농장 기준(existsLiveFarmMembershipByUserIdAndRole) —
-     * farm soft delete가 farm_members를 지우지 않으므로, 농장 삭제를 마친 OWNER의
+     * <p>ADMIN 검사는 살아있는 농장 기준(existsLiveFarmMembershipByUserIdAndRole) —
+     * farm soft delete가 farm_members를 지우지 않으므로, 농장 삭제를 마친 ADMIN의
      * 잔존 멤버십 행이 탈퇴를 막지 않아야 한다(A006 안내대로 "농장 삭제 후 재시도" 보장).
+     *
+     * <p>⚠️ 이 검사는 A006(탈퇴 차단) 외에 <b>"마지막 관리자 보호"(F006)의 뒷문을 막는 역할도
+     * 겸한다</b>(이슈 #122). 탈퇴는 {@link FarmMemberService#removeAllMemberships}로 멤버십을
+     * <b>벌크 삭제</b>하는 경로라 F006 가드를 타지 않는데, 여기서 ADMIN 멤버십 보유자의 탈퇴를
+     * 아예 막으므로 "탈퇴로 농장의 마지막 관리자를 지우는" 경로가 성립하지 않는다. 역할이 4단계가
+     * 됐다고 이 검사를 완화하면(예: 다른 ADMIN이 있으면 허용) 그 뒷문이 열리므로, 완화하려면
+     * removeAllMemberships 쪽에 농장별 마지막 ADMIN 검사를 함께 넣어야 한다.
      */
     @Transactional
     public void withdraw(Long userId, String rawPassword) {
@@ -67,7 +74,7 @@ public class UserService {
             log.warn("회원 탈퇴 비밀번호 불일치 — userId={}", userId);
             throw new CustomException(ErrorCode.A002);
         }
-        if (farmMemberRepository.existsLiveFarmMembershipByUserIdAndRole(userId, FarmRole.OWNER)) {
+        if (farmMemberRepository.existsLiveFarmMembershipByUserIdAndRole(userId, FarmRole.ADMIN)) {
             throw new CustomException(ErrorCode.A006);
         }
         int removedMemberships = farmMemberService.removeAllMemberships(userId);

@@ -41,7 +41,7 @@ public class RackService {
     @Transactional
     public RackResponse createRack(Long farmId, Long userId, Long zoneId, RackRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Zone zone = findZoneOrThrow(farmId, zoneId);
 
         if (rackRepository.existsByZoneIdAndCode(zoneId, request.code())) {
@@ -68,7 +68,7 @@ public class RackService {
     @Transactional
     public RackResponse updateRack(Long farmId, Long userId, Long rackId, RackUpdateRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Rack rack = findRackOrThrow(farmId, rackId);
 
         if (request.code() != null && rackRepository.existsByZoneIdAndCodeAndIdNot(
@@ -94,7 +94,7 @@ public class RackService {
     @Transactional
     public void deleteRack(Long farmId, Long userId, Long rackId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         Rack rack = findRackOrThrow(farmId, rackId);
 
         List<RackLevel> levels = rackLevelRepository.findByRackIdOrderByLevelNoAsc(rack.getId());

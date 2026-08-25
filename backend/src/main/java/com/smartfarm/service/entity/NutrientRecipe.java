@@ -24,7 +24,7 @@ import org.hibernate.type.SqlTypes;
  *
  * <p>author는 작성자 userId(FK 없음, 다른 farm-scoped 엔티티의 author/createdBy와 동일 패턴).
  * 데모 계정도 작성 가능(contract §4.9 "데모 계정: 계산·저장 허용" — DemoAccountGuard 미적용,
- * FarmLog·ChatMessage와 동일한 콘텐츠 생성 원칙. 수정·삭제는 작성자 본인(삭제는 OWNER도 가능)만
+ * FarmLog·ChatMessage와 동일한 콘텐츠 생성 원칙. 수정·삭제는 작성자 본인(삭제는 ADMIN도 가능)만
  * 가능해 데모 계정 간 상호 간섭도 자연히 격리된다.
  *
  * <p>{@code calculationSnapshot}은 저장 시점에 {@link com.smartfarm.service.service.NutrientCalculationEngine}이

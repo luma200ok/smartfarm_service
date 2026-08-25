@@ -61,7 +61,11 @@ public class DiagnosisService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DiagnosisResponse createDiagnosis(Long farmId, Long userId, MultipartFile file) {
-        farmAccessGuard.requireMember(farmId, userId);
+        // OPERATOR 이상(이슈 #122 리뷰 P2-2) — VIEWER("조회 전용")가 농장 공유 자원을
+        // 고갈시킬 수 있는 경로다. 데모 계정은 시드 농장의 ADMIN이라 계약 §4.5의
+        // "조회·진단·처방은 데모 허용"에는 영향이 없다.
+        // 여기서는 농장 스토리지에 원본 이미지를 남기고 LLM 호출 비용을 발생시킨다.
+        farmAccessGuard.requireOperator(farmId, userId);
         String contentType = validateImage(file);
 
         AiDiagnosisResponse aiResponse = aiServerClient.diagnose(file);

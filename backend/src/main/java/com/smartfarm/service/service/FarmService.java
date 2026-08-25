@@ -32,7 +32,7 @@ public class FarmService {
 
     /**
      * 농장 생성은 FarmAccessGuard를 타지 않는 진입점이라 유저 생존을 직접 검증한다
-     * (contract 탈퇴 봉쇄 ① — 탈퇴 유저의 잔존 access 토큰으로 유령 OWNER 농장 생성 차단).
+     * (contract 탈퇴 봉쇄 ① — 탈퇴 유저의 잔존 access 토큰으로 유령 ADMIN 농장 생성 차단).
      */
     @Transactional
     public FarmResponse createFarm(Long userId, FarmRequest request) {
@@ -47,9 +47,9 @@ public class FarmService {
         farmMemberRepository.save(FarmMember.builder()
                 .farmId(farm.getId())
                 .userId(userId)
-                .role(FarmRole.OWNER)
+                .role(FarmRole.ADMIN)
                 .build());
-        return FarmResponse.of(farm, FarmRole.OWNER, 1);
+        return FarmResponse.of(farm, FarmRole.ADMIN, 1);
     }
 
     public List<FarmSummaryResponse> findMyFarms(Long userId) {
@@ -65,26 +65,26 @@ public class FarmService {
     @Transactional
     public FarmResponse updateFarm(Long farmId, Long userId, FarmUpdateRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
+        FarmAccess access = farmAccessGuard.requireAdmin(farmId, userId);
         access.farm().update(request.name(), request.cropType(), request.location());
-        return FarmResponse.of(access.farm(), FarmRole.OWNER,
+        return FarmResponse.of(access.farm(), FarmRole.ADMIN,
                 farmMemberRepository.countLiveMembersByFarmId(farmId));
     }
 
-    /** 웹훅 설정/해제(OWNER) — URL 원문 검증은 요청 DTO(@DiscordWebhookUrl)에서 이미 끝났다. */
+    /** 웹훅 설정/해제(ADMIN) — URL 원문 검증은 요청 DTO(@DiscordWebhookUrl)에서 이미 끝났다. */
     @Transactional
     public FarmResponse updateWebhook(Long farmId, Long userId, WebhookRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
+        FarmAccess access = farmAccessGuard.requireAdmin(farmId, userId);
         access.farm().updateWebhookUrl(request.webhookUrl());
-        return FarmResponse.of(access.farm(), FarmRole.OWNER,
+        return FarmResponse.of(access.farm(), FarmRole.ADMIN,
                 farmMemberRepository.countLiveMembersByFarmId(farmId));
     }
 
     @Transactional
     public void deleteFarm(Long farmId, Long userId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        FarmAccess access = farmAccessGuard.requireOwner(farmId, userId);
+        FarmAccess access = farmAccessGuard.requireAdmin(farmId, userId);
         // @SQLDelete → soft delete (deleted_at 갱신)
         farmRepository.delete(access.farm());
     }

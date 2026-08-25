@@ -32,7 +32,7 @@ public class EnvThresholdController {
         return ResponseEntity.ok(envThresholdService.findThresholds(farmId, userId));
     }
 
-    @Operation(summary = "환경 임계치 설정 전체 교체 (OWNER)")
+    @Operation(summary = "환경 임계치 설정 전체 교체 (ADMIN)")
     @PutMapping
     public ResponseEntity<EnvThresholdsResponse> updateThresholds(
             @AuthenticationPrincipal Long userId,

@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 알람 규칙 CRUD(이슈 #118) — 조회는 멤버, 쓰기는 OWNER(§4.6 env-thresholds와 일관) + 데모 계정
+ * 알람 규칙 CRUD(이슈 #118) — 조회는 멤버, 쓰기는 ADMIN(§4.6 env-thresholds와 일관) + 데모 계정
  * 차단(A007).
  *
  * <p>이 서비스가 지켜야 하는 두 가지 교차 관심사:
@@ -65,7 +65,7 @@ public class AlarmRuleService {
     @Transactional
     public AlarmRuleResponse createRule(Long farmId, Long userId, AlarmRuleRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
 
         // ⚠️ 상한 판정은 농장 행을 잠근 뒤에 한다(#118 보안 리뷰 P2-2, #91 TOCTOU 교훈 ·
         // ControlService의 존 단위 잠금 선례). "세어 보고 → 저장"은 check-then-act라 잠금이 없으면
@@ -107,7 +107,7 @@ public class AlarmRuleService {
     @Transactional
     public AlarmRuleResponse updateRule(Long farmId, Long userId, Long ruleId, AlarmRuleUpdateRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         AlarmRule rule = findRuleOrThrow(farmId, ruleId);
         rejectDerived(rule);
 
@@ -134,7 +134,7 @@ public class AlarmRuleService {
     @Transactional
     public void deleteRule(Long farmId, Long userId, Long ruleId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        farmAccessGuard.requireAdmin(farmId, userId);
         AlarmRule rule = findRuleOrThrow(farmId, ruleId);
         rejectDerived(rule);
 

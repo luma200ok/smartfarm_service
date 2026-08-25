@@ -30,7 +30,7 @@ public class FarmLogController {
 
     private final FarmLogService farmLogService;
 
-    @Operation(summary = "작업일지 작성 (멤버, 데모 계정도 허용)")
+    @Operation(summary = "작업일지 작성 (OPERATOR 이상, 데모 계정도 허용)")
     @PostMapping
     public ResponseEntity<FarmLogResponse> createLog(@AuthenticationPrincipal Long userId,
                                                        @PathVariable Long farmId,
@@ -46,7 +46,7 @@ public class FarmLogController {
         return ResponseEntity.ok(farmLogService.findLogs(farmId, userId, pageable));
     }
 
-    @Operation(summary = "작업일지 수정 (작성자 본인만)")
+    @Operation(summary = "작업일지 수정 (작성자 본인만, OPERATOR 이상)")
     @PatchMapping("/{logId}")
     public ResponseEntity<FarmLogResponse> updateLog(@AuthenticationPrincipal Long userId,
                                                         @PathVariable Long farmId,
@@ -55,7 +55,7 @@ public class FarmLogController {
         return ResponseEntity.ok(farmLogService.updateLog(farmId, userId, logId, request));
     }
 
-    @Operation(summary = "작업일지 삭제 (작성자 본인 또는 OWNER)")
+    @Operation(summary = "작업일지 삭제 (작성자 본인 또는 ADMIN)")
     @DeleteMapping("/{logId}")
     public ResponseEntity<Void> deleteLog(@AuthenticationPrincipal Long userId,
                                            @PathVariable Long farmId,

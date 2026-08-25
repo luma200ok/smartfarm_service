@@ -38,7 +38,7 @@ export async function getEnvThresholds(farmId: number | string): Promise<EnvThre
   return authFetch<EnvThresholdsResponse>(ENDPOINTS.farms.envThresholds(farmId));
 }
 
-// OWNER 전용(호출부에서 myRole 가드) — 서버도 F003으로 재검증.
+// ADMIN 전용(호출부에서 myRole 가드) — 서버도 F003으로 재검증(이슈 #123).
 export async function updateEnvThresholds(
   farmId: number | string,
   payload: EnvThresholdsRequest

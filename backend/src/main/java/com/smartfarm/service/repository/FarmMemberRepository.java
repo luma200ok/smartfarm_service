@@ -27,6 +27,27 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
     /** farm 스코프 필수 — memberId 단독 조회 금지(cross-tenant IDOR 차단) */
     Optional<FarmMember> findByIdAndFarmId(Long id, Long farmId);
 
+    /**
+     * 역할만 <b>스칼라로</b> 재조회한다 — "마지막 ADMIN 보호"(F006) 판정 전용(이슈 #122 리뷰 P2-1).
+     *
+     * <p>⚠️ <b>왜 엔티티가 아니라 스칼라인가</b>: {@link #findByIdAndFarmId}는 SQL을 실제로 날려
+     * fresh row를 읽어도, 그 id의 엔티티가 이미 영속성 컨텍스트에 관리 중이면 <b>기존 인스턴스를
+     * 반환하고 방금 읽은 상태를 버린다</b>(JPA 엔티티 동일성 보장). 본인 탈퇴·본인 역할 변경처럼
+     * 대상이 요청자 자신인 경로에서는 가드가 이미 그 행을 로드해 두었으므로, 잠금을 잡은 뒤
+     * 다시 읽어도 <b>잠금 이전 스냅샷</b>이 나온다. {@code @Lock}을 붙여도 마찬가지다 — 버전 없는
+     * 관리 엔티티는 잠금 SQL을 쏴도 상태가 갱신되지 않는다.
+     *
+     * <p>그 결과 다음 인터리빙에서 마지막 관리자가 빠져나갈 수 있었다(A=ADMIN, B=OPERATOR):
+     * ① B가 본인 탈퇴 요청 → 가드가 B를 role=OPERATOR로 로드(잠금 전) ② A가 B를 ADMIN으로 승격
+     * ③ A가 자신을 강등(잠금 안 count=2라 통과) ④ B의 트랜잭션이 락을 얻고 <b>stale OPERATOR</b>로
+     * 판정 → F006을 건너뛰고 삭제 → <b>ADMIN 0명, 복구 불가</b>.
+     *
+     * <p>스칼라 프로젝션은 엔티티 캐시를 타지 않으므로 항상 DB의 현재 값을 돌려준다.
+     * 반드시 농장 행 잠금을 잡은 뒤 호출한다.
+     */
+    @Query("SELECT fm.role FROM FarmMember fm WHERE fm.id = :id AND fm.farmId = :farmId")
+    Optional<FarmRole> findRoleByIdAndFarmId(@Param("id") Long id, @Param("farmId") Long farmId);
+
     boolean existsByFarmIdAndUserId(Long farmId, Long userId);
 
     /**
@@ -38,10 +59,34 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
     long countLiveMembersByFarmId(@Param("farmId") Long farmId);
 
     /**
+     * 농장의 특정 역할 생존 멤버 수 — "마지막 ADMIN 보호"(F006) 판정용(이슈 #122).
+     *
+     * <p>{@code countLiveMembersByFarmId}와 같은 User join이다: 탈퇴(soft delete) 유저의 잔존
+     * ADMIN 멤버십 행이 관리자 수를 부풀리면, 실제로는 관리 불능인 농장에서 마지막 관리자의
+     * 강등·제거가 통과해 버린다.
+     *
+     * <p>⚠️ 호출자는 <b>농장 행을 잠근 뒤</b> 이 쿼리를 실행해야 한다. "세어 보고 → 바꾸기"는
+     * check-then-act라, 잠금이 없으면 두 ADMIN이 서로를 동시에 강등할 때 양쪽 모두 "관리자 2명"을
+     * 보고 통과해 관리자가 0명이 된다.
+     */
+    @Query("SELECT COUNT(fm) FROM FarmMember fm JOIN User u ON u.id = fm.userId "
+            + "WHERE fm.farmId = :farmId AND fm.role = :role")
+    long countLiveMembersByFarmIdAndRole(@Param("farmId") Long farmId, @Param("role") FarmRole role);
+
+    /**
      * 내 농장 목록 — Farm/User 양쪽 @SQLRestriction으로 soft delete 농장·탈퇴 유저의
      * 잔존 멤버십 행은 join에서 제외됨(탈퇴 유저의 농장 요약 노출 차단, 가드 3곳과 동일 패턴).
+     *
+     * <p>{@code fm.id}(요청자 본인의 멤버십 id)를 함께 실어 준다(이슈 #122) — 승인 대기자가
+     * 자기 대기를 취소할 때 필요한 값인데, PENDING이 접근할 수 있는 다른 표면이 없다
+     * ({@link com.smartfarm.service.dto.FarmSummaryResponse} javadoc 참고). 이미 이 조인이
+     * 요청자의 멤버십 행을 읽고 있으므로 <b>추가 조회는 없다</b>.
+     *
+     * <p>⚠️ {@code WHERE fm.userId = :userId} 스코프가 "본인 멤버십 id만 노출"을 구조적으로
+     * 보장한다 — 이 조건을 느슨하게 바꾸면 타인의 memberId가 새므로 함께 재검토할 것.
      */
-    @Query("SELECT new com.smartfarm.service.dto.FarmSummaryResponse(f.id, f.name, f.cropType, fm.role) "
+    @Query("SELECT new com.smartfarm.service.dto.FarmSummaryResponse("
+            + "f.id, f.name, f.cropType, fm.role, fm.id) "
             + "FROM FarmMember fm JOIN Farm f ON f.id = fm.farmId JOIN User u ON u.id = fm.userId "
             + "WHERE fm.userId = :userId ORDER BY f.id ASC")
     List<FarmSummaryResponse> findMyFarms(@Param("userId") Long userId);

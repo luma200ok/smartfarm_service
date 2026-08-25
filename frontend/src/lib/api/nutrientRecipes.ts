@@ -64,7 +64,7 @@ export async function updateNutrientRecipe(
   });
 }
 
-// 작성자 본인 또는 OWNER(서버 N002로 최종 판정 — 버튼 노출은 보조).
+// 작성자 본인 또는 ADMIN(서버 N002로 최종 판정 — 버튼 노출은 보조, 이슈 #123).
 export async function deleteNutrientRecipe(farmId: number | string, recipeId: number | string): Promise<void> {
   return authFetch<void>(ENDPOINTS.farms.nutrientRecipeDetail(farmId, recipeId), { method: "DELETE" });
 }

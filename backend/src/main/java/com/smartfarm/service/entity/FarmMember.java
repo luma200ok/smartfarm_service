@@ -55,4 +55,16 @@ public class FarmMember {
     void prePersist() {
         this.joinedAt = LocalDateTime.now();
     }
+
+    /**
+     * 역할 변경(이슈 #122) — ADMIN이 {@code PATCH .../members/{memberId}/role}로 호출한다.
+     * 초대 수락자({@link FarmRole#PENDING})의 승인도 이 전이로 처리한다.
+     *
+     * <p><b>"마지막 ADMIN을 강등할 수 없다"는 여기서 판정하지 않는다</b> — 농장 전체의 관리자 수를
+     * 세야 하는 <b>농장 단위</b> 불변식이라 멤버십 한 행이 알 수 있는 사실이 아니다.
+     * {@code FarmMemberService}가 농장 행을 잠근 뒤 검사한다(동시 강등 race 차단).
+     */
+    public void changeRole(FarmRole role) {
+        this.role = role;
+    }
 }

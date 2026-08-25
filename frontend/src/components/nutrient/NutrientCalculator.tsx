@@ -8,9 +8,17 @@ import { Card, CardTitle } from "@/components/monitoring/ui";
 import FormField from "@/components/ui/FormField";
 import Modal from "@/components/ui/Modal";
 import { resolveErrorMessage, resolveNutrientCalculationErrorMessage } from "@/lib/api/errorMessage";
+import { getFarm } from "@/lib/api/farms";
 import { listNutrientPresets } from "@/lib/api/nutrientPresets";
 import { calculateNutrientRecipe, createNutrientRecipe } from "@/lib/api/nutrientRecipes";
-import type { NutrientCalculationResponse, NutrientPresetResponse, NutrientRecipeResponse, NutrientStage } from "@/types";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
+import type {
+  FarmResponse,
+  NutrientCalculationResponse,
+  NutrientPresetResponse,
+  NutrientRecipeResponse,
+  NutrientStage,
+} from "@/types";
 
 interface NutrientCalculatorProps {
   farmId: string;
@@ -24,6 +32,7 @@ interface NutrientCalculatorProps {
 export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculatorProps) {
   const [presets, setPresets] = useState<NutrientPresetResponse[]>([]);
   const [presetsError, setPresetsError] = useState<string | null>(null);
+  const [farm, setFarm] = useState<FarmResponse | null>(null);
 
   const form = useNutrientRecipeForm({ tankVolumeL: "1000", concentrationFactor: "100" });
 
@@ -57,6 +66,25 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
     // 마운트 시점 함수만 있으면 충분하다(deps에 넣으면 매 렌더 재조회됨).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 레시피 저장은 OPERATOR 이상(contract §2, 이슈 #122/#123 리뷰 P2-B) — 계산(미리보기)은
+  // requireMember라 VIEWER도 볼 수 있지만, 저장 버튼 노출 여부만 이 값으로 가린다(최종은 서버).
+  // 실패해도 조용히 canWrite=false로 남겨(보수적으로 숨김) 저장 버튼만 감춘다.
+  useEffect(() => {
+    let cancelled = false;
+    getFarm(farmId)
+      .then((res) => {
+        if (!cancelled) setFarm(res);
+      })
+      .catch(() => {
+        // no-op — farm=null 유지, canWrite는 false로 남는다.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
+
+  const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
   // 계산 결과가 화면의 현재 입력값과 다른 상태(stale)로 남지 않도록, 폼이 바뀌는 모든 경로에서
   // 기존 결과를 무효화한다(리뷰 픽스 #65 P2 — 저장 버튼이 stale 배합표와 함께 활성인 상태 금지).
@@ -163,7 +191,13 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
         {calculating ? "계산 중..." : "계산"}
       </button>
 
-      {calculation && <NutrientCalculationResult calculation={calculation} onSaveClick={() => setSaveOpen(true)} />}
+      {calculation && (
+        <NutrientCalculationResult
+          calculation={calculation}
+          onSaveClick={canWrite ? () => setSaveOpen(true) : undefined}
+        />
+      )}
+      {calculation && !canWrite && <p className="text-xs text-dp-faint">조회 전용 역할입니다.</p>}
 
       <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title="레시피로 저장">
         <form onSubmit={handleSave} className="flex flex-col gap-4">

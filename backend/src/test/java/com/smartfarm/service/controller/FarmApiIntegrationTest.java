@@ -11,6 +11,7 @@ import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.FarmUpdateRequest;
 import com.smartfarm.service.entity.CropType;
+import com.smartfarm.service.entity.FarmRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -20,7 +21,7 @@ class FarmApiIntegrationTest extends FarmTestSupport {
     // ── 생성 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("농장 생성 시 201, 생성자는 OWNER로 자동 등록되고 memberCount=1이다")
+    @DisplayName("농장 생성 시 201, 생성자는 ADMIN으로 자동 등록되고 memberCount=1이다")
     void createFarmSuccess() throws Exception {
         String token = signupAndLogin("농장주");
 
@@ -34,7 +35,7 @@ class FarmApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.name").value("토마토 농장"))
                 .andExpect(jsonPath("$.cropType").value("TOMATO"))
                 .andExpect(jsonPath("$.location").value("경기 화성"))
-                .andExpect(jsonPath("$.myRole").value("OWNER"))
+                .andExpect(jsonPath("$.myRole").value("ADMIN"))
                 .andExpect(jsonPath("$.memberCount").value(1))
                 .andExpect(jsonPath("$.createdAt").exists());
     }
@@ -92,25 +93,25 @@ class FarmApiIntegrationTest extends FarmTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].id").value(farmA1))
-                .andExpect(jsonPath("$[0].myRole").value("OWNER"))
+                .andExpect(jsonPath("$[0].myRole").value("ADMIN"))
                 .andExpect(jsonPath("$[1].id").value(farmA2));
     }
 
     // ── 상세 (테넌트 가드) ────────────────────────────────
 
     @Test
-    @DisplayName("멤버는 농장 상세를 조회할 수 있고 myRole=MEMBER, memberCount=2다")
+    @DisplayName("멤버는 농장 상세를 조회할 수 있고 myRole=OPERATOR, memberCount=2다")
     void findFarmAsMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "합류 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(get("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(farmId))
-                .andExpect(jsonPath("$.myRole").value("MEMBER"))
+                .andExpect(jsonPath("$.myRole").value("OPERATOR"))
                 .andExpect(jsonPath("$.memberCount").value(2));
     }
 
@@ -141,7 +142,7 @@ class FarmApiIntegrationTest extends FarmTestSupport {
     // ── 수정 ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("OWNER는 부분 수정할 수 있고 미전달 필드는 유지된다")
+    @DisplayName("ADMIN은 부분 수정할 수 있고 미전달 필드는 유지된다")
     void updateFarmPartial() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         long farmId = createFarm(ownerToken, "수정 전 농장");
@@ -158,12 +159,12 @@ class FarmApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("MEMBER가 농장 수정 시 403 F003을 반환한다")
+    @DisplayName("OPERATOR가 농장 수정 시 403 F003을 반환한다")
     void updateFarmAsMember() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "권한 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(patch("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + memberToken)
@@ -223,13 +224,13 @@ class FarmApiIntegrationTest extends FarmTestSupport {
     // ── 삭제 (soft delete) ────────────────────────────────
 
     @Test
-    @DisplayName("MEMBER가 농장 삭제 시 403 F003, 미멤버는 403 F002를 반환한다")
+    @DisplayName("OPERATOR가 농장 삭제 시 403 F003, 미멤버는 403 F002를 반환한다")
     void deleteFarmForbidden() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         String otherToken = signupAndLogin("남남남");
         long farmId = createFarm(ownerToken, "삭제 방어 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(delete("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + memberToken))
@@ -243,12 +244,12 @@ class FarmApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
-    @DisplayName("OWNER 삭제 시 204, 이후 멤버 접근은 404 F001이고 목록에서도 제외된다")
+    @DisplayName("ADMIN 삭제 시 204, 이후 멤버 접근은 404 F001이고 목록에서도 제외된다")
     void deleteFarmSoftDelete() throws Exception {
         String ownerToken = signupAndLogin("주인장");
         String memberToken = signupAndLogin("일꾼이");
         long farmId = createFarm(ownerToken, "폐업 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(delete("/api/farms/" + farmId)
                         .header("Authorization", "Bearer " + ownerToken))

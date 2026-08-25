@@ -24,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 양액 배합 계산 + 레시피 CRUD(contract §4.9, 이슈 #64). 데모 계정도 계산·저장 허용(contract 명시,
  * "체험 핵심") — FarmLogService·ChatService와 동일한 콘텐츠 생성 원칙이라 {@link DemoAccountGuard}
- * 를 의도적으로 적용하지 않는다. 수정·삭제는 작성자 본인(삭제는 OWNER도 가능)만 가능해 데모 계정
+ * 를 의도적으로 적용하지 않는다. 수정·삭제는 작성자 본인(삭제는 ADMIN도 가능)만 가능해 데모 계정
  * 간 상호 간섭도 자연히 격리된다.
  */
 @Service
@@ -53,7 +53,10 @@ public class NutrientService {
 
     @Transactional
     public NutrientRecipeResponse createRecipe(Long farmId, Long userId, NutrientRecipeRequest request) {
-        farmAccessGuard.requireMember(farmId, userId);
+        // OPERATOR 이상(이슈 #122) — VIEWER가 저장하면 author가 되어 deleteRecipe의 "author OR ADMIN"
+        // 규칙으로 삭제 권한까지 갖는다. "조회만"이라는 역할 정의가 작성 경로로 우회되는 것을 막는다.
+        // (미리보기 calculate는 저장이 없으므로 requireMember 그대로 — VIEWER도 계산은 볼 수 있다.)
+        farmAccessGuard.requireOperator(farmId, userId);
         requireName(request);
 
         NutrientCalculationResponse calculation = nutrientCalculationEngine.calculate(request.target(),
@@ -98,7 +101,7 @@ public class NutrientService {
     @Transactional
     public NutrientRecipeResponse updateRecipe(Long farmId, Long userId, Long recipeId,
                                                 NutrientRecipeRequest request) {
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         requireName(request);
         NutrientRecipe recipe = findRecipeOrThrow(farmId, recipeId);
         if (!recipe.getAuthor().equals(userId)) {
@@ -121,11 +124,11 @@ public class NutrientService {
 
     @Transactional
     public void deleteRecipe(Long farmId, Long userId, Long recipeId) {
-        FarmAccessGuard.FarmAccess access = farmAccessGuard.requireMember(farmId, userId);
+        FarmAccessGuard.FarmAccess access = farmAccessGuard.requireOperator(farmId, userId);
         NutrientRecipe recipe = findRecipeOrThrow(farmId, recipeId);
         boolean isAuthor = recipe.getAuthor().equals(userId);
-        boolean isOwner = access.membership().getRole() == FarmRole.OWNER;
-        if (!isAuthor && !isOwner) {
+        boolean isAdmin = access.membership().getRole().atLeast(FarmRole.ADMIN);
+        if (!isAuthor && !isAdmin) {
             throw new CustomException(ErrorCode.N002);
         }
         nutrientRecipeRepository.delete(recipe);

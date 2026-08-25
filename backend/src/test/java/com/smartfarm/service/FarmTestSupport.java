@@ -7,11 +7,13 @@ import com.smartfarm.service.dto.AcceptInvitationRequest;
 import com.smartfarm.service.dto.DeviceRequest;
 import com.smartfarm.service.dto.FarmRequest;
 import com.smartfarm.service.dto.LoginRequest;
+import com.smartfarm.service.dto.MemberRoleUpdateRequest;
 import com.smartfarm.service.dto.RackRequest;
 import com.smartfarm.service.dto.SignupRequest;
 import com.smartfarm.service.dto.ZoneRequest;
 import com.smartfarm.service.entity.CropType;
 import com.smartfarm.service.entity.DeviceKind;
+import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.SensorMetric;
 import java.util.List;
 import java.util.UUID;
@@ -60,12 +62,59 @@ public abstract class FarmTestSupport extends IntegrationTestSupport {
         return readJson(result).get("code").asText();
     }
 
+    /**
+     * 초대 수락 — 이슈 #122 이후 <b>수락만으로는 {@code PENDING}(접근 불가)</b>이다.
+     * 활성 멤버가 필요한 시나리오는 {@link #joinFarmAs}를 쓴다.
+     */
     protected void acceptInvitation(String accessToken, String code) throws Exception {
         mockMvc.perform(MockMvcRequestBuilders.post("/api/invitations/accept")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new AcceptInvitationRequest(code))))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * 농장에 <b>활성 멤버로</b> 합류시킨다(이슈 #122) — 초대 발급 → 수락(PENDING) → ADMIN 승인.
+     *
+     * <p>합류 후 곧바로 농장 데이터를 쓰는 기존 시나리오들이 쓰던 "수락 = 즉시 활성 MEMBER"를
+     * 대체한다. 구 {@code MEMBER}의 권한은 {@link FarmRole#OPERATOR}가 승계하므로, 기존 동작을
+     * 그대로 재현하려면 role에 OPERATOR를 넘긴다.
+     *
+     * @return 부여된 멤버십 id(memberId)
+     */
+    protected long joinFarmAs(String adminToken, long farmId, String joinerToken, FarmRole role)
+            throws Exception {
+        acceptInvitation(joinerToken, createInvitationCode(adminToken, farmId));
+        long memberId = memberIdOfUser(adminToken, farmId, myUserId(joinerToken));
+        changeMemberRole(adminToken, farmId, memberId, role);
+        return memberId;
+    }
+
+    /** 역할 변경 API 호출(성공 기대) — {@code PATCH .../members/{memberId}/role}. */
+    protected void changeMemberRole(String adminToken, long farmId, long memberId, FarmRole role)
+            throws Exception {
+        mockMvc.perform(MockMvcRequestBuilders
+                        .patch("/api/farms/" + farmId + "/members/" + memberId + "/role")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new MemberRoleUpdateRequest(role))))
+                .andExpect(status().isOk());
+    }
+
+    /** 멤버 목록에서 userId로 memberId(멤버십 id)를 찾는다 — 닉네임 중복에 영향받지 않는다. */
+    protected long memberIdOfUser(String accessToken, long farmId, long userId) throws Exception {
+        MvcResult result = mockMvc.perform(
+                        MockMvcRequestBuilders.get("/api/farms/" + farmId + "/members")
+                                .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        for (JsonNode member : readJson(result)) {
+            if (member.get("userId").asLong() == userId) {
+                return member.get("memberId").asLong();
+            }
+        }
+        throw new IllegalStateException("멤버를 찾을 수 없음: userId=" + userId);
     }
 
     /** 멤버 목록에서 닉네임으로 memberId(멤버십 id)를 찾는다. */

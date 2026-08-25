@@ -5,6 +5,7 @@ import type {
   ErrorCode,
   EnvironmentHistoryRange,
   FarmLogType,
+  FarmRole,
   NutrientStage,
   OperationMode,
   ReadingCellState,
@@ -34,6 +35,16 @@ export const VALIDATION = {
 } as const;
 
 export const DEFAULT_ERROR_MESSAGE = "요청 처리 중 오류가 발생했습니다.";
+
+// 농장 역할 4단계 라벨(이슈 #122/#123, contract §2) — 전 화면 공용(FarmMembers·FarmOverview·
+// FarmSummaryList·FarmStatusCard 등, 로컬 ROLE_LABELS 중복 정의 금지). 서열 판정은
+// lib/roles.ts를 쓰고, 이 상수는 표시 전용이다.
+export const ROLE_LABELS: Record<FarmRole, string> = {
+  ADMIN: "관리자",
+  OPERATOR: "제어 가능",
+  VIEWER: "조회 전용",
+  PENDING: "대기 중",
+};
 
 // 환경 대시보드 장치명 한글 라벨 (docs/_local/handoff/fs-22-dashboard-next.md FE 범위 6)
 export const DEVICE_LABELS: Record<string, string> = {
@@ -150,10 +161,16 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   A007: "데모 계정에서는 이 작업을 수행할 수 없습니다.",
   F001: "농장을 찾을 수 없습니다.",
   F002: "해당 농장의 멤버가 아닙니다.",
-  F003: "농장 관리자(OWNER) 권한이 필요합니다.",
+  F003: "농장 관리자 권한이 필요합니다.",
   F004: "초대코드가 유효하지 않거나 만료되었습니다.",
   F005: "이미 해당 농장의 멤버입니다.",
-  F006: "관리자는 농장 삭제로만 탈퇴할 수 있습니다.",
+  F006: "농장의 마지막 관리자는 강등하거나 제거할 수 없습니다. 다른 멤버를 관리자로 지정한 뒤 다시 시도해주세요.",
+  F007: "농장 제어 권한이 필요합니다.",
+  // PENDING(가입 승인 대기) 전용 — F002(멤버 아님)와 달리 "권한이 없다"가 아니라 "승인을
+  // 기다리는 중"임을 알려야 한다. 이 메시지가 초대 수락 직후 화면·모든 farm-scoped 탭의
+  // 진입 차단 안내를 겸한다(resolveErrorMessage 경유로 별도 분기 없이 자동 노출).
+  F008: "농장 가입 승인 대기 중입니다. 관리자가 역할을 부여하면 이용할 수 있어요. 잠시 후 다시 확인하거나 농장 관리자에게 문의해주세요.",
+  F009: "농장 멤버를 찾을 수 없습니다.",
   R001: "존을 찾을 수 없습니다.",
   R002: "랙을 찾을 수 없습니다.",
   R003: "층을 찾을 수 없습니다.",

@@ -11,6 +11,7 @@ import com.smartfarm.service.FarmTestSupport;
 import com.smartfarm.service.dto.NutrientRecipeRequest;
 import com.smartfarm.service.dto.NutrientSourceWaterRequest;
 import com.smartfarm.service.dto.NutrientTargetRequest;
+import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.GrowthStage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -294,7 +295,7 @@ class NutrientRecipeApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장-레시피수정");
         String memberToken = signupAndLogin("일꾼이-레시피수정");
         long farmId = createFarm(ownerToken, "권한 레시피 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         long recipeId = createRecipe(memberToken, farmId, "일꾼이 레시피");
 
         mockMvc.perform(patch("/api/farms/" + farmId + "/nutrient-recipes/" + recipeId)
@@ -360,7 +361,7 @@ class NutrientRecipeApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장-레시피삭제");
         String memberToken = signupAndLogin("일꾼이-레시피삭제");
         long farmId = createFarm(ownerToken, "OWNER삭제 레시피 농장");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
         long recipeId = createRecipe(memberToken, farmId, "일꾼이 레시피2");
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/nutrient-recipes/" + recipeId)
@@ -375,8 +376,8 @@ class NutrientRecipeApiIntegrationTest extends FarmTestSupport {
         String authorToken = signupAndLogin("작성자-레시피삭제2");
         String bystanderToken = signupAndLogin("구경꾼-레시피삭제2");
         long farmId = createFarm(ownerToken, "제3자 레시피 농장");
-        acceptInvitation(authorToken, createInvitationCode(ownerToken, farmId));
-        acceptInvitation(bystanderToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, authorToken, FarmRole.OPERATOR);
+        joinFarmAs(ownerToken, farmId, bystanderToken, FarmRole.OPERATOR);
         long recipeId = createRecipe(authorToken, farmId, "작성자 레시피");
 
         mockMvc.perform(delete("/api/farms/" + farmId + "/nutrient-recipes/" + recipeId)

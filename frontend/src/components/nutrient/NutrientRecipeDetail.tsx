@@ -13,6 +13,7 @@ import { getMe } from "@/lib/api/auth";
 import { isNotFound, resolveErrorMessage, resolveNutrientCalculationErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
 import { deleteNutrientRecipe, getNutrientRecipe, updateNutrientRecipe } from "@/lib/api/nutrientRecipes";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
 import type { FarmResponse, NutrientRecipeResponse } from "@/types";
 
 interface NutrientRecipeDetailProps {
@@ -32,7 +33,7 @@ function toTargetFields(target: NutrientRecipeResponse["target"]): NutrientTarge
 }
 
 // 저장된 양액 레시피 상세(이슈 #65) — 계산 결과 재표시(계산 스냅샷 그대로, 재계산 없음) +
-// 작성자 본인이면 수정, 작성자 본인 또는 OWNER면 삭제. 버튼 노출은 보조 UX일 뿐이고
+// 작성자 본인이면 수정, 작성자 본인 또는 ADMIN이면 삭제. 버튼 노출은 보조 UX일 뿐이고
 // 최종 권한 판정은 항상 서버 N002(FarmLogList·farmLogs.ts와 동일한 "서버가 최종 판정" 관례).
 // 폼 필드 상태·요청 조립은 useNutrientRecipeForm(NutrientCalculator와 공유, 리뷰 픽스 #65 P2-1).
 export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecipeDetailProps) {
@@ -117,9 +118,10 @@ export default function NutrientRecipeDetail({ farmId, recipeId }: NutrientRecip
   }
 
   const isAuthor = myUserId !== null && recipe.createdBy === myUserId;
-  const isOwner = farm?.myRole === "OWNER";
+  // 삭제=작성자 본인 또는 ADMIN(구 OWNER 승계, contract §2·N002) — 버튼 노출은 보조 UX일 뿐.
+  const isAdmin = hasFarmRoleAtLeast(farm?.myRole, "ADMIN");
   const canEdit = isAuthor;
-  const canDelete = isAuthor || isOwner;
+  const canDelete = isAuthor || isAdmin;
 
   async function handleSave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

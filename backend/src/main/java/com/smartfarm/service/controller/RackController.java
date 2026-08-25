@@ -24,7 +24,7 @@ public class RackController {
 
     private final RackService rackService;
 
-    @Operation(summary = "랙 부분 수정 (OWNER, 데모 차단) — levelCount 축소 시 하위 장비 잔존이면 409 R004")
+    @Operation(summary = "랙 부분 수정 (ADMIN, 데모 차단) — levelCount 축소 시 하위 장비 잔존이면 409 R004")
     @PatchMapping("/{rackId}")
     public ResponseEntity<RackResponse> updateRack(@AuthenticationPrincipal Long userId,
                                                     @PathVariable Long farmId,
@@ -33,7 +33,7 @@ public class RackController {
         return ResponseEntity.ok(rackService.updateRack(farmId, userId, rackId, request));
     }
 
-    @Operation(summary = "랙 삭제 — soft delete, 하위 층 함께 (OWNER, 데모 차단)")
+    @Operation(summary = "랙 삭제 — soft delete, 하위 층 함께 (ADMIN, 데모 차단)")
     @DeleteMapping("/{rackId}")
     public ResponseEntity<Void> deleteRack(@AuthenticationPrincipal Long userId,
                                             @PathVariable Long farmId,

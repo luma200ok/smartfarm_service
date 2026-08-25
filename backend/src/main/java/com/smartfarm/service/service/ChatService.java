@@ -45,7 +45,11 @@ public class ChatService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ChatMessageResponse createChat(Long farmId, Long userId, ChatRequest request) {
-        farmAccessGuard.requireMember(farmId, userId);
+        // OPERATOR 이상(이슈 #122 리뷰 P2-2) — VIEWER("조회 전용")가 농장 공유 자원을
+        // 고갈시킬 수 있는 경로다. 데모 계정은 시드 농장의 ADMIN이라 계약 §4.5의
+        // "조회·진단·처방은 데모 허용"에는 영향이 없다.
+        // 여기서는 레이트리밋이 농장 단위라, VIEWER 한 명이 농장 전체 챗 쿼터를 소진할 수 있었다.
+        farmAccessGuard.requireOperator(farmId, userId);
 
         // 레이트리밋(handoff #54 + 보안 리뷰 P1-B) — 농장 단위 + 사용자 단위 둘 다 통과해야 한다.
         // DB 왕복이 있는 처방 접수 상한(P004)과 달리 인메모리 카운터. ai-server 호출 전에 걸러

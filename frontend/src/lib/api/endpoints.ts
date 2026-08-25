@@ -20,6 +20,9 @@ export const ENDPOINTS = {
     members: (farmId: number | string) => `/api/farms/${farmId}/members`,
     removeMember: (farmId: number | string, memberId: number | string) =>
       `/api/farms/${farmId}/members/${memberId}`,
+    // 멤버 역할 변경(이슈 #122/#123) — 초대 수락자(PENDING) 승인도 이 경로.
+    memberRole: (farmId: number | string, memberId: number | string) =>
+      `/api/farms/${farmId}/members/${memberId}/role`,
     diagnoses: (farmId: number | string) => `/api/farms/${farmId}/diagnoses`,
     diagnosisDetail: (farmId: number | string, diagnosisId: number | string) =>
       `/api/farms/${farmId}/diagnoses/${diagnosisId}`,

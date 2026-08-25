@@ -181,11 +181,11 @@ class DemoAccountApiIntegrationTest extends FarmTestSupport {
                     .isEqualTo(demoUser.getId());
             assertThat(farmMemberRepository.findAllByUserId(demoUser.getId()))
                     .hasSize(1)
-                    .allSatisfy(member -> assertThat(member.getRole()).isEqualTo(FarmRole.OWNER));
+                    .allSatisfy(member -> assertThat(member.getRole()).isEqualTo(FarmRole.ADMIN));
         }
 
         @Test
-        @DisplayName("시드된 데모 농장은 토마토 농장 1개(OWNER)다")
+        @DisplayName("시드된 데모 농장은 토마토 농장 1개(ADMIN)다")
         void seededDemoFarm() throws Exception {
             String token = demoAccessToken();
             MvcResult result = mockMvc.perform(get("/api/farms")
@@ -196,7 +196,7 @@ class DemoAccountApiIntegrationTest extends FarmTestSupport {
             assertThat(farms).hasSize(1);
             assertThat(farms.get(0).get("name").asText()).isEqualTo("데모 토마토 농장");
             assertThat(farms.get(0).get("cropType").asText()).isEqualTo("TOMATO");
-            assertThat(farms.get(0).get("myRole").asText()).isEqualTo("OWNER");
+            assertThat(farms.get(0).get("myRole").asText()).isEqualTo("ADMIN");
         }
     }
 

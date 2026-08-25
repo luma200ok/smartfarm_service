@@ -152,7 +152,7 @@ public class ControlService {
     @Transactional
     public ControlStateResponse changeMode(Long farmId, Long userId, Long zoneId, ControlModeRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         LockedZone locked = lockZone(farmId, zoneId);
         Zone zone = locked.zone();
         ControlMode mode = locked.mode();
@@ -185,7 +185,7 @@ public class ControlService {
     public ControlChangeResponse enqueueChange(Long farmId, Long userId, Long zoneId,
                                                 ControlChangeRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         ControlMode mode = lockZone(farmId, zoneId).mode();
 
         ControlChange change = switch (request.kind()) {
@@ -201,11 +201,16 @@ public class ControlService {
         return ControlChangeResponse.from(controlChangeRepository.save(change));
     }
 
-    /** 개별 취소(contract §4.12) — 작성자 본인 또는 OWNER. 이미 종료된 항목은 큐에 없으므로 CT001. */
+    /**
+     * 개별 취소(contract §4.12) — 작성자 본인 또는 ADMIN. 이미 종료된 항목은 큐에 없으므로 CT001.
+     *
+     * <p>제어 조작이므로 최소 자격은 OPERATOR다(이슈 #122) — VIEWER는 애초에 큐에 적재할 수 없어
+     * 작성자가 될 수 없고, 남의 항목을 취소할 근거도 없다.
+     */
     @Transactional
     public void cancelChange(Long farmId, Long userId, Long zoneId, Long changeId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        FarmAccessGuard.FarmAccess access = farmAccessGuard.requireMember(farmId, userId);
+        FarmAccessGuard.FarmAccess access = farmAccessGuard.requireOperator(farmId, userId);
         lockZone(farmId, zoneId);
 
         ControlChange change = controlChangeRepository.findByIdAndFarmId(changeId, farmId)
@@ -214,8 +219,8 @@ public class ControlService {
         if (!change.getZoneId().equals(zoneId) || change.getStatus() != ControlChangeStatus.PENDING) {
             throw new CustomException(ErrorCode.CT001);
         }
-        boolean owner = access.membership().getRole() == FarmRole.OWNER;
-        if (!owner && !change.getCreatedBy().equals(userId)) {
+        boolean admin = access.membership().getRole().atLeast(FarmRole.ADMIN);
+        if (!admin && !change.getCreatedBy().equals(userId)) {
             throw new CustomException(ErrorCode.A005);
         }
         change.markDiscarded();
@@ -225,7 +230,7 @@ public class ControlService {
     @Transactional
     public void cancelAllChanges(Long farmId, Long userId, Long zoneId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         lockZone(farmId, zoneId);
 
         controlChangeRepository.findByZoneIdAndStatusOrderByIdAsc(zoneId, ControlChangeStatus.PENDING)
@@ -243,7 +248,7 @@ public class ControlService {
     @Transactional
     public ControlApplyResponse apply(Long farmId, Long userId, Long zoneId, ControlApplyRequest request) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireMember(farmId, userId);
+        farmAccessGuard.requireOperator(farmId, userId);
         LockedZone locked = lockZone(farmId, zoneId);
         Zone zone = locked.zone();
         ControlMode mode = locked.mode();
@@ -300,7 +305,9 @@ public class ControlService {
     @Transactional
     public EmergencyStopResponse emergencyStop(Long farmId, Long userId) {
         demoAccountGuard.rejectDemoAccount(userId);
-        farmAccessGuard.requireOwner(farmId, userId);
+        // OPERATOR 이상(이슈 #122 사용자 결정 ⓐ — 구 OWNER 전용에서 완화). 장비를 켜고 끄는 건
+        // 되면서 비상 정지만 막히는 불일치를 해소한다 — 기존 MEMBER(→OPERATOR)는 권한을 획득한다.
+        farmAccessGuard.requireOperator(farmId, userId);
 
         List<Long> zoneIds = zoneRepository.findByFarmIdOrderByDisplayOrderAscIdAsc(farmId).stream()
                 .map(Zone::getId)

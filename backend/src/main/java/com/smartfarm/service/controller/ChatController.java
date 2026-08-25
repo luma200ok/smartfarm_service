@@ -27,7 +27,7 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    @Operation(summary = "챗봇 질의 (멤버, 동기 — 타임아웃 120s)")
+    @Operation(summary = "챗봇 질의 (OPERATOR 이상, 동기 — 타임아웃 120s)")
     @PostMapping
     public ResponseEntity<ChatMessageResponse> createChat(@AuthenticationPrincipal Long userId,
                                                             @PathVariable Long farmId,

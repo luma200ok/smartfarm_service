@@ -48,7 +48,7 @@ public class ControlController {
         return ResponseEntity.ok(controlService.findControlState(farmId, userId, zoneId));
     }
 
-    @Operation(summary = "운전 모드 변경 (멤버, 데모 차단) — 새 모드에서 허용되지 않는 대기 항목은 함께 폐기")
+    @Operation(summary = "운전 모드 변경 (OPERATOR 이상, 데모 차단) — 새 모드에서 허용되지 않는 대기 항목은 함께 폐기")
     @PutMapping("/zones/{zoneId}/control/mode")
     public ResponseEntity<ControlStateResponse> changeMode(@AuthenticationPrincipal Long userId,
                                                             @PathVariable Long farmId,
@@ -57,7 +57,7 @@ public class ControlController {
         return ResponseEntity.ok(controlService.changeMode(farmId, userId, zoneId, request));
     }
 
-    @Operation(summary = "대기 큐 적재 (멤버, 데모 차단) — 큐에 쌓기만 하고 장비에 즉시 반영하지 않는다")
+    @Operation(summary = "대기 큐 적재 (OPERATOR 이상, 데모 차단) — 큐에 쌓기만 하고 장비에 즉시 반영하지 않는다")
     @PostMapping("/zones/{zoneId}/control/changes")
     public ResponseEntity<ControlChangeResponse> enqueueChange(@AuthenticationPrincipal Long userId,
                                                                 @PathVariable Long farmId,
@@ -67,7 +67,7 @@ public class ControlController {
                 .body(controlService.enqueueChange(farmId, userId, zoneId, request));
     }
 
-    @Operation(summary = "대기 항목 개별 취소 (작성자 본인 또는 OWNER, 데모 차단)")
+    @Operation(summary = "대기 항목 개별 취소 (작성자 본인 또는 ADMIN, 데모 차단)")
     @DeleteMapping("/zones/{zoneId}/control/changes/{changeId}")
     public ResponseEntity<Void> cancelChange(@AuthenticationPrincipal Long userId,
                                               @PathVariable Long farmId,
@@ -77,7 +77,7 @@ public class ControlController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "대기 큐 전체 되돌리기 (멤버, 데모 차단)")
+    @Operation(summary = "대기 큐 전체 되돌리기 (OPERATOR 이상, 데모 차단)")
     @DeleteMapping("/zones/{zoneId}/control/changes")
     public ResponseEntity<Void> cancelAllChanges(@AuthenticationPrincipal Long userId,
                                                   @PathVariable Long farmId,
@@ -86,7 +86,7 @@ public class ControlController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "대기 큐 일괄 적용 (멤버, 데모 차단) — expectedChangeIds 낙관적 검증(불일치 시 CT005)")
+    @Operation(summary = "대기 큐 일괄 적용 (OPERATOR 이상, 데모 차단) — expectedChangeIds 낙관적 검증(불일치 시 CT005)")
     @PostMapping("/zones/{zoneId}/control/apply")
     public ResponseEntity<ControlApplyResponse> apply(@AuthenticationPrincipal Long userId,
                                                        @PathVariable Long farmId,
@@ -95,7 +95,7 @@ public class ControlController {
         return ResponseEntity.ok(controlService.apply(farmId, userId, zoneId, request));
     }
 
-    @Operation(summary = "비상 정지 (OWNER, 데모 차단) — 농장 전체 장비 OFF + MANUAL + 대기 큐 전량 폐기")
+    @Operation(summary = "비상 정지 (OPERATOR 이상, 데모 차단) — 농장 전체 장비 OFF + MANUAL + 대기 큐 전량 폐기")
     @PostMapping("/control/emergency-stop")
     public ResponseEntity<EmergencyStopResponse> emergencyStop(@AuthenticationPrincipal Long userId,
                                                                 @PathVariable Long farmId) {

@@ -9,6 +9,7 @@ import { getMe } from "@/lib/api/auth";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
 import { createFarmLog, deleteFarmLog, listFarmLogs, updateFarmLog } from "@/lib/api/farmLogs";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
 import type { FarmLogRequest, FarmLogResponse, FarmResponse, PageResponse } from "@/types";
 
 interface FarmLogListProps {
@@ -19,7 +20,7 @@ const PAGE_SIZE = 10;
 
 // 작업일지 탭(이슈 #57) — 목록·작성·수정·삭제를 한 컴포넌트에서 오케스트레이션한다
 // (FarmMembers·FarmOverview와 동일한 "탭 하나 = 컴포넌트 하나" 관례).
-// 수정=작성자 본인만, 삭제=작성자 본인 또는 OWNER — 버튼 노출은 보조판정, 최종은 서버 L002.
+// 수정=작성자 본인만, 삭제=작성자 본인 또는 ADMIN — 버튼 노출은 보조판정, 최종은 서버 L002.
 export default function FarmLogList({ farmId }: FarmLogListProps) {
   const [farm, setFarm] = useState<FarmResponse | null>(null);
   const [myUserId, setMyUserId] = useState<number | null>(null);
@@ -68,7 +69,11 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
     };
   }, [farmId, page, refreshKey]);
 
-  const isOwner = farm?.myRole === "OWNER";
+  // 삭제=작성자 본인 또는 ADMIN(구 OWNER 승계, contract §2·L002) — 버튼 노출은 보조판정, 최종은 서버.
+  const isAdmin = hasFarmRoleAtLeast(farm?.myRole, "ADMIN");
+  // 콘텐츠 작성(작업일지)은 OPERATOR 이상(contract §2, 이슈 #122/#123 리뷰 P2-B) — VIEWER는
+  // 폼 자체를 열지 못하게 자리를 안내 문구로 대체한다.
+  const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
   async function handleCreate(payload: FarmLogRequest) {
     setFormError(null);
@@ -133,13 +138,17 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
         <h2>
           <CardTitle size="lg">작업일지</CardTitle>
         </h2>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
-        >
-          작성
-        </button>
+        {canWrite ? (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
+          >
+            작성
+          </button>
+        ) : (
+          <span className="text-xs text-dp-faint">조회 전용 역할입니다.</span>
+        )}
       </div>
 
       {loadError && <p className="text-sm text-dp-red-ink">{loadError}</p>}
@@ -154,7 +163,7 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
           {data.content.map((log) => {
             const isAuthor = myUserId !== null && log.createdBy === myUserId;
             const canEdit = isAuthor;
-            const canDelete = isAuthor || isOwner;
+            const canDelete = isAuthor || isAdmin;
             return (
               <li key={log.id}>
                 <Card className="flex flex-col gap-1.5 px-4 py-3 text-sm">

@@ -1,7 +1,10 @@
 // docs/api-contract.md §4(DTO 스키마) §5(ErrorCode) 기준 타입 정의.
 // 백엔드가 아직 없으므로 contract 스펙만 보고 작성 — 실제 응답 필드가 달라지면 여기부터 갱신.
 
-export type FarmRole = "OWNER" | "MEMBER";
+// 농장 멤버 역할 4단계(이슈 #122/#123, contract §2) — 백엔드 FarmRole(rank: ADMIN=3/OPERATOR=2/
+// VIEWER=1/PENDING=0)과 값이 동일해야 한다. 서열 비교는 이 유니온 자체가 아니라
+// lib/roles.ts의 FARM_ROLE_RANK/hasFarmRoleAtLeast를 통해서만 한다(비교식 컴포넌트별 복붙 금지).
+export type FarmRole = "ADMIN" | "OPERATOR" | "VIEWER" | "PENDING";
 
 // cropType enum: 1차 TOMATO만(ai-server 모델 전용), 확장 대비 string union 유지
 export type CropType = "TOMATO";
@@ -55,6 +58,9 @@ export type ErrorCode =
   | "F004"
   | "F005"
   | "F006"
+  | "F007"
+  | "F008"
+  | "F009"
   | "R001"
   | "R002"
   | "R003"
@@ -134,11 +140,16 @@ export interface FarmResponse {
   createdAt: string;
 }
 
+// ⚠️ id는 농장 id, memberId는 요청자 본인의 멤버십 id다(백엔드 FarmSummaryResponse javadoc,
+// 이슈 #122) — 혼동해서 DELETE /members/{memberId}에 농장 id를 넣으면 F008이 난다.
+// memberId는 승인 대기(PENDING) 본인이 스스로 대기를 취소(DELETE .../members/{memberId})할
+// 유일한 도달 경로라서 실린다 — 멤버 목록·농장 상세엔 이 값이 없다.
 export interface FarmSummaryResponse {
   id: number;
   name: string;
   cropType: CropType;
   myRole: FarmRole;
+  memberId: number;
 }
 
 // ── 초대 ──────────────────────────────────────────
@@ -152,11 +163,14 @@ export interface AcceptInvitationRequest {
 }
 
 // ── 멤버 ──────────────────────────────────────────
+// pending은 role에서 파생된 서버 계산 필드(role === "PENDING"과 동치, 이슈 #122) — role 문자열
+// 비교보다 명시적이라 FE는 이 필드로 대기자 UI를 분기한다.
 export interface MemberResponse {
   memberId: number;
   userId: number;
   nickname: string;
   role: FarmRole;
+  pending: boolean;
   joinedAt: string;
 }
 

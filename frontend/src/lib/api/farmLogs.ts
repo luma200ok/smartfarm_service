@@ -34,7 +34,7 @@ export async function updateFarmLog(
   });
 }
 
-// 작성자 본인 또는 OWNER(서버 L002로 최종 판정 — 버튼 노출은 보조).
+// 작성자 본인 또는 ADMIN(서버 L002로 최종 판정 — 버튼 노출은 보조, 이슈 #123).
 export async function deleteFarmLog(farmId: number | string, logId: number | string): Promise<void> {
   return authFetch<void>(ENDPOINTS.farms.logDetail(farmId, logId), { method: "DELETE" });
 }

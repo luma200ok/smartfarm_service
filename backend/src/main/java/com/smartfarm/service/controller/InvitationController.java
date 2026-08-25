@@ -23,7 +23,7 @@ public class InvitationController {
 
     private final InvitationService invitationService;
 
-    @Operation(summary = "초대코드 발급 (OWNER, 만료 72h·재사용 가능)")
+    @Operation(summary = "초대코드 발급 (ADMIN, 만료 72h·재사용 가능)")
     @PostMapping("/api/farms/{farmId}/invitations")
     public ResponseEntity<InvitationResponse> createInvitation(@AuthenticationPrincipal Long userId,
                                                                @PathVariable Long farmId) {
@@ -31,7 +31,7 @@ public class InvitationController {
                 .body(invitationService.createInvitation(farmId, userId));
     }
 
-    @Operation(summary = "초대 수락 (MEMBER로 합류)")
+    @Operation(summary = "초대 수락 (PENDING으로 합류 — 관리자가 역할을 부여해야 농장 접근 가능)")
     @PostMapping("/api/invitations/accept")
     public ResponseEntity<FarmResponse> acceptInvitation(@AuthenticationPrincipal Long userId,
                                                          @Valid @RequestBody AcceptInvitationRequest request) {

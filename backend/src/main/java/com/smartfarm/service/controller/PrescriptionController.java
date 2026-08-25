@@ -29,7 +29,7 @@ public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
 
-    @Operation(summary = "처방 요청 접수 (멤버) — PENDING 저장 후 202 즉시 반환, 상세 폴링으로 결과 확인")
+    @Operation(summary = "처방 요청 접수 (OPERATOR 이상) — PENDING 저장 후 202 즉시 반환, 상세 폴링으로 결과 확인")
     @PostMapping
     public ResponseEntity<PrescriptionResponse> createPrescription(@AuthenticationPrincipal Long userId,
                                                                     @PathVariable Long farmId,

@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.smartfarm.service.FarmTestSupport;
+import com.smartfarm.service.entity.FarmRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -127,7 +128,7 @@ class EnvThresholdApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장6");
         String memberToken = signupAndLogin("일꾼이6");
         long farmId = createFarm(ownerToken, "임계치 농장6");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(put("/api/farms/" + farmId + "/env-thresholds")
                         .header("Authorization", "Bearer " + memberToken)
@@ -143,7 +144,7 @@ class EnvThresholdApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("주인장7");
         String memberToken = signupAndLogin("일꾼이7");
         long farmId = createFarm(ownerToken, "임계치 농장7");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(get("/api/farms/" + farmId + "/env-thresholds")
                         .header("Authorization", "Bearer " + memberToken))

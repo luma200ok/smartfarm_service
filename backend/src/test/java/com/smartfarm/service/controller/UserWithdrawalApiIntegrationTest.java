@@ -70,8 +70,51 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
         return prefix + "-" + UUID.randomUUID() + "@example.com";
     }
 
+    /**
+     * A006은 "탈퇴 차단" 외에 <b>마지막 ADMIN 보호(F006)의 뒷문을 막는 역할을 겸한다</b>(이슈 #122).
+     * 탈퇴는 {@code removeAllMemberships}로 멤버십을 벌크 삭제하는 경로라 F006 가드를 타지 않는데,
+     * A006이 ADMIN 멤버십 보유자의 탈퇴를 통째로 막으므로 "탈퇴로 농장의 관리자를 지우는" 경로가
+     * 성립하지 않는다.
+     *
+     * <p>기존 테스트는 <b>농장 생성자</b> 케이스뿐이라, 승격으로 ADMIN이 된 사용자에 대해 이 감시선이
+     * 비어 있었다(리뷰 P3-8). {@code existsLiveFarmMembershipByUserIdAndRole}의 role 인자가
+     * 잘못되면 여기서 잡힌다.
+     */
     @Test
-    @DisplayName("OWNER 농장 보유 시 409 A006, 농장 삭제 후 탈퇴는 204")
+    @DisplayName("승격된(농장 생성자가 아닌) ADMIN도 409 A006으로 탈퇴가 차단된다 — "
+            + "탈퇴 경로로 마지막 관리자를 지우는 뒷문 차단")
+    void withdrawBlockedForPromotedAdmin() throws Exception {
+        String founder = signupAndLogin("탈퇴승격창업자");
+        String promoted = signupAndLogin("탈퇴승격관리자");
+        long farmId = createFarm(founder, "승격 탈퇴검증농장");
+        joinFarmAs(founder, farmId, promoted, FarmRole.ADMIN);
+
+        // 승격된 ADMIN도 창업자와 동일하게 막힌다
+        performWithdraw(promoted, PASSWORD)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("A006"));
+
+        // ADMIN이 아닌 역할로 내려오면 탈퇴할 수 있다(농장에는 창업자 ADMIN이 남는다)
+        long promotedMemberId = memberIdOfUser(founder, farmId, myUserId(promoted));
+        changeMemberRole(founder, farmId, promotedMemberId, FarmRole.OPERATOR);
+        performWithdraw(promoted, PASSWORD).andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("OPERATOR·VIEWER 멤버십만 가진 사용자는 탈퇴할 수 있다 — A006은 ADMIN에만 걸린다")
+    void withdrawAllowedForNonAdminMemberships() throws Exception {
+        String founder = signupAndLogin("탈퇴비관리자창업자");
+        String operator = signupAndLogin("탈퇴비관리자멤버");
+        long farmId = createFarm(founder, "비관리자 탈퇴농장");
+        joinFarmAs(founder, farmId, operator, FarmRole.OPERATOR);
+        long operatorUserId = myUserId(operator);
+
+        performWithdraw(operator, PASSWORD).andExpect(status().isNoContent());
+        assertThat(farmMemberRepository.findAllByUserId(operatorUserId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("ADMIN 농장 보유 시 409 A006, 농장 삭제 후 탈퇴는 204")
     void withdrawBlockedWhileOwningFarmThenAllowedAfterFarmDeletion() throws Exception {
         String owner = signupAndLogin("탈퇴오너");
         long ownerUserId = myUserId(owner);
@@ -87,7 +130,7 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
                         .header("Authorization", "Bearer " + owner))
                 .andExpect(status().isNoContent());
 
-        // farm soft delete는 farm_members를 지우지 않음 — 잔존 OWNER 멤버십이 탈퇴를 막지 않아야 한다
+        // farm soft delete는 farm_members를 지우지 않음 — 잔존 ADMIN 멤버십이 탈퇴를 막지 않아야 한다
         performWithdraw(owner, PASSWORD).andExpect(status().isNoContent());
 
         // soft delete된 농장의 잔존 멤버십 행도 탈퇴가 함께 정리한다
@@ -175,7 +218,7 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
         farmMemberRepository.save(FarmMember.builder()
                 .farmId(farmId)
                 .userId(withdrawnUserId)
-                .role(FarmRole.MEMBER)
+                .role(FarmRole.OPERATOR)
                 .build());
 
         // 잔존 행이 있어도 가드의 User join(@SQLRestriction)이 차단 → F002
@@ -266,7 +309,7 @@ class UserWithdrawalApiIntegrationTest extends FarmTestSupport {
         // 구 계정을 농장 MEMBER로 소속시켜 "구 데이터 미연결"을 검증할 대상 생성
         String owner = signupAndLogin("재가입농장주");
         long farmId = createFarm(owner, "재가입검증농장");
-        acceptInvitation(firstAccess, createInvitationCode(owner, farmId));
+        joinFarmAs(owner, farmId, firstAccess, FarmRole.OPERATOR);
 
         performWithdraw(firstAccess, PASSWORD).andExpect(status().isNoContent());
 

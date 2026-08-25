@@ -31,7 +31,7 @@ public class UserController {
 
     @Operation(summary = "회원 탈퇴",
             description = "비밀번호 재확인 필수(불일치 A002). soft delete + PII 즉시 익명화. "
-                    + "OWNER 농장 보유 시 409 A006 — 농장 삭제 후 재시도.")
+                    + "ADMIN 농장 보유 시 409 A006 — 농장 삭제 후 재시도.")
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(@AuthenticationPrincipal Long userId,
                                          @Valid @RequestBody WithdrawRequest request) {

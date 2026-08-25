@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.smartfarm.service.FarmTestSupport;
+import com.smartfarm.service.entity.FarmRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -104,7 +105,7 @@ class AlarmRuleApiIntegrationTest extends FarmTestSupport {
         String ownerToken = signupAndLogin("규칙주인4");
         long farmId = createFarm(ownerToken, "규칙농장4");
         String memberToken = signupAndLogin("규칙멤버4");
-        acceptInvitation(memberToken, createInvitationCode(ownerToken, farmId));
+        joinFarmAs(ownerToken, farmId, memberToken, FarmRole.OPERATOR);
 
         mockMvc.perform(get("/api/farms/" + farmId + "/alarm-rules")
                         .header("Authorization", "Bearer " + memberToken))
