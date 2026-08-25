@@ -83,6 +83,7 @@ class PesticideReferenceResultCapIntegrationTest extends FarmTestSupport {
                         .severity(PesticideAlertSeverity.INFO)
                         .validFrom(now.minusDays(1))
                         .validUntil(now.plusDays(1))
+                        .source("상한 테스트용 임시 출처")
                         .build())
                 .toList();
         List<PesticideAlert> saved = pesticideAlertRepository.saveAll(extra);

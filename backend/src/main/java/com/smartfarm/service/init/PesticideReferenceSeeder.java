@@ -58,6 +58,16 @@ public class PesticideReferenceSeeder implements SmartLifecycle {
             + "않으며 실제 등록 농약 정보와 다를 수 있습니다. 살포 전 반드시 농약안전정보시스템에서 "
             + "정식 정보를 확인하세요.";
 
+    /**
+     * 경보용 출처 표기(리뷰 P2) — 참조정보와 동일 원칙이되 문구는 경보 성격에 맞춘다. 경보 문구
+     * 자체가 "총채벌레 발생 밀도가 증가하고 있습니다"처럼 실제 관측 기반 공식 경보로 읽히기 쉬워,
+     * "내부 샘플이며 실제 예찰 정보가 아니다"를 명시한다. <b>절대 "농촌진흥청 연동"을 암시하지
+     * 않는다</b>(§클래스 주석·{@link #SAMPLE_DATA_SOURCE} 동일 요구사항).
+     */
+    static final String SAMPLE_ALERT_SOURCE = "내부 시드 샘플 경보입니다. 실제 농촌진흥청 예찰·발생정보와 "
+            + "연동되지 않으며 실제 발생 상황과 다를 수 있습니다. 방제 판단 전 반드시 농약안전정보시스템·"
+            + "지역 농업기술센터의 정식 예찰 정보를 확인하세요.";
+
     private final PesticideReferenceRepository referenceRepository;
     private final PesticideAlertRepository alertRepository;
 
@@ -146,6 +156,7 @@ public class PesticideReferenceSeeder implements SmartLifecycle {
                 .severity(severity)
                 .validFrom(validFrom)
                 .validUntil(validUntil)
+                .source(SAMPLE_ALERT_SOURCE)
                 .build();
     }
 

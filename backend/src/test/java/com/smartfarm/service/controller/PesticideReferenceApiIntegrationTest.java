@@ -141,6 +141,31 @@ class PesticideReferenceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("경보 응답 출처(source)도 내부 샘플임을 명시하고 실제 농진청 예찰 연동을 암시하지 않는다"
+            + "(안전 요구사항 — 거짓 표기 금지, 리뷰 P2)")
+    void alertSourceDisclosesInternalSampleDataHonestly() throws Exception {
+        String token = signupAndLogin("농약조회자-경보출처");
+
+        MvcResult result = mockMvc.perform(get("/api/pesticide-references/alerts")
+                        .param("cropType", "TOMATO")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode body = readJson(result);
+        assertThat(body.size()).isGreaterThanOrEqualTo(1);
+        for (JsonNode item : body) {
+            String source = item.get("source").asText();
+            // "내부 시드/샘플" 사실이 드러나야 한다
+            assertThat(source).contains("샘플");
+            // 연동을 명시적으로 부정해야 한다(암시조차 금지)
+            assertThat(source).contains("연동되지 않");
+            // 프리뷰 mock의 거짓 문구 그대로는 나오면 안 된다
+            assertThat(source).doesNotContain("농촌진흥청 농약안전정보시스템 연동 ·");
+        }
+    }
+
+    @Test
     @DisplayName("방어선: 유효기간이 지났거나 아직 시작 전인 경보는 응답에서 제외된다"
             + "(유효기간 필터 제거 시 실패해야 하는 회귀 테스트)")
     void expiredAndUpcomingAlertsAreExcluded() throws Exception {
@@ -154,6 +179,7 @@ class PesticideReferenceApiIntegrationTest extends FarmTestSupport {
                 .severity(PesticideAlertSeverity.WARNING)
                 .validFrom(now.minusDays(10))
                 .validUntil(now.minusDays(1))
+                .source("만료 필터 테스트용 임시 출처")
                 .build());
         PesticideAlert upcoming = pesticideAlertRepository.save(PesticideAlert.builder()
                 .cropType(CropType.TOMATO)
@@ -161,6 +187,7 @@ class PesticideReferenceApiIntegrationTest extends FarmTestSupport {
                 .severity(PesticideAlertSeverity.WARNING)
                 .validFrom(now.plusDays(1))
                 .validUntil(now.plusDays(10))
+                .source("만료 필터 테스트용 임시 출처")
                 .build());
 
         try {

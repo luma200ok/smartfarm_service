@@ -35,6 +35,10 @@ CREATE TABLE pesticide_alerts (
     severity    VARCHAR(20)  NOT NULL,
     valid_from  TIMESTAMP    NOT NULL,
     valid_until TIMESTAMP    NOT NULL,
+    -- 출처 표기(리뷰 P2 — pesticide_references와 동일 원칙) — 경보 문구가 실제 관측 기반 공식
+    -- 경보처럼 읽혀서(예: "총채벌레 발생 밀도가 증가하고 있습니다") 참조정보와 동일한 오인 위험이
+    -- 있다. 값은 PesticideReferenceSeeder가 채운다(고정 문구, "농촌진흥청 연동" 암시 금지).
+    source      VARCHAR(500) NOT NULL,
 
     CONSTRAINT ck_pesticide_alerts_valid_period CHECK (valid_from < valid_until),
     -- 동시 기동 시 같은 경보 문구 중복 삽입 방지(참조 테이블과 동일 원칙 — 시간창은 재시드마다

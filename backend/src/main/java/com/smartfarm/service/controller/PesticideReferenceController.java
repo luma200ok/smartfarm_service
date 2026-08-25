@@ -37,7 +37,7 @@ public class PesticideReferenceController {
         return ResponseEntity.ok(pesticideReferenceService.findReferences(cropType, q));
     }
 
-    @Operation(summary = "작물별 병해충 발생주의 경보 조회 (인증만, 유효기간 내 경보만)")
+    @Operation(summary = "작물별 병해충 발생주의 경보 조회 (인증만, 유효기간 내 경보만, 참고용 내부 샘플)")
     @GetMapping("/alerts")
     public ResponseEntity<List<PesticideAlertResponse>> findAlerts(
             @AuthenticationPrincipal Long userId,

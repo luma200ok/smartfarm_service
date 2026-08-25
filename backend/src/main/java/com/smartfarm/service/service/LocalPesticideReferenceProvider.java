@@ -53,6 +53,6 @@ public class LocalPesticideReferenceProvider implements PesticideReferenceProvid
 
     private static PesticideAlertItem toItem(PesticideAlert alert) {
         return new PesticideAlertItem(alert.getCropType(), alert.getMessage(), alert.getSeverity(),
-                alert.getValidFrom(), alert.getValidUntil());
+                alert.getValidFrom(), alert.getValidUntil(), alert.getSource());
     }
 }

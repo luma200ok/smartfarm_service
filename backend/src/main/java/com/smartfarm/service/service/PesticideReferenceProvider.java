@@ -36,7 +36,12 @@ public interface PesticideReferenceProvider {
                                    LocalDateTime updatedAt) {
     }
 
+    /**
+     * 경보 1건. {@code source}는 {@link PesticideReferenceItem#source()}와 동일한 계약을 진다(리뷰
+     * P2) — 경보 문구가 "총채벌레 발생 밀도가 증가하고 있습니다"처럼 실제 관측 기반 공식 경보로
+     * 읽히기 쉬워, 참조정보와 동일하게 신뢰 수준을 정직하게 밝혀야 한다.
+     */
     record PesticideAlertItem(CropType cropType, String message, PesticideAlertSeverity severity,
-                               LocalDateTime validFrom, LocalDateTime validUntil) {
+                               LocalDateTime validFrom, LocalDateTime validUntil, String source) {
     }
 }
