@@ -7,8 +7,12 @@ import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.service.ReadingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +43,26 @@ public class ReadingController {
             @RequestParam(required = false) String range,
             @RequestParam String scope) {
         return ResponseEntity.ok(readingService.series(farmId, userId, metrics, range, scope));
+    }
+
+    @Operation(summary = "CSV 내보내기 (멤버) — series와 동일 파라미터·동일 다운샘플을 CSV로, "
+            + "행 수 상한(5760) 초과 시 413 SA003")
+    @GetMapping("/export.csv")
+    public ResponseEntity<byte[]> exportCsv(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long farmId,
+            @RequestParam List<SensorMetric> metrics,
+            @RequestParam(required = false) String range,
+            @RequestParam String scope) {
+        ReadingService.CsvExport export = readingService.exportCsv(farmId, userId, metrics, range, scope);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(export.filename(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString())
+                .body(export.content());
     }
 
     @Operation(summary = "랙 도면 최신값 조회 (멤버) — metric 필수, zoneId 생략 시 농장 전체")
