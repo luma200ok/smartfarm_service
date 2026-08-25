@@ -512,6 +512,33 @@
 - ⚠️ **스코프 대상이 soft delete돼도 저장한 분석은 지우지 않는다** — 이 기능엔 "실행" 경로가 없다(재적용은 FE가 `GET /readings/series`를 직접 호출). #118의 알람 규칙과 달리 스코프 소멸이 조회 오류로 이어지지 않는다
 - **ErrorCode**: `SA001`(404 분석 없음) · `SA002`(409 개수 상한) · `SA003`(413 내보내기 행 수 초과) · `SA004`(403 작성자·ADMIN 아님)
 
+## 4.16 농약 참조정보 (2026-08-25 확정, 이슈 #128 — 미구현 도메인 정리 5)
+
+> ⚠️ **이 데이터는 내부 시드 스텁이다.** 실 농진청 오픈API 키·스펙이 없어 자체 DB에 샘플을 시드하고 **연동 인터페이스(`PesticideReferenceProvider`)만 열어뒀다**(사용자 결정). 키를 확보하면 **provider 구현체만 교체**하면 되고 컨트롤러·DTO는 그대로다.
+
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/pesticide-references` | **인증만**(farm-scoped 아님) | `?cropType=&q=` | 200 `List<PesticideReferenceResponse>` |
+| GET | `/api/pesticide-references/alerts` | **인증만** | `?cropType=` | 200 `List<PesticideAlertResponse>` |
+
+- **PesticideReferenceResponse** `{cropType, pestName, registeredProductCount, preHarvestIntervalDays?, note, source, updatedAt}`
+- **PesticideAlertResponse** `{cropType, message, severity, validFrom, validUntil, source}`
+- `q`는 병해충명 **부분 검색**(생략 시 전체). `%`·`_`는 리터럴로 처리(`ESCAPE '\'`) — 이스케이프하지 않으면 `"50%"` 검색이 전체 매칭된다
+- **결과 상한**: 참조 50건 · 경보 20건
+- **경보는 유효기간 내만** 반환(`validFrom <= now <= validUntil`). "이번 주 발생 주의" 성격이라 기간 지난 경보가 계속 뜨면 안 된다
+- 프리뷰 mock의 자유 텍스트(`"등록 약제 3종 · 수확전 7일"`)를 **구조화**했다 — 검색·필터가 요구사항이라 텍스트로는 처리 불가
+
+### ⚠️ 출처 표기 규칙 (안전 — 임의 변경 금지)
+이 데이터는 **농약 안전사용기간**이라, 사용자가 실제 기준으로 믿고 살포하면 **작물 피해·잔류농약 문제**로 이어진다. 프리뷰 mock 문구는 `"농촌진흥청 … 연동"`이지만 **실제 연동이 없으므로 그렇게 표기하지 않는다.**
+- 참조 `source`: *"내부 시드 샘플 데이터입니다. 농촌진흥청과 실시간 연동되지 않으며 실제 등록 농약 정보와 다를 수 있습니다. 살포 전 반드시 농약안전정보시스템에서 정식 정보를 확인하세요."*
+- 경보 `source`: *"내부 시드 샘플 경보입니다. 실제 농촌진흥청 예찰·발생정보와 연동되지 않으며 실제 발생 상황과 다를 수 있습니다. 방제 판단 전 반드시 농약안전정보시스템·지역 농업기술센터의 정식 예찰 정보를 확인하세요."*
+- DB `NOT NULL` + 클래스 주석 + 테스트 3중 고정. Swagger에도 "(참고용 샘플 데이터)" 명시
+- ⚠️ **경보에도 반드시 고지가 있어야 한다** — 경보 문구가 실제 관측처럼 읽혀 방제 판단을 오도할 수 있다(#128 리뷰 P2)
+
+- **ErrorCode 없음** — 조회 전용이라 고유 실패 시나리오가 없다(`cropType` 검증은 공통 C001)
+- **시드**: `init/PesticideReferenceSeeder`(Java initializer, idempotent). Flyway 정적 INSERT를 쓰지 않은 이유 — ①스텁이라 보강마다 마이그레이션이 쌓인다 ②경보 유효기간이 **시드 시점 기준 상대값**이어야 하는데 Flyway 고정 절대시각은 배포가 늦어질수록 처음부터 만료된 채로 심긴다
+- **마이그레이션**: **V23** `pesticide_references`·`pesticide_alerts`
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
