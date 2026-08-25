@@ -16,8 +16,10 @@ import com.smartfarm.service.repository.ReadingLevelLatestProjection;
 import com.smartfarm.service.repository.ReadingSeriesBucketProjection;
 import com.smartfarm.service.repository.SensorReadingRepository;
 import com.smartfarm.service.repository.ZoneRepository;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -39,6 +41,22 @@ public class ReadingService {
 
     /** series 요청 metric 상한(contract §4.11 — 초과 시 C001). */
     static final int MAX_SERIES_METRICS = 4;
+
+    /**
+     * CSV 내보내기 행 수 상한(이슈 #126, 초과 시 SA003) — {@link #exportCsv}가 {@link #series}를
+     * 그대로 재사용하므로 구조적으로 <b>metric당 최대 버킷 수(24h 원본 1440) × MAX_SERIES_METRICS
+     * (4) = 5760</b>을 넘을 수 없다(contract §4.11 "응답 크기 상한"의 5760과 동일 계산). 그럼에도
+     * 명시적으로 검사하는 이유는 ① 방어선을 코드에 남겨 회귀를 잡고, ② 다운샘플 버킷을 더 촘촘하게
+     * 바꾸는(예: 24h를 30초 버킷으로) 미래 변경이 이 상한을 조용히 깨지 않게 하기 위함이다.
+     */
+    static final int MAX_EXPORT_ROWS = 5760;
+
+    private static final DateTimeFormatter CSV_TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    private static final DateTimeFormatter EXPORT_FILENAME_TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+    /** UTF-8 BOM(EF BB BF) — {@link #exportCsv} 한글 엑셀 호환 근거는 그 메서드 주석 참고. */
+    private static final byte[] UTF8_BOM = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
 
     /** scope 필터 없이 "전체 이력에 SIMULATED가 있었는가"를 물을 때 쓰는 하한(모든 TIMESTAMP보다 이전). */
     private static final LocalDateTime EPOCH = LocalDateTime.of(1970, 1, 1, 0, 0);
@@ -104,6 +122,96 @@ public class ReadingService {
         }
 
         return new ReadingSeriesResponse(range.queryValue(), scopeParam, simulated, series);
+    }
+
+    /** CSV 바이트(UTF-8 BOM 포함)와 다운로드 파일명 — {@link #exportCsv} 반환값. */
+    public record CsvExport(byte[] content, String filename) {
+    }
+
+    /**
+     * CSV 내보내기(이슈 #126) — {@code /readings/series}와 <b>동일한 파라미터·동일한 다운샘플
+     * 집계</b>를 그대로 CSV로 직렬화한다(원본 이력을 새로 쿼리하지 않는다). 판단 근거:
+     * <ol>
+     *   <li><b>다운샘플 vs 원본</b>: 이슈 요구사항 자체가 "현재 화면의 필터 상태를 그대로 따르는
+     *       것"이다 — 화면 차트가 보여주는 시계열을 파일로 받는 기능이지, 별도의 원본 덤프 기능이
+     *       아니다. {@link #series}를 그대로 호출해 재사용하면 두 API가 "같은 필터 → 같은 값"을
+     *       영원히 보장한다(로직이 두 곳으로 갈라져 나중에 어긋날 위험이 없다).</li>
+     *   <li><b>행 수 상한</b>: series 집계는 이미 <b>구조적으로 크기가 상한선</b>이다(scope=farm도
+     *       층 간 평균 1계열로 축약 — contract §4.11 "응답 크기 상한"). 원본을 새로 쿼리했다면
+     *       §4.11이 경고한 "농장당 1틱 최대 300행 × 90일 보존"(수백만 행) 규모를 커넥션 하나가
+     *       그대로 반환해야 해서 별도의 무거운 상한·페이지네이션 설계가 필요해진다. series 재사용은
+     *       그 위험 자체를 없앤다 — 그래도 {@link #MAX_EXPORT_ROWS} 명시 검사는 방어선으로 남긴다
+     *       (그 상수 주석 참고).</li>
+     * </ol>
+     * <b>권한</b>도 series와 동일하게 <b>requireMember(VIEWER 포함)</b>로 둔다(호출하는
+     * {@link #series}가 이미 그 검사를 한다) — 내려주는 데이터가 화면에서 VIEWER가 이미 보는 것과
+     * 완전히 같은 쿼리·같은 스코프 검증 결과라, 파일 형식이라는 이유만으로 OPERATOR 이상으로
+     * 올리면 §2 "VIEWER=조회전용" 정의와 어긋나고 실질적 보안 이득도 없다(VIEWER는 화면 값을 그대로
+     * 옮겨 적을 수 있다). "대량 반출"의 위험(무제한 원본 덤프)은 위 설계로 애초에 제거했다 — 그
+     * 위험이 실제로 남아 있었다면 OPERATOR 상향이 맞는 판단이었을 것이다.
+     */
+    public CsvExport exportCsv(Long farmId, Long userId, List<SensorMetric> metrics, String rangeParam,
+                                String scopeParam) {
+        ReadingSeriesResponse result = series(farmId, userId, metrics, rangeParam, scopeParam);
+
+        int totalRows = result.series().stream().mapToInt(s -> s.points().size()).sum();
+        if (totalRows > MAX_EXPORT_ROWS) {
+            throw new CustomException(ErrorCode.SA003,
+                    "내보내기 행 수(" + totalRows + ")가 상한(" + MAX_EXPORT_ROWS + ")을 초과했습니다. "
+                            + "기간·지표·스코프를 좁혀 다시 시도해주세요.");
+        }
+
+        byte[] content = toCsvBytes(result);
+        String filename = buildExportFilename(farmId, result.range(), result.scope());
+        return new CsvExport(content, filename);
+    }
+
+    private byte[] toCsvBytes(ReadingSeriesResponse result) {
+        StringBuilder csv = new StringBuilder();
+        csv.append("measuredAt,metric,unit,value\r\n");
+        for (ReadingSeriesResponse.Series s : result.series()) {
+            for (ReadingSeriesResponse.Point point : s.points()) {
+                csv.append(point.at() != null ? point.at().format(CSV_TIMESTAMP_FORMAT) : "").append(',')
+                        .append(s.metric()).append(',')
+                        .append(escapeCsvField(s.unit())).append(',')
+                        .append(point.value() != null ? point.value() : "")
+                        .append("\r\n");
+            }
+        }
+
+        // ⚠️ UTF-8 BOM 포함(핸드오프 판단 3) — unit 컬럼에 °C·µmol/m²/s처럼 비ASCII 기호가 그대로
+        // 실리는데, BOM이 없으면 Excel(Windows 기본 로케일)이 시스템 코드페이지로 잘못 해석해 그
+        // 기호가 깨진다. RFC4180을 엄격히 따르는 일부 파서가 BOM을 첫 컬럼명의 일부로 오인하는
+        // 부작용이 있지만, 이 파일의 1차 소비자는 "다운로드 후 엑셀로 더블클릭 실행"이라 Excel
+        // 호환을 우선한다.
+        byte[] body = csv.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] withBom = new byte[UTF8_BOM.length + body.length];
+        System.arraycopy(UTF8_BOM, 0, withBom, 0, UTF8_BOM.length);
+        System.arraycopy(body, 0, withBom, UTF8_BOM.length, body.length);
+        return withBom;
+    }
+
+    private String escapeCsvField(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
+    /**
+     * 다운로드 파일명(핸드오프 요건 — 사용자 입력을 그대로 넣지 않는다) — farmId·range·scope는
+     * 전부 이미 서버가 검증을 마친 값이다. {@code scope} 문자열은 {@link ReadingScope#parse}가
+     * {@code "farm"} 또는 {@code "{zone|rack|level}:{숫자}"} 형식만 통과시킨 뒤 그대로 echo된 것이라
+     * 헤더 인젝션·경로 문자가 섞일 수 없다 — 농장 이름 등 실제 사용자 입력 문자열은 파일명에 쓰지
+     * 않는다.
+     */
+    private String buildExportFilename(Long farmId, String range, String scope) {
+        String safeScope = scope.replace(':', '-');
+        String timestamp = LocalDateTime.now().format(EXPORT_FILENAME_TIMESTAMP_FORMAT);
+        return "sensor-readings_farm" + farmId + "_" + range + "_" + safeScope + "_" + timestamp + ".csv";
     }
 
     public ReadingMatrixResponse latest(Long farmId, Long userId, SensorMetric metric, Long zoneId) {
