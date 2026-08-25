@@ -22,6 +22,7 @@ import com.smartfarm.service.entity.DeviceStatus;
 import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.OperationMode;
 import com.smartfarm.service.entity.SensorMetric;
+import com.smartfarm.service.entity.SystemLogCategory;
 import com.smartfarm.service.entity.Zone;
 import com.smartfarm.service.exception.ControlQueueConflictException;
 import com.smartfarm.service.exception.CustomException;
@@ -120,6 +121,7 @@ public class ControlService {
     private final ControlApplyLogRepository controlApplyLogRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
+    private final SystemLogService systemLogService;
 
     record TargetRange(double min, double max) {
 
@@ -169,6 +171,9 @@ public class ControlService {
             log.info("운전 모드 변경({}) — 새 모드에서 허용되지 않는 대기 항목 {}건 폐기: zoneId={}",
                     request.mode(), disallowed.size(), zoneId);
         }
+        // 시스템 로그 기록(이슈 #129-A, 부가 작업 — 실패해도 이 트랜잭션에 영향 없음, SystemLogService 참고).
+        systemLogService.record(farmId, SystemLogCategory.CONTROL,
+                "존(id=" + zoneId + ") 운전 모드가 " + request.mode() + "(으)로 변경되었습니다.", userId);
         return buildState(zone, mode);
     }
 

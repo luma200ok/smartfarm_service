@@ -13,6 +13,7 @@ import com.smartfarm.service.entity.AlarmEventStatus;
 import com.smartfarm.service.entity.AlarmRule;
 import com.smartfarm.service.entity.AlarmSeverity;
 import com.smartfarm.service.entity.AlarmSourceType;
+import com.smartfarm.service.entity.SystemLogCategory;
 import com.smartfarm.service.entity.User;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
@@ -53,6 +54,7 @@ public class AlarmEventService {
     private final AlarmEventLogRepository alarmEventLogRepository;
     private final UserRepository userRepository;
     private final FarmAccessGuard farmAccessGuard;
+    private final SystemLogService systemLogService;
 
     public PageResponse<AlarmEventResponse> list(Long farmId, Long userId, AlarmEventStatus status,
                                                   AlarmSeverity severity, Pageable pageable) {
@@ -182,6 +184,10 @@ public class AlarmEventService {
                 .scopeId(rule != null ? rule.getScopeId() : null)
                 .build());
         alarmEventLogRepository.save(AlarmEventLog.of(event, AlarmEventLogAction.CREATED, null, null));
+        // 시스템 로그 기록(이슈 #129-A, 부가 작업 — actorId는 시스템 자동 이벤트라 null). 실패해도 이
+        // 트랜잭션(브리치 기록 자체)에 영향 없음(SystemLogService 참고) — #116에서 부가 작업의 예외가
+        // 스케줄러 틱 전체를 날린 사례를 반복하지 않는다.
+        systemLogService.record(farmId, SystemLogCategory.ALARM, "알람 이벤트가 발생했습니다: " + message, null);
     }
 
     /**

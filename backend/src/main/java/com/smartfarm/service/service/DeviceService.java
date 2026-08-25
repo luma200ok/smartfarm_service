@@ -11,6 +11,7 @@ import com.smartfarm.service.entity.DeviceStatus;
 import com.smartfarm.service.entity.Rack;
 import com.smartfarm.service.entity.RackLevel;
 import com.smartfarm.service.entity.SensorMetric;
+import com.smartfarm.service.entity.SystemLogCategory;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.DeviceRepository;
@@ -58,6 +59,7 @@ public class DeviceService {
     private final FarmAccessGuard farmAccessGuard;
     private final DemoAccountGuard demoAccountGuard;
     private final ControlCascadeService controlCascadeService;
+    private final SystemLogService systemLogService;
 
     public DeviceListResponse listDevices(Long farmId, Long userId, DeviceKind kind, DeviceStatus status,
                                            String q, Long zoneId) {
@@ -159,6 +161,8 @@ public class DeviceService {
                     .installedOn(request.installedOn())
                     .metrics(metrics)
                     .build());
+            // 시스템 로그 기록(이슈 #129-A, 부가 작업 — 실패해도 이 트랜잭션에 영향 없음, SystemLogService 참고).
+            systemLogService.record(farmId, SystemLogCategory.DEVICE, "장비가 등록되었습니다: " + device.getName(), userId);
             return DeviceResponse.from(device);
         } catch (DataIntegrityViolationException e) {
             throw translateSerialViolation(e);
@@ -202,6 +206,8 @@ public class DeviceService {
         } catch (DataIntegrityViolationException e) {
             throw translateSerialViolation(e);
         }
+        // 시스템 로그 기록(이슈 #129-A, 부가 작업 — 실패해도 이 트랜잭션에 영향 없음, SystemLogService 참고).
+        systemLogService.record(farmId, SystemLogCategory.DEVICE, "장비 정보가 수정되었습니다: " + device.getName(), userId);
         return DeviceResponse.from(device);
     }
 
