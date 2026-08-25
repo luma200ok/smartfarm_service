@@ -6,6 +6,11 @@
 -- FARM은 scope_id NULL, 그 외는 필수). metrics는 §4.11 SensorMetric 중 최대 4개를 담는 목록이라
 -- ChatMessage#sources·NutrientRecipe#calculationSnapshot과 동일하게 JSONB 문자열 컬럼으로 둔다
 -- (선택 근거는 SavedAnalysisService 클래스 주석 참고 — 최대 4개짜리 목록에 조인 테이블은 과하다).
+--
+-- created_by는 farm_logs.author(V11)와 동일 관례로 users FK를 건다(고아 행 차단) — ON DELETE
+-- 절이 없는 것도 V11과 동일하다: User#withdraw()는 @SQLDelete(UPDATE users SET deleted_at=NOW())
+-- 로 재정의된 소프트 삭제라 users 행이 물리적으로 삭제되지 않으므로(회원 탈퇴는 이 경로가
+-- 유일 — ArchitectureRulesTest 규칙③) 이 FK가 탈퇴로 깨질 일이 없다.
 
 CREATE TABLE saved_analyses (
     id         BIGSERIAL PRIMARY KEY,
@@ -15,7 +20,7 @@ CREATE TABLE saved_analyses (
     range      VARCHAR(10) NOT NULL,
     scope_type VARCHAR(20) NOT NULL,
     scope_id   BIGINT,
-    created_by BIGINT      NOT NULL,
+    created_by BIGINT      NOT NULL REFERENCES users (id),
     created_at TIMESTAMP   NOT NULL,
     updated_at TIMESTAMP   NOT NULL,
 
