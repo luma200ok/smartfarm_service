@@ -480,6 +480,38 @@
 - **ErrorCode**: `ALR001`(404 규칙 없음) · `ALR002`(409 상한 초과) · `ALR003`(400 검증 실패) · `ALR004`(409 파생 규칙 직접 수정 불가)
 - **마이그레이션**: **V20** `alarm_rules` + 기존 `farm_env_thresholds` 이관 + 열린 `alarm_events`의 `metric_key` 재매핑 + 미대상 레거시 알람 자동 해소(감사 로그 동반)
 
+## 4.15 CSV 내보내기 · 저장한 분석 (2026-08-25 확정, 이슈 #126 — 미구현 도메인 정리 4)
+
+> **범위**: CSV + 저장한 분석만. PDF/XLSX 리포트 생성·예약은 새 의존성(iText/POI)+스케줄러가 필요해 후속 분리(사용자 결정).
+
+### CSV 내보내기
+| 메서드 | 경로 | 권한 | 요청 | 응답 |
+|---|---|---|---|---|
+| GET | `/api/farms/{farmId}/readings/export.csv` | 멤버(VIEWER 이상) | `?metrics=&range=&scope=` (§4.11 `series`와 **동일**) | 200 `text/csv; charset=UTF-8` |
+
+- **`series()`를 재사용한다** — 차트가 보여주는 **다운샘플 결과**를 그대로 CSV로 직렬화하며 별도 원본 쿼리가 없다. ⚠️ 원본 덤프로 바꾸면 §4.11이 경고한 "농장당 1틱 300행×90일"(수백만 행) 규모가 그대로 나와 별도의 무거운 상한 설계가 필요해진다.
+- **행 수 상한 5760** = `MAX_SERIES_METRICS(4) × 24h 최대 버킷(1440)`. 현재 파라미터 조합으로는 구조적으로 초과 불가라 초과 응답은 **향후 버킷이 촘촘해질 때를 위한 방어선**이다.
+- **UTF-8 BOM 포함** — unit 컬럼에 `°C`·`µmol/m²/s`가 실려 BOM이 없으면 Excel에서 깨진다(1차 소비자가 "다운로드 후 엑셀 더블클릭").
+- 컬럼: `measuredAt, metric, unit, value`. 값이 전부 시스템 생성(타임스탬프·enum·`Double`)이라 **CSV 수식 인젝션 표면이 없다**(사용자 문자열이 셀에 실리지 않음 — 농장명·분석 이름 미포함).
+- `Content-Disposition: attachment` + RFC 5987. 파일명 구성요소인 `scope`는 `ReadingScope.parse`가 `farm`·`{zone|rack|level}:{숫자}` 형식만 통과시켜 헤더 인젝션이 구조적으로 불가능하다.
+- **권한이 `requireMember`인 이유**: VIEWER가 화면에서 이미 보는 것과 같은 쿼리·같은 스코프 검증 결과다. 파일 형식이라는 이유만으로 격상하면 §2 "VIEWER=조회전용" 정의와 어긋나고 실질 이득도 없다.
+
+### 저장한 분석 (`saved_analyses`, V22)
+| 메서드 | 경로 | 권한 | 응답 |
+|---|---|---|---|
+| GET | `/api/farms/{farmId}/saved-analyses` | 멤버 | 200 `List<SavedAnalysisResponse>` |
+| POST | `/api/farms/{farmId}/saved-analyses` | **OPERATOR** | 201 SavedAnalysisResponse |
+| PATCH | `/api/farms/{farmId}/saved-analyses/{id}` | **작성자 OR ADMIN** | 200 SavedAnalysisResponse (name만 수정) |
+| DELETE | `/api/farms/{farmId}/saved-analyses/{id}` | **작성자 OR ADMIN** | 204 |
+
+- **SavedAnalysisResponse** `{id, name, metrics[], range, scopeType, scopeId?, createdBy, createdAt, updatedAt}`
+- `metrics`는 **JSONB**(`ChatMessage#sources`·`NutrientRecipe#calculationSnapshot` 관용구) — 최대 4개(`@Size(max=4)`)·중복 제거·`SensorMetric` 타입드 역직렬화라 임의 JSON 저장 경로가 없다
+- **작성이 OPERATOR 이상인 이유**: VIEWER가 author가 되면 `author OR ADMIN` 삭제 규칙으로 **삭제 권한까지 획득**해 "조회전용"이 우회된다(#122에서 확립한 원칙)
+- 농장당 **50건 상한** — `findByIdForUpdate` 농장 행 잠금 안에서 count(check-then-act 레이스 차단)
+- `scopeId` 검증은 `AlarmScopeResolver.requireExists` 재사용 → **403이 아니라 404**(R001/R002/R003)
+- ⚠️ **스코프 대상이 soft delete돼도 저장한 분석은 지우지 않는다** — 이 기능엔 "실행" 경로가 없다(재적용은 FE가 `GET /readings/series`를 직접 호출). #118의 알람 규칙과 달리 스코프 소멸이 조회 오류로 이어지지 않는다
+- **ErrorCode**: `SA001`(404 분석 없음) · `SA002`(409 개수 상한) · `SA003`(413 내보내기 행 수 초과) · `SA004`(403 작성자·ADMIN 아님)
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -540,6 +572,10 @@
 | ALR002 | 409 | 알람 규칙 개수 상한 초과(농장당 50건 — 파생 규칙 포함) |
 | ALR003 | 400 | 알람 규칙 검증 실패(comparator·임계값 조합 불일치, 공백 이름 등) |
 | ALR004 | 409 | 파생 규칙은 직접 수정·삭제할 수 없음(`PUT /env-thresholds`로만) |
+| SA001 | 404 | 저장한 분석 없음(타 농장 소속 포함) |
+| SA002 | 409 | 저장한 분석 개수 상한 초과(농장당 50건) |
+| SA003 | 413 | CSV 내보내기 행 수 상한 초과 |
+| SA004 | 403 | 저장한 분석 수정·삭제 권한 없음(작성자 본인·ADMIN 겸용) |
 
 ## 6. 환경변수 · CORS
 
