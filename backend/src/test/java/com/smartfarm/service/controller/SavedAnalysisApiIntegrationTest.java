@@ -296,6 +296,35 @@ class SavedAnalysisApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.code").value("C001"));
     }
 
+    @Test
+    @DisplayName("스코프 대상(랙)이 나중에 soft delete돼도 저장한 분석 행은 캐스케이드 삭제되지 않는다"
+            + "(#118 선례 재사용 — AlarmRule이 스코프 소멸 시에도 캐스케이드 삭제 없이 평가만 건너뛰는"
+            + " 것과 동일 원칙). 이 기능엔 '실행'(재조회) 경로가 없고 목록 조회가 조인 없이 원시 필드만"
+            + " 반환하므로 스코프 소멸이 조회 오류로 이어지지 않는다 — FE가 저장된 조건으로 재적용을"
+            + " 시도하면 그 시점에 GET /readings/series가 자연히 404(R002)로 막는다.")
+    void analysisSurvivesScopeSoftDelete() throws Exception {
+        String token = signupAndLogin("분석스코프주인3");
+        long farmId = createFarm(token, "분석스코프농장3");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "B3", 5);
+        long id = readJson(createAnalysis(token, farmId, """
+                {"name":"B3랙 온습도","metrics":["TEMPERATURE"],"range":"24h",
+                 "scopeType":"RACK","scopeId":%d}
+                """.formatted(rackId))).get("id").asLong();
+
+        mockMvc.perform(delete("/api/farms/" + farmId + "/racks/" + rackId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/saved-analyses")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(id))
+                .andExpect(jsonPath("$[0].scopeType").value("RACK"))
+                .andExpect(jsonPath("$[0].scopeId").value(rackId));
+    }
+
     // ── 필드 검증 ───────────────────────────────────────────────────────────────
 
     @Test
