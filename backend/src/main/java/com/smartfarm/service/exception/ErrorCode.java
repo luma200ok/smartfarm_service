@@ -115,7 +115,19 @@ public enum ErrorCode {
     ALR001(HttpStatus.NOT_FOUND, "ALR001", "알람 규칙을 찾을 수 없습니다."),
     ALR002(HttpStatus.CONFLICT, "ALR002", "농장당 알람 규칙 상한을 초과했습니다."),
     ALR003(HttpStatus.BAD_REQUEST, "ALR003", "비교 조건과 임계값 구성이 올바르지 않습니다."),
-    ALR004(HttpStatus.CONFLICT, "ALR004", "환경 임계치 설정에서 만들어진 규칙은 임계치 설정 API로만 변경할 수 있습니다.");
+    ALR004(HttpStatus.CONFLICT, "ALR004", "환경 임계치 설정에서 만들어진 규칙은 임계치 설정 API로만 변경할 수 있습니다."),
+
+    // Saved Analysis (저장한 분석 — 이슈 #126)
+    SA001(HttpStatus.NOT_FOUND, "SA001", "저장한 분석을 찾을 수 없습니다."),
+    SA002(HttpStatus.CONFLICT, "SA002", "농장당 저장한 분석 개수 상한을 초과했습니다."),
+    /** 수정(rename)·삭제 권한 없음 — 작성자 본인 또는 ADMIN만 가능(L002·N002와 동일 원칙). */
+    SA004(HttpStatus.FORBIDDEN, "SA004", "저장한 분석 수정/삭제 권한이 없습니다."),
+    /**
+     * CSV 내보내기 행 수 상한 초과(이슈 #126) — {@code /readings/series}와 동일한 다운샘플 집계를
+     * 재사용하므로 구조적으로 metric당 최대 버킷 수 × 4(MAX_SERIES_METRICS)를 넘을 수 없지만,
+     * 방어선을 명시적으로 코드에 남긴다({@code ReadingService.MAX_EXPORT_ROWS} 참고).
+     */
+    SA003(HttpStatus.PAYLOAD_TOO_LARGE, "SA003", "내보내기 대상 데이터가 너무 많습니다. 기간·지표·스코프를 좁혀 다시 시도해주세요.");
 
     private final HttpStatus status;
     private final String code;
