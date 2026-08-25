@@ -191,6 +191,26 @@ class SavedAnalysisApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("ADMIN은 타인이 작성한 분석의 이름도 바꿀 수 있다 — 삭제와 같은 author OR ADMIN 규칙")
+    void adminCanRenameOthersAnalysis() throws Exception {
+        // 한쪽만 작성자 전용이면 ADMIN이 팀원의 오타 난 이름을 고칠 수는 없으면서 지울 수는 있는
+        // 비대칭이 된다(#126 보안 리뷰 P2 — Swagger는 "작성자 본인 또는 ADMIN"인데 코드는 작성자 전용이었다).
+        String adminToken = signupAndLogin("분석관리자5");
+        long farmId = createFarm(adminToken, "분석농장11");
+        String authorToken = signupAndLogin("분석작성자3");
+        joinFarmAs(adminToken, farmId, authorToken, FarmRole.OPERATOR);
+
+        long id = readJson(createAnalysis(authorToken, farmId, FARM_SCOPE_ANALYSIS)).get("id").asLong();
+
+        mockMvc.perform(patch("/api/farms/" + farmId + "/saved-analyses/" + id)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"관리자가 고친 이름\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("관리자가 고친 이름"));
+    }
+
+    @Test
     @DisplayName("타 농장의 분석 id로 접근하면 404 SA001이다(cross-tenant IDOR — 존재를 유추당하지 않는다)")
     void crossTenantAnalysisIdIsNotFound() throws Exception {
         String ownerA = signupAndLogin("분석A주인");

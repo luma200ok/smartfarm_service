@@ -111,9 +111,13 @@ public class SavedAnalysisService {
     @Transactional
     public SavedAnalysisResponse rename(Long farmId, Long userId, Long analysisId,
                                          SavedAnalysisUpdateRequest request) {
-        farmAccessGuard.requireOperator(farmId, userId);
+        // 삭제와 동일한 "작성자 OR ADMIN" 규칙 — 한쪽만 작성자 전용이면 ADMIN이 팀원의 오타 난
+        // 분석 이름을 고칠 수 없으면서 지울 수는 있는 비대칭이 된다(#126 보안 리뷰 P2).
+        FarmAccessGuard.FarmAccess access = farmAccessGuard.requireOperator(farmId, userId);
         SavedAnalysis analysis = findOrThrow(farmId, analysisId);
-        if (!analysis.getCreatedBy().equals(userId)) {
+        boolean isAuthor = analysis.getCreatedBy().equals(userId);
+        boolean isAdmin = access.membership().getRole().atLeast(FarmRole.ADMIN);
+        if (!isAuthor && !isAdmin) {
             throw new CustomException(ErrorCode.SA004);
         }
         analysis.rename(request.name().trim());
