@@ -55,6 +55,24 @@ class PesticideReferenceApiIntegrationTest extends FarmTestSupport {
     }
 
     @Test
+    @DisplayName("방어선: q에 '%'가 들어가도 SQL LIKE 와일드카드로 해석되지 않고 문자 그대로 검색된다"
+            + "(이스케이프 제거 시 실패해야 하는 회귀 테스트 — 리뷰 P3)")
+    void percentInQueryIsTreatedLiterallyNotAsWildcard() throws Exception {
+        String token = signupAndLogin("농약조회자-와일드카드");
+
+        // 시드된 병해충명 어디에도 '%' 문자가 없다 — 이스케이프가 없으면 LIKE '%%%'가 되어 전체가
+        // 매칭되지만(회귀), 이스케이프가 되면 문자 그대로 '%'를 찾으므로 0건이어야 한다.
+        MvcResult result = mockMvc.perform(get("/api/pesticide-references")
+                        .param("cropType", "TOMATO")
+                        .param("q", "%")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(readJson(result).size()).isZero();
+    }
+
+    @Test
     @DisplayName("q 생략 시 시드된 6개 병해충 전체가 포함된다")
     void withoutQueryReturnsAllSeededPests() throws Exception {
         String token = signupAndLogin("농약조회자-전체");

@@ -29,12 +29,21 @@ public class LocalPesticideReferenceProvider implements PesticideReferenceProvid
     @Override
     public List<PesticideReferenceItem> findReferences(CropType cropType, String query, int limit) {
         String pestNameQuery = query == null ? "" : query.trim();
+        String likePattern = "%" + escapeLikeWildcards(pestNameQuery) + "%";
         return pesticideReferenceRepository
-                .findByCropTypeAndPestNameContainingIgnoreCaseOrderByPestNameAsc(
-                        cropType, pestNameQuery, PageRequest.of(0, limit))
+                .searchByCropTypeAndPestNameLike(cropType, likePattern, PageRequest.of(0, limit))
                 .stream()
                 .map(LocalPesticideReferenceProvider::toItem)
                 .toList();
+    }
+
+    /**
+     * 검색어의 LIKE 와일드카드 문자({@code %}·{@code _})를 문자 그대로 취급한다(리뷰 P3) — 이스케이프
+     * 문자 {@code \} 자신부터 먼저 이스케이프해야 순서가 꼬이지 않는다. 리포지토리 쿼리의
+     * {@code ESCAPE '\'}와 짝을 이룬다.
+     */
+    private static String escapeLikeWildcards(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override
