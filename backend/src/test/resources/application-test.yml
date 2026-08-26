@@ -11,6 +11,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    # 홈 대시보드(이슈 #139) N+1 회귀 테스트가 Hibernate Statistics로 쿼리 개수를 재기 위해 켠다
+    # (테스트 전용 — 운영 application.yml에는 없음, 통계 수집 자체가 약간의 오버헤드가 있다).
+    properties:
+      hibernate:
+        generate_statistics: true
   servlet:
     multipart:
       max-file-size: 15MB
