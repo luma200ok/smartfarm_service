@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Chip } from "@/components/monitoring/ui";
 import Modal from "@/components/ui/Modal";
 import {
@@ -109,12 +109,21 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
     run();
   }, [loadFilterCounts]);
 
+  // 필터를 빠르게 연속 전환하면(전체→경보→완료) 응답이 요청 순서대로 돌아온다는 보장이 없어
+  // 늦게 도착한 이전 필터 응답이 나중 응답을 덮어쓸 수 있다(리뷰 P2-1). detail/rule effect의
+  // 지역 cancelled 플래그와 동일한 목적이지만, loadList는 이 effect 외에 onRefresh·전체확인
+  // 후에도 호출되는 공유 함수라 호출마다 고유한 요청 ID를 발급해 "가장 최근에 시작된 요청만
+  // 화면에 반영"되도록 한다(가장 나중에 도착한 응답이 아니라 가장 나중에 시작된 요청 기준).
+  const listRequestIdRef = useRef(0);
+
   const loadList = useCallback(
     async (targetFilter: AlarmFilterKey) => {
+      const requestId = ++listRequestIdRef.current;
       setListLoading(true);
       setListError(null);
       try {
         const res = await listAlarmEvents(farmId, filterToQuery(targetFilter), 0, PAGE_SIZE);
+        if (listRequestIdRef.current !== requestId) return; // 그 사이 더 최신 요청이 시작됨 — 폐기
         setItems(res.content);
         setPage(0);
         setTotalElements(res.totalElements);
@@ -122,11 +131,12 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
         // 않았을 때만(최초 로드) 첫 행을 기본 선택한다.
         setSelectedId((prev) => prev ?? res.content[0]?.id ?? null);
       } catch (err) {
+        if (listRequestIdRef.current !== requestId) return;
         setListError(resolveErrorMessage(err));
         setItems([]);
         setTotalElements(0);
       } finally {
-        setListLoading(false);
+        if (listRequestIdRef.current === requestId) setListLoading(false);
       }
     },
     [farmId]
