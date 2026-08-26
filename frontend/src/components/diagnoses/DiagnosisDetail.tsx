@@ -58,11 +58,9 @@ export default function DiagnosisDetail({ farmId, diagnosisId }: DiagnosisDetail
   return (
     <main className="flex flex-col gap-4 px-6 py-6">
       {/* 페이지 제목(이슈 #136 — 구 FarmTabsHeader 제거로 드릴다운 화면도 제목을 잃었다).
-          진단 자체는 결과 카드 안에 labelKr로 표시되므로(ood_blocked 시엔 그마저 없음),
-          여기서는 "무엇의 상세인지" + 발생 시각으로 문맥을 준다. */}
-      <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">
-        진단 상세 · {new Date(diagnosis.createdAt).toLocaleString()}
-      </h1>
+          발생 시각은 바로 아래 DiagnosisResultCard가 이미 표시하므로(리뷰 P3-2) 여기서는
+          중복하지 않고 "무엇의 상세인지"만 밝힌다. */}
+      <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">진단 상세</h1>
       <DiagnosisResultCard diagnosis={diagnosis} />
     </main>
   );

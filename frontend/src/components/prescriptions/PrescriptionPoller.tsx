@@ -88,13 +88,11 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
   }
 
   // 페이지 제목(이슈 #136 — 구 FarmTabsHeader 제거로 드릴다운 화면도 제목을 잃었다).
-  // 처방 내용 자체는 PrescriptionStatusCard가 표시하므로, 여기서는 "무엇의 상세인지" +
-  // 요청 시각으로 문맥을 준다. prescription을 아직 한 번도 못 받아왔으면(retryExhausted
-  // 진입 직후 등) 렌더하지 않는다.
+  // 요청 시각은 바로 아래 PrescriptionStatusCard가 이미 표시하므로(리뷰 P3-2) 중복하지
+  // 않는다. prescription을 아직 한 번도 못 받아왔으면(retryExhausted 진입 직후 등) 렌더하지
+  // 않는다.
   const title = prescription ? (
-    <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">
-      처방 상세 · {new Date(prescription.createdAt).toLocaleString()}
-    </h1>
+    <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">처방 상세</h1>
   ) : null;
 
   if (notFound) {
