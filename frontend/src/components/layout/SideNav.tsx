@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { FarmSummaryResponse } from "@/types";
+import { ALARM_SEVERITY_LABELS } from "@/constants";
+import type { AlarmStatsResponse, FarmSummaryResponse } from "@/types";
 import { NAV_GROUPS, getLeafHref, isLeafActive } from "./nav-config";
 
 interface SideNavProps {
@@ -11,6 +12,9 @@ interface SideNavProps {
   effectiveFarmId: string | null;
   pathname: string;
   activeGroupKey: string | null;
+  /** 알람 현황 화면(activeGroupKey==="alarm")일 때만 하단 블록에 쓰인다. */
+  alarmStats?: AlarmStatsResponse | null;
+  alarmStatsFailed?: boolean;
   onSelectFarm: (farmId: string) => void;
   /** « (데스크톱 접기) 또는 서랍 닫기 — variant에 따라 의미가 다르다. */
   onCollapse: () => void;
@@ -28,6 +32,8 @@ export default function SideNav({
   effectiveFarmId,
   pathname,
   activeGroupKey,
+  alarmStats,
+  alarmStatsFailed = false,
   onSelectFarm,
   onCollapse,
   onNavigate,
@@ -131,40 +137,75 @@ export default function SideNav({
         })}
       </nav>
 
-      {/* 하단 정보 블록(바닥 고정) — 구 Sidebar의 "내 농장" 스위처를 여기로 옮겼다(§ 특히 주의 1). */}
-      <div className="mx-2.5 mb-3.5 flex-none rounded-lg bg-dp-inset p-3">
-        <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.05em] text-dp-muted">내 농장</div>
-        {farms === null && !farmsLoadFailed && <p className="text-xs text-dp-faint">불러오는 중...</p>}
-        {farmsLoadFailed && <p className="text-xs text-dp-faint">목록을 불러오지 못했습니다.</p>}
-        {farms !== null && farms.length === 0 && !farmsLoadFailed && (
-          <p className="text-xs text-dp-faint">등록된 농장이 없습니다.</p>
-        )}
-        {farms !== null && farms.length > 0 && (
-          <ul className="flex flex-col gap-1.5">
-            {farms.map((farm) => {
-              const active = String(farm.id) === effectiveFarmId;
-              return (
-                <li key={farm.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectFarm(String(farm.id));
-                      onNavigate?.();
-                    }}
-                    aria-current={active ? "true" : undefined}
-                    className={`flex w-full items-center gap-1.5 truncate text-left text-[12px] font-medium ${
-                      active ? "text-dp-ink" : "text-dp-body hover:text-dp-ink"
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 flex-none rounded-full bg-dp-green" />
-                    <span className="truncate">{farm.name}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+      {/* 하단 정보 블록(바닥 고정) — 구 Sidebar의 "내 농장" 스위처를 여기로 옮겼다(§ 특히 주의 1).
+          알람 현황 화면(이슈 #136)에서는 시안 요구대로 "최근 7일" 통계로 교체된다. */}
+      {activeGroupKey === "alarm" ? (
+        <AlarmStatsBlock stats={alarmStats ?? null} failed={alarmStatsFailed} />
+      ) : (
+        <div className="mx-2.5 mb-3.5 flex-none rounded-lg bg-dp-inset p-3">
+          <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.05em] text-dp-muted">내 농장</div>
+          {farms === null && !farmsLoadFailed && <p className="text-xs text-dp-faint">불러오는 중...</p>}
+          {farmsLoadFailed && <p className="text-xs text-dp-faint">목록을 불러오지 못했습니다.</p>}
+          {farms !== null && farms.length === 0 && !farmsLoadFailed && (
+            <p className="text-xs text-dp-faint">등록된 농장이 없습니다.</p>
+          )}
+          {farms !== null && farms.length > 0 && (
+            <ul className="flex flex-col gap-1.5">
+              {farms.map((farm) => {
+                const active = String(farm.id) === effectiveFarmId;
+                return (
+                  <li key={farm.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectFarm(String(farm.id));
+                        onNavigate?.();
+                      }}
+                      aria-current={active ? "true" : undefined}
+                      className={`flex w-full items-center gap-1.5 truncate text-left text-[12px] font-medium ${
+                        active ? "text-dp-ink" : "text-dp-body hover:text-dp-ink"
+                      }`}
+                    >
+                      <span className="h-1.5 w-1.5 flex-none rounded-full bg-dp-green" />
+                      <span className="truncate">{farm.name}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
     </aside>
+  );
+}
+
+// 좌측 내비 하단 "최근 7일" 통계(핸드오프 — 알람 화면에서 "내 농장" 블록 자리를 대체).
+// avgAcknowledgeMinutes는 확인된 이벤트가 없으면 null이라 그대로 "—"로 보여준다(값을 지어내지 않음).
+function AlarmStatsBlock({ stats, failed }: { stats: AlarmStatsResponse | null; failed: boolean }) {
+  return (
+    <div className="mx-2.5 mb-3.5 flex-none rounded-lg bg-dp-inset p-3">
+      <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.05em] text-dp-muted">최근 7일</div>
+      {stats === null && !failed && <p className="text-xs text-dp-faint">불러오는 중...</p>}
+      {failed && <p className="text-xs text-dp-faint">통계를 불러오지 못했습니다.</p>}
+      {stats && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between py-1 text-[12px] leading-none font-medium text-dp-body">
+            <span>{ALARM_SEVERITY_LABELS.CRITICAL}</span>
+            <b className="text-dp-red-ink">{stats.countBySeverity.CRITICAL}</b>
+          </div>
+          <div className="flex items-center justify-between py-1 text-[12px] leading-none font-medium text-dp-body">
+            <span>{ALARM_SEVERITY_LABELS.WARNING}</span>
+            <b className="text-dp-amber-deep">{stats.countBySeverity.WARNING}</b>
+          </div>
+          <div className="flex items-center justify-between py-1 text-[12px] leading-none font-medium text-dp-body">
+            <span>평균 처리</span>
+            <b className="text-dp-ink">
+              {stats.avgAcknowledgeMinutes !== null ? `${Math.round(stats.avgAcknowledgeMinutes)}분` : "—"}
+            </b>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

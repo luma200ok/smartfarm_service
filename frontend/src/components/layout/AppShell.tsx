@@ -2,9 +2,11 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { getAlarmStats, getUnacknowledgedCount } from "@/lib/api/alarms";
 import { listFarms } from "@/lib/api/farms";
+import { subscribeAlarmsChanged } from "@/lib/alarmsBus";
 import { subscribeFarmsChanged } from "@/lib/farmsBus";
-import type { FarmSummaryResponse } from "@/types";
+import type { AlarmStatsResponse, FarmSummaryResponse } from "@/types";
 import GlobalBar from "./GlobalBar";
 import { computeActiveGroupKey, extractFarmIdFromPath } from "./nav-config";
 import SideNav from "./SideNav";
@@ -57,6 +59,83 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const effectiveFarmId = pathFarmId ?? (farms && farms.length > 0 ? String(farms[0].id) : null);
   const activeGroupKey = computeActiveGroupKey(pathname, effectiveFarmId);
 
+  // TopBar 알람 배지(이슈 #136) — 농장이 바뀌거나 이 화면에서 알람을 확인/처리하면(alarmsBus)
+  // 다시 조회한다. farmsBus의 load/subscribe 패턴과 동일.
+  const [unackCount, setUnackCount] = useState<number | null>(null);
+  const [unackCountFailed, setUnackCountFailed] = useState(false);
+
+  // effectiveFarmId가 없어지면(예: 농장 목록 자체가 빈 상태) 배지를 비운다 — drawerClosedFor와
+  // 동일한 "렌더 중 조정" 패턴(react-hooks/set-state-in-effect 회피).
+  const [unackFarmId, setUnackFarmId] = useState(effectiveFarmId);
+  if (effectiveFarmId !== unackFarmId) {
+    setUnackFarmId(effectiveFarmId);
+    if (!effectiveFarmId) {
+      setUnackCount(null);
+      setUnackCountFailed(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!effectiveFarmId) return;
+    let cancelled = false;
+    function load() {
+      getUnacknowledgedCount(effectiveFarmId!)
+        .then((res) => {
+          if (!cancelled) {
+            setUnackCount(res.count);
+            setUnackCountFailed(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setUnackCountFailed(true);
+        });
+    }
+    load();
+    const unsubscribe = subscribeAlarmsChanged(load);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [effectiveFarmId]);
+
+  // 좌측 내비 하단 "최근 7일" 통계(이슈 #136) — 알람 현황 화면에 있을 때만 조회한다
+  // (핸드오프: 하단 정보 블록을 "내 농장" 대신 이 통계로 교체).
+  const [alarmStats, setAlarmStats] = useState<AlarmStatsResponse | null>(null);
+  const [alarmStatsFailed, setAlarmStatsFailed] = useState(false);
+
+  const showAlarmStats = activeGroupKey === "alarm" && effectiveFarmId !== null;
+  const [wasShowingAlarmStats, setWasShowingAlarmStats] = useState(showAlarmStats);
+  if (showAlarmStats !== wasShowingAlarmStats) {
+    setWasShowingAlarmStats(showAlarmStats);
+    if (!showAlarmStats) {
+      setAlarmStats(null);
+      setAlarmStatsFailed(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!showAlarmStats) return;
+    let cancelled = false;
+    function load() {
+      getAlarmStats(effectiveFarmId!, 7)
+        .then((data) => {
+          if (!cancelled) {
+            setAlarmStats(data);
+            setAlarmStatsFailed(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setAlarmStatsFailed(true);
+        });
+    }
+    load();
+    const unsubscribe = subscribeAlarmsChanged(load);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [showAlarmStats, effectiveFarmId]);
+
   // 농장 드롭다운/내 농장 스위처 — 현재 화면을 유지한 채 farmId만 교체(이슈 #133).
   // farm 스코프가 없는 화면(예: /dashboard)에서는 해당 농장 상세로 이동한다.
   function handleSelectFarm(nextFarmId: string) {
@@ -74,6 +153,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         farmsLoadFailed={farmsLoadFailed}
         effectiveFarmId={effectiveFarmId}
         activeGroupKey={activeGroupKey}
+        unackCount={unackCount}
+        unackCountFailed={unackCountFailed}
         onSelectFarm={handleSelectFarm}
         onOpenDrawer={() => setDrawerOpen(true)}
       />
@@ -88,6 +169,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
             effectiveFarmId={effectiveFarmId}
             pathname={pathname}
             activeGroupKey={activeGroupKey}
+            alarmStats={alarmStats}
+            alarmStatsFailed={alarmStatsFailed}
             onSelectFarm={handleSelectFarm}
             onCollapse={() => setNavCollapsed(true)}
           />
@@ -120,6 +203,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 effectiveFarmId={effectiveFarmId}
                 pathname={pathname}
                 activeGroupKey={activeGroupKey}
+                alarmStats={alarmStats}
+                alarmStatsFailed={alarmStatsFailed}
                 onSelectFarm={handleSelectFarm}
                 onCollapse={() => setDrawerOpen(false)}
                 onNavigate={() => setDrawerOpen(false)}
