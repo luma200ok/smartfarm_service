@@ -539,6 +539,43 @@
 - **시드**: `init/PesticideReferenceSeeder`(Java initializer, idempotent). Flyway 정적 INSERT를 쓰지 않은 이유 — ①스텁이라 보강마다 마이그레이션이 쌓인다 ②경보 유효기간이 **시드 시점 기준 상대값**이어야 하는데 Flyway 고정 절대시각은 배포가 늦어질수록 처음부터 만료된 채로 심긴다
 - **마이그레이션**: **V23** `pesticide_references`·`pesticide_alerts`
 
+## 4.17 시스템 로그 · 브리핑 · 스케줄 골격 (2026-08-26 확정, 이슈 #129 — 미구현 도메인 정리 6·7·8)
+
+> 3건을 한 사이클로 묶었다(사용자 결정 — 속도 우선). 도메인이 서로 겹치지 않는다.
+
+### 시스템 로그 (`system_logs`, V24)
+| 메서드 | 경로 | 권한 | 응답 |
+|---|---|---|---|
+| GET | `/api/farms/{farmId}/system-logs` | 멤버 | 200 `Page<SystemLogResponse>` (`?category=`, `@PageableDefault(size=20)`) |
+
+- **append-only** — 수정·삭제 API 없다
+- **기록 지점 4곳**: 제어 모드 변경 · 초대 발급 · 알람 이벤트 생성 · 장비 등록/수정. 아직 없는 기능(펌웨어 배포·리포트 생성)은 제외
+- `actorId`는 nullable — **시스템 이벤트(알람 자동 생성)는 null**
+- ⚠️ **기록 실패가 원 작업을 깨뜨리면 안 된다.** `SystemLogService.record()`(트랜잭션 **없음**)가 **별도 빈** `SystemLogWriter.write()`(`REQUIRES_NEW`)를 호출하는 구조여야 한다.
+  - 같은 빈 안에서 `@Transactional(REQUIRES_NEW)` + try/catch로 만들면 **두 가지가 동시에 깨진다**: ①self-invocation이라 AOP 프록시를 안 거쳐 `REQUIRES_NEW`가 적용되지 않는다 ②rollback-only 플래그는 Java 예외를 잡아도 지워지지 않아 **커밋 시점에 `UnexpectedRollbackException`이 메서드 밖으로 터진다**
+  - 이 구조를 바꾸려면 실 DB 제약 위반을 유도하는 격리 테스트를 반드시 함께 확인할 것
+
+### 브리핑 (신규 테이블 없음)
+| 메서드 | 경로 | 권한 | 응답 |
+|---|---|---|---|
+| GET | `/api/farms/{farmId}/briefing` | 멤버 | 200 `FarmBriefingResponse` |
+
+- `AlarmEventService.unacknowledgedCount` + `DeviceService.summary().calibrationDueSoon`를 **재사용**한다(새 쿼리 없음)
+- ⚠️ **`harvestDueSoon` 필드가 없다 — 의도된 것이다.** 랙별 재배 사이클 도메인이 없어 계산이 불가능하고, **없는 값을 0으로 내보내면 "수확 예정 0건"이라는 거짓 정보**가 되어 사용자가 수확 시기를 놓친다. → 후속 **#130** 완료 후 추가
+- 프리뷰의 "조치 필요 2곳"은 **농장 수 단위**이나 이 API는 **건수**다
+
+### 스케줄 골격 (`schedules`, V25)
+| 메서드 | 경로 | 권한 |
+|---|---|---|
+| GET | `/api/farms/{farmId}/schedules` | 멤버 |
+| POST·PATCH·DELETE | `/api/farms/{farmId}/schedules[/{id}]` | **ADMIN** |
+
+- 컬럼: `farm_id`, `zone_id?`, `name`, `enabled`, `cron_expression`, `action_type`, `action_payload`(JSONB), `created_by`, timestamps
+- **cron 검증**: `CronExpression.parse` — POST·PATCH 양쪽. 잘못된 식이 저장되면 나중에 스케줄러가 붙을 때 터진다
+- 농장당 **50건 상한**(`findByIdForUpdate` 잠금 안 count) · `zoneId` 소속 검증 → **404 R001**
+- ⚠️ **실행 경로가 없다 — 의도된 것이다.** `@Scheduled` 트리거·액션 수행은 범위 밖이며 **저장만** 한다. 프리뷰에 화면 자체가 없는 "디자인 미확정" 상태라(`mock.ts:21`) 실행까지 만들면 버려진다. 실행을 붙일 때 이 계약을 갱신할 것
+- **ErrorCode**: `SCH001`(404 스케줄 없음) · `SCH002`(409 개수 상한) · `SCH003`(400 cron 표현식 오류)
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
@@ -603,6 +640,9 @@
 | SA002 | 409 | 저장한 분석 개수 상한 초과(농장당 50건) |
 | SA003 | 413 | CSV 내보내기 행 수 상한 초과 |
 | SA004 | 403 | 저장한 분석 수정·삭제 권한 없음(작성자 본인·ADMIN 겸용) |
+| SCH001 | 404 | 스케줄 없음(타 농장 소속 포함) |
+| SCH002 | 409 | 스케줄 개수 상한 초과(농장당 50건) |
+| SCH003 | 400 | cron 표현식 오류 |
 
 ## 6. 환경변수 · CORS
 
