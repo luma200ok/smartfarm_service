@@ -55,4 +55,25 @@ public interface AlarmEventRepository extends JpaRepository<AlarmEvent, Long>, A
 
     /** TopBar 배지용 경량 카운트 — 엔티티 로드 없이 개수만 조회. */
     long countByFarmIdAndStatus(Long farmId, AlarmEventStatus status);
+
+    /**
+     * 홈 대시보드 카드(이슈 #139) — 여러 농장의 미확인 알람을 severity별로 배치 집계한다(N+1 방지,
+     * farm 수와 무관하게 쿼리 1개). status 배지(CRITICAL/WARNING/NORMAL) 파생과
+     * unacknowledgedAlarmCount 계산 둘 다 이 결과 하나로 충분해 별도 카운트 쿼리를 두지 않는다.
+     */
+    @Query("SELECT e.farmId AS farmId, e.severity AS severity, COUNT(e) AS eventCount "
+            + "FROM AlarmEvent e WHERE e.farmId IN :farmIds AND e.status = :status "
+            + "GROUP BY e.farmId, e.severity")
+    List<AlarmSeverityFarmCountProjection> countBySeverityForFarmIds(@Param("farmIds") List<Long> farmIds,
+                                                                      @Param("status") AlarmEventStatus status);
+
+    /**
+     * 홈 대시보드 카드 하단 한 줄 요약(이슈 #139) — 농장별 가장 최근 알람 이벤트(상태 무관,
+     * occurredAt 최신) 메시지를 한 번에 조회한다. Postgres {@code DISTINCT ON}으로 그룹별 최신 1행을
+     * 배치로 뽑는다({@link SensorReadingRepository#findLatestValueByDeviceIds}와 동일 패턴).
+     */
+    @Query(value = "SELECT DISTINCT ON (farm_id) farm_id AS \"farmId\", message AS \"message\" "
+            + "FROM alarm_events WHERE farm_id IN (:farmIds) "
+            + "ORDER BY farm_id, occurred_at DESC, id DESC", nativeQuery = true)
+    List<FarmLatestAlarmProjection> findLatestMessageByFarmIds(@Param("farmIds") List<Long> farmIds);
 }

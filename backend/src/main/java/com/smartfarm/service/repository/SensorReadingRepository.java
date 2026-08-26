@@ -221,4 +221,62 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
             + "ORDER BY sr.device_id, sr.metric, sr.measured_at DESC",
             nativeQuery = true)
     List<ReadingLatestValueProjection> findLatestValueByDeviceIds(@Param("deviceIds") List<Long> deviceIds);
+
+    /**
+     * 홈 대시보드 카드 지표 3열(온도·습도·EC, 이슈 #139) — 여러 농장 × 여러 지표의 "농장 전체
+     * 최신값"을 한 번에 구한다(N+1 방지, farm 수와 무관하게 쿼리 1개). {@link #findLatestPerLevel}과
+     * 동일한 2단계 구조(① farm×metric별 가장 최근 tick을 찾고 ② 그 tick 안에서 device 간 평균을
+     * 낸다)를 층 축 대신 농장 축에 적용한다 — 서로 다른 device가 조금씩 다른 시각에 보고해도 "가장
+     * 최근 tick"만 골라 평균하므로 오래된 device 값이 섞이지 않는다.
+     *
+     * <p>⚠️ {@link #findLatestPerLevel}과 같은 이유로 바깥 SELECT에도 {@code farm_id}/{@code metric}
+     * 술어를 둔다(사이클 2 리뷰 P1-1 선례) — CTE만 좁히고 바깥이 그 좁힘을 상속하지 않으면 같은
+     * tick의 다른 지표까지 섞여 평균된다(시뮬레이터가 한 device의 전 metric을 동일 분단위
+     * measuredAt으로 쓰므로 정상 운영에서 100% 발생).
+     */
+    @Query(value = """
+            WITH latest_tick AS (
+                SELECT farm_id, metric, max(measured_at) AS at
+                FROM sensor_readings
+                WHERE farm_id IN (:farmIds) AND metric IN (:metrics)
+                GROUP BY farm_id, metric
+            )
+            SELECT sr.farm_id AS "farmId", sr.metric AS "metric",
+                   avg(sr.value) AS "value", max(sr.measured_at) AS "measuredAt"
+            FROM sensor_readings sr
+            JOIN latest_tick lt ON sr.farm_id = lt.farm_id AND sr.metric = lt.metric AND sr.measured_at = lt.at
+            WHERE sr.farm_id IN (:farmIds) AND sr.metric IN (:metrics)
+            GROUP BY sr.farm_id, sr.metric
+            """, nativeQuery = true)
+    List<ReadingFarmLatestProjection> findLatestByFarmIdsAndMetrics(@Param("farmIds") List<Long> farmIds,
+                                                                     @Param("metrics") List<String> metrics);
+
+    /**
+     * 홈 대시보드 카드 7일 미니 추이(이슈 #139) — 여러 농장의 대표 지표({@code metric}) 일별 평균을
+     * 한 번에 구한다(N+1 방지, farm 수와 무관하게 쿼리 1개). {@link #findSeriesAggregated}와 동일한
+     * device-평균→시간-평균 2단계를 쓰되 버킷을 달력일(1일)로 고정한다 — 카드의 미니 막대 7개가
+     * 목적이라 series의 세밀한 30분/2시간 버킷은 과하고(카드 하나에 수백 포인트를 만들 이유가 없다),
+     * 대표 지표 하나로 한정해 쿼리·페이로드를 가볍게 유지한다(홈 대시보드 handoff 판단 — trend7d는
+     * "무거운 조회"라 다운샘플 단위를 명시적으로 낮췄다). soft delete된 층의 과거 이력은 series와
+     * 동일하게 제외한다(사이클 2 리뷰 P2-3 선례).
+     */
+    @Query(value = """
+            WITH device_avg AS (
+                SELECT sr.farm_id, sr.measured_at, sr.rack_level_id, avg(sr.value) AS v
+                FROM sensor_readings sr
+                LEFT JOIN rack_levels rl ON rl.id = sr.rack_level_id
+                WHERE sr.farm_id IN (:farmIds)
+                  AND sr.metric = :metric
+                  AND sr.measured_at >= :since
+                  AND (sr.rack_level_id IS NULL OR rl.deleted_at IS NULL)
+                GROUP BY sr.farm_id, sr.measured_at, sr.rack_level_id
+            )
+            SELECT farm_id AS "farmId", CAST(measured_at AS date) AS "bucketDate", avg(v) AS "value"
+            FROM device_avg
+            GROUP BY farm_id, CAST(measured_at AS date)
+            ORDER BY farm_id, bucketDate
+            """, nativeQuery = true)
+    List<ReadingFarmDailyTrendProjection> findDailyTrendByFarmIds(@Param("farmIds") List<Long> farmIds,
+                                                                   @Param("metric") String metric,
+                                                                   @Param("since") LocalDateTime since);
 }
