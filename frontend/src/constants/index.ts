@@ -4,10 +4,12 @@ import type {
   AlarmEventStatus,
   AlarmSeverity,
   ControllableMetric,
+  CropType,
   DeviceKind,
   DeviceStatus,
   ErrorCode,
   EnvironmentHistoryRange,
+  FarmDashboardStatus,
   FarmLogType,
   FarmRole,
   NutrientStage,
@@ -146,6 +148,18 @@ export const READING_CELL_STATE_LABELS: Record<ReadingCellState, string> = {
   WARNING: "주의",
   CRITICAL: "경보",
   IDLE: "미가동",
+};
+
+// 홈 대시보드 농장 카드 상태 라벨 (이슈 #139/#142) — CRITICAL/WARNING/NORMAL 3단계.
+export const FARM_DASHBOARD_STATUS_LABELS: Record<FarmDashboardStatus, string> = {
+  CRITICAL: "경보",
+  WARNING: "주의",
+  NORMAL: "정상",
+};
+
+// 작물 라벨 — CropType은 1차 TOMATO만(types/index.ts 주석 참고).
+export const CROP_LABELS: Record<CropType, string> = {
+  TOMATO: "토마토",
 };
 
 // 시계열 항목(metrics) 다중 선택 상한 (contract §4.11 — 초과 시 C001)

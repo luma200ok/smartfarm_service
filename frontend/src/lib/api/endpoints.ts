@@ -10,6 +10,10 @@ export const ENDPOINTS = {
   users: {
     me: "/api/users/me",
   },
+  // 홈 대시보드 집계 (이슈 #139) — 내 활성 농장 전체를 한 번에 반환한다(N+1 방지).
+  dashboard: {
+    farms: "/api/dashboard/farms",
+  },
   farms: {
     list: "/api/farms",
     create: "/api/farms",
@@ -23,6 +27,8 @@ export const ENDPOINTS = {
     // 멤버 역할 변경(이슈 #122/#123) — 초대 수락자(PENDING) 승인도 이 경로.
     memberRole: (farmId: number | string, memberId: number | string) =>
       `/api/farms/${farmId}/members/${memberId}/role`,
+    // 홈 화면 "오늘 할일" 브리핑 (이슈 #129-B)
+    briefing: (farmId: number | string) => `/api/farms/${farmId}/briefing`,
     diagnoses: (farmId: number | string) => `/api/farms/${farmId}/diagnoses`,
     diagnosisDetail: (farmId: number | string, diagnosisId: number | string) =>
       `/api/farms/${farmId}/diagnoses/${diagnosisId}`,
