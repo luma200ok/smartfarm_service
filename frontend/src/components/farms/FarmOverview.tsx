@@ -119,6 +119,11 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
 
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
+      {/* 페이지 제목(이슈 #136 리뷰 P2-2 — 구 FarmTabsHeader 제거 목록에서 개요 화면이 누락돼
+          있었다). 카드 안의 <h2>{farm.name}</h2>(아래)는 "농장 정보" 카드 자체의 헤더 겸
+          역할 배지 짝이라 남겨둔다 — 페이지 제목(기능명)과 카드 제목(농장명)은 값이 달라
+          문자 그대로 중복되지 않는다(다른 화면의 페이지 제목 vs CardTitle 관계와 동일). */}
+      <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">개요</h1>
       <EnvironmentWidget farmId={farmId} />
       <div className="grid gap-6 md:grid-cols-2">
         <ForecastWidget farmId={farmId} />
