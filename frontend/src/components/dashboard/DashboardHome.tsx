@@ -6,7 +6,6 @@ import FarmRackPanel from "@/components/dashboard/FarmRackPanel";
 import FarmStatusCard from "@/components/dashboard/FarmStatusCard";
 import FarmTrendChart from "@/components/dashboard/FarmTrendChart";
 import EnvironmentWidget from "@/components/environment/EnvironmentWidget";
-import DashboardHeader from "@/components/layout/DashboardHeader";
 import SimulatedBadge from "@/components/monitoring/SimulatedBadge";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listFarms } from "@/lib/api/farms";
@@ -37,8 +36,7 @@ export default function DashboardHome() {
 
   return (
     <div className="flex flex-1 flex-col">
-      {/* 데스크톱은 Sidebar(이슈 #42)가 로고를 상시 노출하므로 헤더가 비어 보이지 않게 title을 전달 */}
-      <DashboardHeader title="대시보드" />
+      {/* 상단 GlobalBar(이슈 #133)가 로고·탭을 상시 노출하므로 별도 페이지 제목 헤더는 두지 않는다. */}
       <main className="flex flex-col gap-4 bg-dp-canvas px-4 py-4 min-[768px]:px-5 min-[1440px]:px-6 min-[1440px]:py-5">
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { getMe, logout } from "@/lib/api/auth";
 import type { UserResponse } from "@/types";
 
@@ -9,7 +11,12 @@ import type { UserResponse } from "@/types";
 // 통합하고, 로그인한 사용자 정보(닉네임·이메일)를 노출한다.
 // getMe()는 이 컴포넌트 마운트 시 1회만 조회한다(중복 조회 금지 관례 — #44 참고).
 // 조회 실패는 화면에 에러를 띄우지 않고 아바타를 '?'로 조용히 대체한다.
-// 항목이 로그아웃 1개뿐이라 role="menu"/"menuitem"(화살표키 내비 기대) 대신 단순
+//
+// 이슈 #133(셸 교체)에서 GlobalBar 우측 아바타로 자리를 옮겼다 — 시안 스펙대로 26px 원형
+// (dp-green)만 노출하고 닉네임은 패널 안으로 뺐다. 패널에는 구 Sidebar가 겸하던 다크 모드
+// 토글(§ 특히 주의 1)과 구 DashboardHeader의 "초대코드 입력"(/invitations, farm 스코프 밖 —
+// 이슈 #133 IA 매핑) 도달 경로를 추가했다.
+// 항목이 몇 개뿐이라 role="menu"/"menuitem"(화살표키 내비 기대) 대신 단순
 // disclosure 패턴(트리거 aria-expanded/aria-controls + 일반 div 패널)을 사용한다.
 export default function ProfileMenu() {
   const router = useRouter();
@@ -85,7 +92,7 @@ export default function ProfileMenu() {
   const triggerLabel = user ? `${user.nickname} 프로필 메뉴` : "프로필 메뉴";
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative flex-none">
       <button
         ref={triggerRef}
         type="button"
@@ -93,21 +100,20 @@ export default function ProfileMenu() {
         aria-controls={panelId}
         aria-label={triggerLabel}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-dp-inset"
+        className="flex items-center rounded-full"
       >
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-dp-badge-neutral text-sm font-semibold text-dp-body"
+          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-dp-green text-[11px] leading-none font-semibold text-dp-on-green"
         >
           {initial}
         </span>
-        {user && <span className="hidden max-w-[8rem] truncate font-medium text-dp-body sm:inline">{user.nickname}</span>}
       </button>
 
       {open && (
         <div
           id={panelId}
-          className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-dp-line bg-dp-surface p-1 shadow-lg"
+          className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-dp-line bg-dp-surface p-1 text-dp-body shadow-lg"
         >
           {user && (
             <>
@@ -118,6 +124,18 @@ export default function ProfileMenu() {
               <div className="my-1 border-t border-dp-line" />
             </>
           )}
+          <Link
+            href="/invitations"
+            onClick={() => setOpen(false)}
+            className="block rounded-md px-3 py-2 text-sm font-medium text-dp-body hover:bg-dp-inset"
+          >
+            초대코드 입력
+          </Link>
+          <div className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-dp-body">
+            다크 모드
+            <ThemeToggle />
+          </div>
+          <div className="my-1 border-t border-dp-line" />
           <button
             ref={logoutButtonRef}
             type="button"
