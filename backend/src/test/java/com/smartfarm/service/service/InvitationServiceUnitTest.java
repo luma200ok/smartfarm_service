@@ -39,10 +39,12 @@ class InvitationServiceUnitTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     // 목 기본 동작 = no-op → 데모 가드 통과 스텁(데모 차단 경로는 통합 테스트에서 검증)
     private final DemoAccountGuard demoAccountGuard = mock(DemoAccountGuard.class);
+    // 이 테스트는 acceptInvitation만 검증한다(createInvitation 미호출) — 목 기본 동작(no-op)으로 충분.
+    private final SystemLogService systemLogService = mock(SystemLogService.class);
 
     private final InvitationService invitationService = new InvitationService(
             invitationRepository, farmRepository, farmMemberRepository, farmAccessGuard, userRepository,
-            demoAccountGuard);
+            demoAccountGuard, systemLogService);
 
     private void stubAcceptUntilSave(DataIntegrityViolationException saveFailure) {
         // 진입부 유저 생존 검사(탈퇴 봉쇄 ①) 통과 스텁

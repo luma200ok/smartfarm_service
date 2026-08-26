@@ -127,7 +127,12 @@ public enum ErrorCode {
      * 재사용하므로 구조적으로 metric당 최대 버킷 수 × 4(MAX_SERIES_METRICS)를 넘을 수 없지만,
      * 방어선을 명시적으로 코드에 남긴다({@code ReadingService.MAX_EXPORT_ROWS} 참고).
      */
-    SA003(HttpStatus.PAYLOAD_TOO_LARGE, "SA003", "내보내기 대상 데이터가 너무 많습니다. 기간·지표·스코프를 좁혀 다시 시도해주세요.");
+    SA003(HttpStatus.PAYLOAD_TOO_LARGE, "SA003", "내보내기 대상 데이터가 너무 많습니다. 기간·지표·스코프를 좁혀 다시 시도해주세요."),
+
+    // Schedule (스케줄 골격 — 이슈 #129-C, 저장만 하고 실행하지 않는다)
+    SCH001(HttpStatus.NOT_FOUND, "SCH001", "스케줄을 찾을 수 없습니다."),
+    SCH002(HttpStatus.CONFLICT, "SCH002", "농장당 스케줄 개수 상한을 초과했습니다."),
+    SCH003(HttpStatus.BAD_REQUEST, "SCH003", "cron 표현식 형식이 올바르지 않습니다.");
 
     private final HttpStatus status;
     private final String code;

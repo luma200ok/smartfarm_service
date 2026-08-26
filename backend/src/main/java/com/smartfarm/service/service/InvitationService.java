@@ -7,6 +7,7 @@ import com.smartfarm.service.entity.Farm;
 import com.smartfarm.service.entity.FarmMember;
 import com.smartfarm.service.entity.FarmRole;
 import com.smartfarm.service.entity.Invitation;
+import com.smartfarm.service.entity.SystemLogCategory;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.FarmMemberRepository;
@@ -40,6 +41,7 @@ public class InvitationService {
     private final FarmAccessGuard farmAccessGuard;
     private final UserRepository userRepository;
     private final DemoAccountGuard demoAccountGuard;
+    private final SystemLogService systemLogService;
 
     /**
      * 초대코드 발급(ADMIN) — 농장당 활성 코드 1건 (contract §2):
@@ -56,6 +58,8 @@ public class InvitationService {
                 .codeHash(TokenHasher.sha256(rawCode))
                 .expiresAt(LocalDateTime.now().plus(INVITATION_VALIDITY))
                 .build());
+        // 시스템 로그 기록(이슈 #129-A, 부가 작업 — 실패해도 이 트랜잭션에 영향 없음, SystemLogService 참고).
+        systemLogService.record(farmId, SystemLogCategory.MEMBER, "새 초대코드가 발급되었습니다.", userId);
         return new InvitationResponse(rawCode, invitation.getExpiresAt());
     }
 
