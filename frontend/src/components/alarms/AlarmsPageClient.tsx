@@ -1,0 +1,397 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Chip } from "@/components/monitoring/ui";
+import Modal from "@/components/ui/Modal";
+import {
+  acknowledgeAllAlarmEvents,
+  acknowledgeAlarmEvent,
+  addAlarmMemo,
+  getAlarmEvent,
+  getAlarmRule,
+  listAlarmEvents,
+  resolveAlarmEvent,
+} from "@/lib/api/alarms";
+import { resolveErrorMessage } from "@/lib/api/errorMessage";
+import { getFarm } from "@/lib/api/farms";
+import { getZoneTree } from "@/lib/api/zones";
+import { notifyAlarmsChanged } from "@/lib/alarmsBus";
+import { describeAlarmScope, summarizeAlarmRule } from "@/lib/alarmDisplay";
+import { hasFarmRoleAtLeast } from "@/lib/roles";
+import { buildLocationMaps, type LocationMaps } from "@/lib/zoneTree";
+import type { AlarmEventDetailResponse, AlarmEventResponse, AlarmRuleResponse, FarmResponse } from "@/types";
+import AlarmDetailPanel from "./AlarmDetailPanel";
+import AlarmList from "./AlarmList";
+import { EMPTY_FILTER_COUNTS, FILTER_CHIPS, filterToQuery, type AlarmFilterKey, type FilterCounts } from "./filters";
+
+const PAGE_SIZE = 20;
+
+interface AlarmsPageClientProps {
+  farmId: string;
+}
+
+// 알람 현황 화면(이슈 #136) 오케스트레이터 — 필터·목록·상세 패널·전체 확인 처리를 조합한다.
+// 행 클릭은 페이지 이동 없이 상세 패널만 갱신하고(선택 상태는 필터가 바뀌어도 유지), 확인/처리
+// 완료/메모/전체확인은 OPERATOR 이상만 가능하다(#122/#123 원칙 — VIEWER는 버튼 자체를 숨긴다).
+export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
+  const [farm, setFarm] = useState<FarmResponse | null>(null);
+  const [locationMaps, setLocationMaps] = useState<LocationMaps | null>(null);
+
+  const [filter, setFilter] = useState<AlarmFilterKey>("ALL");
+  const [items, setItems] = useState<AlarmEventResponse[]>([]);
+  const [totalElements, setTotalElements] = useState(0);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+
+  const [filterCounts, setFilterCounts] = useState<FilterCounts>(EMPTY_FILTER_COUNTS);
+
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<AlarmEventDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const [rule, setRule] = useState<AlarmRuleResponse | null>(null);
+  const [ruleLoading, setRuleLoading] = useState(false);
+
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const [memoOpen, setMemoOpen] = useState(false);
+  const [memoSubmitting, setMemoSubmitting] = useState(false);
+  const [memoError, setMemoError] = useState<string | null>(null);
+
+  const [ackAllOpen, setAckAllOpen] = useState(false);
+  const [ackAllSubmitting, setAckAllSubmitting] = useState(false);
+  const [ackAllError, setAckAllError] = useState<string | null>(null);
+
+  const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
+
+  // 농장명(위치 표기 "FARM"일 때)·존 트리(위치 조합용). 둘 다 실패해도 위치는 "—"로 대체될
+  // 뿐 화면 전체를 막지 않는다(핸드오프: 조회 실패 시 "—").
+  useEffect(() => {
+    let cancelled = false;
+    getFarm(farmId)
+      .then((f) => {
+        if (!cancelled) setFarm(f);
+      })
+      .catch(() => {});
+    getZoneTree(farmId)
+      .then((tree) => {
+        if (!cancelled) setLocationMaps(buildLocationMaps(tree));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId]);
+
+  const loadFilterCounts = useCallback(async () => {
+    const [all, critical, warning, resolved] = await Promise.allSettled([
+      listAlarmEvents(farmId, {}, 0, 1),
+      listAlarmEvents(farmId, { severity: "CRITICAL" }, 0, 1),
+      listAlarmEvents(farmId, { severity: "WARNING" }, 0, 1),
+      listAlarmEvents(farmId, { status: "RESOLVED" }, 0, 1),
+    ]);
+    setFilterCounts({
+      ALL: all.status === "fulfilled" ? all.value.totalElements : null,
+      CRITICAL: critical.status === "fulfilled" ? critical.value.totalElements : null,
+      WARNING: warning.status === "fulfilled" ? warning.value.totalElements : null,
+      RESOLVED: resolved.status === "fulfilled" ? resolved.value.totalElements : null,
+    });
+  }, [farmId]);
+
+  useEffect(() => {
+    async function run() {
+      await loadFilterCounts();
+    }
+    run();
+  }, [loadFilterCounts]);
+
+  const loadList = useCallback(
+    async (targetFilter: AlarmFilterKey) => {
+      setListLoading(true);
+      setListError(null);
+      try {
+        const res = await listAlarmEvents(farmId, filterToQuery(targetFilter), 0, PAGE_SIZE);
+        setItems(res.content);
+        setPage(0);
+        setTotalElements(res.totalElements);
+        // 필터가 바뀌어도 이전 선택은 유지한다(시안 Interactions) — 아직 아무것도 선택되지
+        // 않았을 때만(최초 로드) 첫 행을 기본 선택한다.
+        setSelectedId((prev) => prev ?? res.content[0]?.id ?? null);
+      } catch (err) {
+        setListError(resolveErrorMessage(err));
+        setItems([]);
+        setTotalElements(0);
+      } finally {
+        setListLoading(false);
+      }
+    },
+    [farmId]
+  );
+
+  useEffect(() => {
+    async function run() {
+      await loadList(filter);
+    }
+    run();
+  }, [filter, loadList]);
+
+  async function handleLoadMore() {
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await listAlarmEvents(farmId, filterToQuery(filter), nextPage, PAGE_SIZE);
+      setItems((prev) => [...prev, ...res.content]);
+      setPage(nextPage);
+      setTotalElements(res.totalElements);
+    } catch (err) {
+      setListError(resolveErrorMessage(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  // 상세 패널 — 선택된 알람이 바뀔 때마다 새로 조회한다. selectedId가 null로 바뀌면(예: 목록이
+  // 비어 아무 것도 선택되지 않음) 렌더 중 조정 패턴으로 비운다(react-hooks/set-state-in-effect 회피).
+  const [detailForId, setDetailForId] = useState(selectedId);
+  if (selectedId !== detailForId) {
+    setDetailForId(selectedId);
+    if (selectedId === null) setDetail(null);
+  }
+
+  useEffect(() => {
+    if (selectedId === null) return;
+    let cancelled = false;
+
+    async function load() {
+      setDetailLoading(true);
+      setDetailError(null);
+      try {
+        const d = await getAlarmEvent(farmId, selectedId!);
+        if (!cancelled) setDetail(d);
+      } catch (err) {
+        if (!cancelled) setDetailError(resolveErrorMessage(err));
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId, selectedId]);
+
+  // 규칙 요약 — ruleId가 있을 때만 조회하고, 실패하면 행 자체를 생략한다(지어내지 않는다).
+  const ruleId = detail?.event.ruleId ?? null;
+  const [ruleForId, setRuleForId] = useState(ruleId);
+  if (ruleId !== ruleForId) {
+    setRuleForId(ruleId);
+    if (ruleId === null) setRule(null);
+  }
+
+  useEffect(() => {
+    if (ruleId === null) return;
+    let cancelled = false;
+
+    async function load() {
+      setRuleLoading(true);
+      try {
+        const r = await getAlarmRule(farmId, ruleId!);
+        if (!cancelled) setRule(r);
+      } catch {
+        if (!cancelled) setRule(null);
+      } finally {
+        if (!cancelled) setRuleLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [farmId, ruleId]);
+
+  async function refreshSelectedDetail() {
+    if (selectedId === null) return;
+    try {
+      const fresh = await getAlarmEvent(farmId, selectedId);
+      setDetail(fresh);
+    } catch {
+      // 상세 갱신 실패는 조용히 넘어간다 — 목록/배지는 이미 갱신됐고, 패널은 다음 선택 시 재조회된다.
+    }
+  }
+
+  async function handleAcknowledge() {
+    if (!detail) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const updated = await acknowledgeAlarmEvent(farmId, detail.event.id);
+      setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+      await refreshSelectedDetail();
+      notifyAlarmsChanged();
+      loadFilterCounts();
+    } catch (err) {
+      setActionError(resolveErrorMessage(err));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleResolve() {
+    if (!detail) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const updated = await resolveAlarmEvent(farmId, detail.event.id);
+      setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+      await refreshSelectedDetail();
+      notifyAlarmsChanged();
+      loadFilterCounts();
+    } catch (err) {
+      setActionError(resolveErrorMessage(err));
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleMemoSubmit(note: string) {
+    if (!detail) return;
+    setMemoSubmitting(true);
+    setMemoError(null);
+    try {
+      const updated = await addAlarmMemo(farmId, detail.event.id, note);
+      setDetail(updated);
+      setMemoOpen(false);
+    } catch (err) {
+      setMemoError(resolveErrorMessage(err));
+    } finally {
+      setMemoSubmitting(false);
+    }
+  }
+
+  async function handleAcknowledgeAll() {
+    setAckAllSubmitting(true);
+    setAckAllError(null);
+    try {
+      await acknowledgeAllAlarmEvents(farmId);
+      setAckAllOpen(false);
+      await loadList(filter);
+      await refreshSelectedDetail();
+      notifyAlarmsChanged();
+      loadFilterCounts();
+    } catch (err) {
+      setAckAllError(resolveErrorMessage(err));
+    } finally {
+      setAckAllSubmitting(false);
+    }
+  }
+
+  const location = detail ? describeAlarmScope(detail.event, locationMaps, farm?.name ?? null) : "";
+  const ruleSummary = rule ? summarizeAlarmRule(rule) : null;
+
+  return (
+    <div className="flex flex-col gap-4 px-6 py-6">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">알람 현황</h1>
+        <div className="hidden flex-1 min-[768px]:block" />
+        <div className="flex gap-1.5 overflow-x-auto">
+          {FILTER_CHIPS.map((chip) => {
+            const count = filterCounts[chip.key];
+            return (
+              <Chip
+                key={chip.key}
+                as="button"
+                active={chip.key === filter}
+                tone={chip.tone}
+                onClick={() => setFilter(chip.key)}
+              >
+                {chip.label}
+                {count !== null ? ` ${count}` : ""}
+              </Chip>
+            );
+          })}
+        </div>
+        {canWrite && (
+          <button
+            type="button"
+            onClick={() => setAckAllOpen(true)}
+            disabled={filterCounts.ALL === 0}
+            className="rounded-[7px] border border-dp-line-strong px-[13px] py-[7px] text-[12px] leading-none font-medium whitespace-nowrap text-dp-body disabled:opacity-40"
+          >
+            전체 확인 처리
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-3.5 min-[1440px]:grid-cols-[1fr_340px] min-[1920px]:grid-cols-[1fr_440px]">
+        <AlarmList
+          filter={filter}
+          items={items}
+          totalElements={totalElements}
+          loading={listLoading}
+          loadingMore={loadingMore}
+          error={listError}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onLoadMore={handleLoadMore}
+          onShowAll={() => setFilter("ALL")}
+          onRefresh={() => loadList(filter)}
+          locationMaps={locationMaps}
+          farmName={farm?.name ?? null}
+        />
+
+        <AlarmDetailPanel
+          farmId={farmId}
+          detail={detail}
+          loading={detailLoading}
+          error={detailError}
+          location={location}
+          ruleSummary={ruleSummary}
+          ruleLoading={ruleLoading}
+          canWrite={canWrite}
+          actionBusy={actionBusy}
+          actionError={actionError}
+          onAcknowledge={handleAcknowledge}
+          onResolve={handleResolve}
+          memoOpen={memoOpen}
+          memoSubmitting={memoSubmitting}
+          memoError={memoError}
+          onMemoOpen={() => setMemoOpen(true)}
+          onMemoClose={() => setMemoOpen(false)}
+          onMemoSubmit={handleMemoSubmit}
+        />
+      </div>
+
+      <Modal open={ackAllOpen} onClose={() => setAckAllOpen(false)} title="전체 확인 처리">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+            미확인 알람을 모두 확인 처리합니다. 이 작업은 되돌릴 수 없습니다.
+          </p>
+          {ackAllError && <p className="text-sm text-red-600 dark:text-red-400">{ackAllError}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAckAllOpen(false)}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={handleAcknowledgeAll}
+              disabled={ackAllSubmitting}
+              className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-60"
+            >
+              {ackAllSubmitting ? "처리 중..." : "전체 확인 처리"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
