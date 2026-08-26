@@ -166,8 +166,12 @@ export default function DashboardHome() {
 
               {briefing && briefing.calibrationDueSoonCount > 0 && (
                 <span className="inline-flex items-center gap-2 rounded-full border border-dp-line-strong bg-dp-surface px-[13px] py-[7px] text-[12px] leading-none font-medium text-dp-body">
+                  {/* ⚠️ 이 수치만 스코프가 다르다 — "조치 필요"는 전 농장 파생인데 보정 임박은
+                      /briefing 이 농장 단건 스코프라 선택 농장 1건 기준이다(#139 N+1 회피).
+                      농장이 여럿일 때 이름만 붙이면 "그 농장 소속"인지 "그 농장 기준"인지
+                      모호해서 "기준"까지 명시한다(#142 리뷰 LOW). */}
                   보정 기한 임박 {briefing.calibrationDueSoonCount}대
-                  {farms.length > 1 && selectedFarm ? ` · ${selectedFarm.name}` : ""}
+                  {farms.length > 1 && selectedFarm ? ` · ${selectedFarm.name} 기준` : ""}
                 </span>
               )}
 
