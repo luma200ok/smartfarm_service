@@ -86,7 +86,13 @@ export type ErrorCode =
   | "CT002"
   | "CT003"
   | "CT004"
-  | "CT005";
+  | "CT005"
+  | "AL001"
+  | "AL002"
+  | "ALR001"
+  | "ALR002"
+  | "ALR003"
+  | "ALR004";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
@@ -743,4 +749,92 @@ export interface PageResponse<T> {
   size: number;
   totalElements: number;
   totalPages: number;
+}
+
+// ── 알람 이벤트 (이슈 #116/#118, 프론트 #136) ──────────────
+export type AlarmSeverity = "CRITICAL" | "WARNING";
+export type AlarmEventStatus = "UNACKNOWLEDGED" | "ACKNOWLEDGED" | "RESOLVED";
+// #118 이전에 생성된 과거 이벤트는 scopeType/scopeId가 모두 null(=농장 단위)이다
+// (백엔드 AlarmEventResponse javadoc). FE는 null을 "FARM"과 동일하게 취급한다.
+export type AlarmScopeType = "FARM" | "ZONE" | "RACK" | "LEVEL";
+export type AlarmSourceType = "ENV_THRESHOLD" | "SENSOR_THRESHOLD" | "DEVICE_HEARTBEAT";
+export type AlarmEventLogAction = "CREATED" | "ACKNOWLEDGED" | "RESOLVED" | "MEMO_ADDED";
+
+export interface AlarmEventResponse {
+  id: number;
+  farmId: number;
+  severity: AlarmSeverity;
+  sourceType: AlarmSourceType;
+  metricKey: string;
+  message: string;
+  status: AlarmEventStatus;
+  occurredAt: string;
+  acknowledgedAt: string | null;
+  acknowledgedBy: number | null;
+  resolvedAt: string | null;
+  resolvedBy: number | null;
+  thresholdId: number | null;
+  ruleId: number | null;
+  scopeType: AlarmScopeType | null;
+  scopeId: number | null;
+  createdAt: string;
+}
+
+// actorId만 실린다(사용자 이름 없음) — 화면은 이름을 지어내지 말고 시각·행위만 표기할 것
+// (이슈 #136 핸드오프 "없는 데이터를 지어내지 말 것").
+export interface AlarmEventLogResponse {
+  id: number;
+  action: AlarmEventLogAction;
+  actorId: number | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AlarmEventDetailResponse {
+  event: AlarmEventResponse;
+  timeline: AlarmEventLogResponse[];
+}
+
+export interface AlarmMemoRequest {
+  note: string;
+}
+
+// countBySeverity는 AlarmSeverity 전 항목이 0으로 채워져 온다(백엔드 AlarmStatsResponse.of).
+// avgAcknowledgeMinutes는 확인된 이벤트가 하나도 없으면 null.
+export interface AlarmStatsResponse {
+  days: number;
+  countBySeverity: Record<AlarmSeverity, number>;
+  avgAcknowledgeMinutes: number | null;
+}
+
+export interface AlarmUnacknowledgedCountResponse {
+  count: number;
+}
+
+export interface AlarmAcknowledgeAllResponse {
+  acknowledgedCount: number;
+}
+
+// ── 알람 규칙 (이슈 #118, 상세 패널 "규칙" 한 줄 요약 조회용) ──────────────
+export type AlarmRuleSource = "ENV_SNAPSHOT" | "SENSOR_READING" | "DEVICE_HEARTBEAT";
+export type AlarmComparator = "GT" | "LT" | "OUTSIDE_RANGE" | "ABSENT";
+
+export interface AlarmRuleResponse {
+  id: number;
+  farmId: number;
+  name: string;
+  enabled: boolean;
+  source: AlarmRuleSource;
+  metric: string | null;
+  comparator: AlarmComparator;
+  thresholdValue: number | null;
+  thresholdMin: number | null;
+  thresholdMax: number | null;
+  durationSeconds: number | null;
+  severity: AlarmSeverity;
+  scopeType: AlarmScopeType;
+  scopeId: number | null;
+  derived: boolean;
+  createdAt: string;
+  updatedAt: string;
 }

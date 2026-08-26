@@ -40,7 +40,9 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
     getFarm(farmId)
       .then(setFarm)
       .catch(() => {
-        // 헤더(FarmTabsHeader)가 이미 농장 로드 실패를 처리하므로 여기서는 조용히 넘어간다.
+        // 작성/삭제 버튼 노출 여부(canWrite/isAdmin)에만 쓰인다 — role이 없으면 lib/roles.ts가
+        // 항상 false로 판정(fail-closed)하므로 실패해도 화면 자체는 계속 보여준다(이슈 #136 —
+        // 구 FarmTabsHeader 제거로 더 이상 별도 헤더가 이 실패를 대신 알리지 않는다).
       });
     getMe()
       .then((me) => setMyUserId(me.id))

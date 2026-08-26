@@ -87,6 +87,14 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
     setResumeToken((t) => t + 1);
   }
 
+  // 페이지 제목(이슈 #136 — 구 FarmTabsHeader 제거로 드릴다운 화면도 제목을 잃었다).
+  // 요청 시각은 바로 아래 PrescriptionStatusCard가 이미 표시하므로(리뷰 P3-2) 중복하지
+  // 않는다. prescription을 아직 한 번도 못 받아왔으면(retryExhausted 진입 직후 등) 렌더하지
+  // 않는다.
+  const title = prescription ? (
+    <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">처방 상세</h1>
+  ) : null;
+
   if (notFound) {
     return (
       <p className="px-6 py-6 text-sm text-dp-sub">
@@ -105,6 +113,7 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
   if (retryExhausted) {
     return (
       <main className="flex flex-col gap-3 px-6 py-6">
+        {title}
         {prescription && <PrescriptionStatusCard prescription={prescription} />}
         <p className="text-sm text-dp-red-ink">{error}</p>
         <button
@@ -124,6 +133,7 @@ export default function PrescriptionPoller({ farmId, prescriptionId }: Prescript
 
   return (
     <main className="flex flex-col gap-3 px-6 py-6">
+      {title}
       <PrescriptionStatusCard prescription={prescription} />
       {error && <p className="text-sm text-dp-amber-deep">일시적인 오류가 발생했습니다. 자동으로 재시도 중입니다...</p>}
     </main>

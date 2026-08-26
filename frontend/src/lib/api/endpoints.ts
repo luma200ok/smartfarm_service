@@ -69,6 +69,23 @@ export const ENDPOINTS = {
     controlApply: (farmId: number | string, zoneId: number | string) =>
       `/api/farms/${farmId}/zones/${zoneId}/control/apply`,
     emergencyStop: (farmId: number | string) => `/api/farms/${farmId}/control/emergency-stop`,
+    // 알람 이벤트 (contract §4.13, 이슈 #116/#118)
+    alarmEvents: (farmId: number | string) => `/api/farms/${farmId}/alarm-events`,
+    alarmEventDetail: (farmId: number | string, alarmEventId: number | string) =>
+      `/api/farms/${farmId}/alarm-events/${alarmEventId}`,
+    alarmEventAcknowledge: (farmId: number | string, alarmEventId: number | string) =>
+      `/api/farms/${farmId}/alarm-events/${alarmEventId}/acknowledge`,
+    alarmEventResolve: (farmId: number | string, alarmEventId: number | string) =>
+      `/api/farms/${farmId}/alarm-events/${alarmEventId}/resolve`,
+    alarmEventMemo: (farmId: number | string, alarmEventId: number | string) =>
+      `/api/farms/${farmId}/alarm-events/${alarmEventId}/memo`,
+    alarmEventsAcknowledgeAll: (farmId: number | string) => `/api/farms/${farmId}/alarm-events/acknowledge-all`,
+    alarmEventsStats: (farmId: number | string) => `/api/farms/${farmId}/alarm-events/stats`,
+    alarmEventsUnacknowledgedCount: (farmId: number | string) =>
+      `/api/farms/${farmId}/alarm-events/unacknowledged-count`,
+    // 알람 규칙 (contract §4.13, 이슈 #118) — 상세 패널 "규칙" 한 줄 요약 조회용 단건만 쓴다.
+    alarmRuleDetail: (farmId: number | string, ruleId: number | string) =>
+      `/api/farms/${farmId}/alarm-rules/${ruleId}`,
   },
   invitations: {
     accept: "/api/invitations/accept",

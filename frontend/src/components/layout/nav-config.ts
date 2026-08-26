@@ -59,8 +59,8 @@ export const NAV_GROUPS: NavGroup[] = [
     key: "alarm",
     label: "알람",
     items: [
-      // 2단계에서 생성(이슈 #133 IA 매핑) — 전부 비활성.
-      { kind: "disabled", label: "알람 현황" },
+      // 알람 현황(이슈 #136)만 활성화 — 나머지 3항목은 후속 이슈로 비활성 유지(이슈 #133 IA 매핑).
+      { kind: "farm", label: "알람 현황", restPrefix: "/alarms" },
       { kind: "disabled", label: "알람 이력" },
       { kind: "disabled", label: "임계값 · 규칙" },
       { kind: "disabled", label: "수신 채널" },

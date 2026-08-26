@@ -36,6 +36,9 @@ interface GlobalBarProps {
   farmsLoadFailed: boolean;
   effectiveFarmId: string | null;
   activeGroupKey: string | null;
+  /** 미확인 알람 건수(이슈 #136) — 농장 미선택/조회 실패 시 null. */
+  unackCount: number | null;
+  unackCountFailed: boolean;
   onSelectFarm: (farmId: string) => void;
   onOpenDrawer: () => void;
 }
@@ -47,6 +50,8 @@ export default function GlobalBar({
   farmsLoadFailed,
   effectiveFarmId,
   activeGroupKey,
+  unackCount,
+  unackCountFailed,
   onSelectFarm,
   onOpenDrawer,
 }: GlobalBarProps) {
@@ -102,16 +107,34 @@ export default function GlobalBar({
         {now}
       </span>
 
-      {/* 알람 배지 — 2단계에서 실 데이터·화면 연결 전까지는 자리만 잡는다(클릭 비활성). */}
-      <span
-        aria-disabled="true"
-        className="hidden flex-none items-center gap-1.5 text-[12px] leading-none text-white/40 min-[1024px]:flex"
-      >
-        알람
-        <span className="rounded-[9px] bg-white/10 px-[7px] py-0.5 font-mono text-[10px] leading-[1.4] font-semibold text-white/50">
-          –
+      {/* 알람 배지(이슈 #136) — 미확인 알람 건수, 클릭 시 알람 현황 화면으로. 농장 미선택/조회
+          실패 시엔 AI챗봇 버튼과 동일하게 비-Link로 렌더해 키보드로도 도달 불가능하게 한다
+          (#133 리뷰 P2 — pointer-events-none은 키보드 활성화를 막지 못한다). */}
+      {effectiveFarmId && unackCount !== null ? (
+        <Link
+          href={`/farms/${effectiveFarmId}/alarms`}
+          className="hidden flex-none items-center gap-1.5 text-[12px] leading-none text-white/70 hover:text-white min-[1024px]:flex"
+        >
+          알람
+          <span
+            className={`rounded-[9px] px-[7px] py-0.5 font-mono text-[10px] leading-[1.4] font-semibold ${
+              unackCount > 0 ? "bg-dp-red text-white" : "bg-white/10 text-white/50"
+            }`}
+          >
+            {unackCount}
+          </span>
+        </Link>
+      ) : (
+        <span
+          aria-disabled="true"
+          className="hidden flex-none items-center gap-1.5 text-[12px] leading-none text-white/40 min-[1024px]:flex"
+        >
+          알람
+          <span className="rounded-[9px] bg-white/10 px-[7px] py-0.5 font-mono text-[10px] leading-[1.4] font-semibold text-white/50">
+            {unackCountFailed ? "!" : "–"}
+          </span>
         </span>
-      </span>
+      )}
 
       {/* 농장이 없으면 갈 곳이 없다. pointer-events-none은 마우스만 막고 <a>는 href가 있는 한
           탭 포커스 대상이라 키보드로는 여전히 활성화된다 — 위 대분류 탭·SideNav 비활성 항목과

@@ -155,6 +155,9 @@ export default function FarmMembers({ farmId }: FarmMembersProps) {
 
   return (
     <div className="flex flex-col gap-6 px-6 py-6">
+      {/* 페이지 제목(이슈 #136 — 구 FarmTabsHeader 제거로 이 화면엔 제목이 없었다). */}
+      <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">멤버</h1>
+
       {isAdmin && (
         <Card as="section" className="flex flex-col gap-2 p-4">
           <CardTitle as="h3">초대코드 발급</CardTitle>
