@@ -46,6 +46,9 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
   const [page, setPage] = useState(0);
 
   const [filterCounts, setFilterCounts] = useState<FilterCounts>(EMPTY_FILTER_COUNTS);
+  // "전체 확인 처리" 버튼 게이팅 전용(리뷰 P3-1) — filterCounts.ALL(상태 무관 전체 건수)과
+  // 달리 미확인 건수만 담는다.
+  const [unacknowledgedTotal, setUnacknowledgedTotal] = useState<number | null>(null);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AlarmEventDetailResponse | null>(null);
@@ -87,19 +90,26 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
     };
   }, [farmId]);
 
+  // "전체" 칩 카운트는 severity=CRITICAL/WARNING 두 값만 존재하는 것을 이용해 별도 조회 없이
+  // 합산으로 구한다(AlarmSeverity enum, 백엔드 entity/AlarmSeverity.java). 그 자리에서 절약한
+  // 호출로 미확인(UNACKNOWLEDGED) 건수를 직접 조회해 "전체 확인 처리" 버튼을 정확히 게이팅한다
+  // (리뷰 P3-1 — status=RESOLVED와 별개 축이라 ALL - RESOLVED로는 구할 수 없다).
   const loadFilterCounts = useCallback(async () => {
-    const [all, critical, warning, resolved] = await Promise.allSettled([
-      listAlarmEvents(farmId, {}, 0, 1),
+    const [critical, warning, resolved, unacknowledged] = await Promise.allSettled([
       listAlarmEvents(farmId, { severity: "CRITICAL" }, 0, 1),
       listAlarmEvents(farmId, { severity: "WARNING" }, 0, 1),
       listAlarmEvents(farmId, { status: "RESOLVED" }, 0, 1),
+      listAlarmEvents(farmId, { status: "UNACKNOWLEDGED" }, 0, 1),
     ]);
+    const criticalCount = critical.status === "fulfilled" ? critical.value.totalElements : null;
+    const warningCount = warning.status === "fulfilled" ? warning.value.totalElements : null;
     setFilterCounts({
-      ALL: all.status === "fulfilled" ? all.value.totalElements : null,
-      CRITICAL: critical.status === "fulfilled" ? critical.value.totalElements : null,
-      WARNING: warning.status === "fulfilled" ? warning.value.totalElements : null,
+      ALL: criticalCount !== null && warningCount !== null ? criticalCount + warningCount : null,
+      CRITICAL: criticalCount,
+      WARNING: warningCount,
       RESOLVED: resolved.status === "fulfilled" ? resolved.value.totalElements : null,
     });
+    setUnacknowledgedTotal(unacknowledged.status === "fulfilled" ? unacknowledged.value.totalElements : null);
   }, [farmId]);
 
   useEffect(() => {
@@ -330,7 +340,7 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
           <button
             type="button"
             onClick={() => setAckAllOpen(true)}
-            disabled={filterCounts.ALL === 0}
+            disabled={unacknowledgedTotal === 0}
             className="rounded-[7px] border border-dp-line-strong px-[13px] py-[7px] text-[12px] leading-none font-medium whitespace-nowrap text-dp-body disabled:opacity-40"
           >
             전체 확인 처리
