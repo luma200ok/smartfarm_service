@@ -157,6 +157,11 @@ control-apply-log:
   purge-fixed-delay: P1D
   purge-batch-size: 5000
 
+# 홈 대시보드 농장 카드 집계(contract, 이슈 #139) — 농장 생성 상한이 아직 없어(#70) 방어적으로
+# 집계 대상 농장 수를 상한한다(초과분은 에러 없이 자르고 WARN 로그만 남김, DashboardService 참고).
+dashboard:
+  max-farms: 50
+
 kma:
   base-url: https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0
   # 기본값 필수(핫픽스 #73) — env 미설정 시 placeholder 해석 실패/빈 문자열 Integer 변환으로
