@@ -180,6 +180,10 @@ export default function FarmDataAnalysis({ farmId }: FarmDataAnalysisProps) {
 
   return (
     <div className="flex flex-col gap-4 px-6 py-6">
+      {/* 페이지 제목(이슈 #136 — 구 FarmTabsHeader 제거로 이 화면엔 제목이 없었다. 시안 페이지
+          제목 규격 17px/700을 그대로 적용). */}
+      <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">데이터 분석</h1>
+
       {treeError && <p className="text-sm text-red-600 dark:text-red-400">{treeError}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
