@@ -72,6 +72,11 @@ public class DashboardService {
     /** trend7d 조회 기간(달력일 7일, 오늘 포함). */
     private static final int TREND_DAYS = 7;
 
+    private final FarmMemberRepository farmMemberRepository;
+    private final RackRepository rackRepository;
+    private final AlarmEventRepository alarmEventRepository;
+    private final SensorReadingRepository sensorReadingRepository;
+
     /**
      * 이 대시보드 집계 대상 농장 수 상한(이슈 #139 handoff 판단) — 농장 생성 자체에는 아직 상한이
      * 없다(#70). 이 API는 배치 쿼리 덕분에 쿼리 "개수"는 농장 수와 무관하지만, IN 절 크기·응답
@@ -79,13 +84,11 @@ public class DashboardService {
      * "한눈에 비교"가 성립하지 않으므로, 초과분은 <b>에러 없이 조용히 자르고 WARN 로그만 남긴다</b>
      * (sensor-simulator의 max-rows-per-farm 초과 처리와 동일 원칙 — 조회 API이므로 사용자 요청을
      * 거부하기보다 상한 내로 degrade한다). 농장 생성 상한(#70)이 도입되면 이 값도 함께 재검토한다.
+     * {@code sensor-simulator.max-rows-per-farm} 등 다른 상한 값과 동일하게 @Value로 외부화해
+     * 테스트가 낮은 상한으로 오버라이드해 절단 동작 자체를 검증할 수 있게 한다.
      */
-    static final int MAX_DASHBOARD_FARMS = 50;
-
-    private final FarmMemberRepository farmMemberRepository;
-    private final RackRepository rackRepository;
-    private final AlarmEventRepository alarmEventRepository;
-    private final SensorReadingRepository sensorReadingRepository;
+    @Value("${dashboard.max-farms:50}")
+    private int maxDashboardFarms;
 
     /** {@code ReadingService}와 동일한 신선도 상한 기준(tick 주기 × 5) — 카드 지표도 "현재값"을
      * 참칭하지 않도록 오래된 값은 null로 떨어뜨린다. */
@@ -101,10 +104,10 @@ public class DashboardService {
         if (myFarms.isEmpty()) {
             return List.of();
         }
-        if (myFarms.size() > MAX_DASHBOARD_FARMS) {
+        if (myFarms.size() > maxDashboardFarms) {
             log.warn("홈 대시보드 집계 대상 농장이 상한을 초과해 잘랐습니다: userId={}, count={}, cap={}",
-                    userId, myFarms.size(), MAX_DASHBOARD_FARMS);
-            myFarms = myFarms.subList(0, MAX_DASHBOARD_FARMS);
+                    userId, myFarms.size(), maxDashboardFarms);
+            myFarms = myFarms.subList(0, maxDashboardFarms);
         }
 
         List<Long> farmIds = myFarms.stream().map(FarmSummaryResponse::id).toList();

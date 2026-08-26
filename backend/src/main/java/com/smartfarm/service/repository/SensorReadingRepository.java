@@ -274,7 +274,7 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
             SELECT farm_id AS "farmId", CAST(measured_at AS date) AS "bucketDate", avg(v) AS "value"
             FROM device_avg
             GROUP BY farm_id, CAST(measured_at AS date)
-            ORDER BY farm_id, bucketDate
+            ORDER BY 1, 2
             """, nativeQuery = true)
     List<ReadingFarmDailyTrendProjection> findDailyTrendByFarmIds(@Param("farmIds") List<Long> farmIds,
                                                                    @Param("metric") String metric,
