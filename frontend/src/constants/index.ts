@@ -1,4 +1,8 @@
 import type {
+  AlarmComparator,
+  AlarmEventLogAction,
+  AlarmEventStatus,
+  AlarmSeverity,
   ControllableMetric,
   DeviceKind,
   DeviceStatus,
@@ -202,4 +206,40 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   // CT005는 응답 본문에 최신 pendingChanges를 함께 실어 보낸다 — 이 문구는 최후 폴백일 뿐,
   // 실제 화면은 isQueueConflict(errorMessage.ts)로 큐를 갱신하고 재확인 안내를 별도로 보여준다.
   CT005: "다른 사용자가 대기 큐를 변경했습니다. 최신 큐를 확인한 뒤 다시 적용해주세요.",
+  AL001: "알람 이벤트를 찾을 수 없습니다.",
+  AL002: "현재 상태에서는 처리할 수 없는 알람입니다.",
+  ALR001: "알람 규칙을 찾을 수 없습니다.",
+  ALR002: "농장당 알람 규칙 상한을 초과했습니다.",
+  ALR003: "비교 조건과 임계값 구성이 올바르지 않습니다.",
+  ALR004: "환경 임계치 설정에서 만들어진 규칙은 임계치 설정 API로만 변경할 수 있습니다.",
+};
+
+// 알람 등급 라벨 (이슈 #116/#136). "완료"는 severity가 아니라 상태(RESOLVED)에서 파생되는
+// 화면 전용 표시라 여기 포함하지 않는다 — 행 렌더링에서 status로 별도 분기한다.
+export const ALARM_SEVERITY_LABELS: Record<AlarmSeverity, string> = {
+  CRITICAL: "경보",
+  WARNING: "주의",
+};
+
+// 알람 상태 라벨 (이슈 #116/#136).
+export const ALARM_STATUS_LABELS: Record<AlarmEventStatus, string> = {
+  UNACKNOWLEDGED: "미확인",
+  ACKNOWLEDGED: "확인됨",
+  RESOLVED: "완료",
+};
+
+// 처리 이력(timeline) 액션 라벨 — actorId는 이름이 없어 시각·행위만 표기한다(이슈 #136 핸드오프).
+export const ALARM_TIMELINE_ACTION_LABELS: Record<AlarmEventLogAction, string> = {
+  CREATED: "알람 발생",
+  ACKNOWLEDGED: "확인 처리",
+  RESOLVED: "조치 완료",
+  MEMO_ADDED: "메모 추가",
+};
+
+// 알람 규칙 비교 연산자 라벨 — 백엔드 AlarmComparator#label()과 문구를 그대로 맞춘다.
+export const ALARM_COMPARATOR_LABELS: Record<AlarmComparator, string> = {
+  GT: "상한 초과",
+  LT: "하한 미만",
+  OUTSIDE_RANGE: "범위 이탈",
+  ABSENT: "무응답",
 };
