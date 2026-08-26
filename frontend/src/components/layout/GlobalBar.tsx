@@ -113,15 +113,24 @@ export default function GlobalBar({
         </span>
       </span>
 
-      <Link
-        href={effectiveFarmId ? `/farms/${effectiveFarmId}/chat` : "#"}
-        aria-disabled={!effectiveFarmId}
-        className={`hidden flex-none rounded-md border border-white/25 px-3 py-1.5 text-[12px] leading-none min-[768px]:inline ${
-          effectiveFarmId ? "hover:bg-white/10" : "pointer-events-none opacity-40"
-        }`}
-      >
-        AI 챗봇
-      </Link>
+      {/* 농장이 없으면 갈 곳이 없다. pointer-events-none은 마우스만 막고 <a>는 href가 있는 한
+          탭 포커스 대상이라 키보드로는 여전히 활성화된다 — 위 대분류 탭·SideNav 비활성 항목과
+          같이 비-Link 요소로 렌더해 실제로 도달 불가능하게 한다(#133 리뷰 P2). */}
+      {effectiveFarmId ? (
+        <Link
+          href={`/farms/${effectiveFarmId}/chat`}
+          className="hidden flex-none rounded-md border border-white/25 px-3 py-1.5 text-[12px] leading-none hover:bg-white/10 min-[768px]:inline"
+        >
+          AI 챗봇
+        </Link>
+      ) : (
+        <span
+          aria-disabled="true"
+          className="hidden flex-none cursor-not-allowed rounded-md border border-white/25 px-3 py-1.5 text-[12px] leading-none opacity-40 min-[768px]:inline"
+        >
+          AI 챗봇
+        </span>
+      )}
 
       <ProfileMenu />
     </header>
