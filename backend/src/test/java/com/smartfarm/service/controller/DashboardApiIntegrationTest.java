@@ -14,6 +14,7 @@ import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.entity.SensorReading;
 import com.smartfarm.service.entity.SensorSource;
 import com.smartfarm.service.repository.AlarmEventRepository;
+import com.smartfarm.service.repository.RackLevelRepository;
 import com.smartfarm.service.repository.SensorReadingRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.time.LocalDateTime;
@@ -38,6 +39,9 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
 
     @Autowired
     private AlarmEventRepository alarmEventRepository;
+
+    @Autowired
+    private RackLevelRepository rackLevelRepository;
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
@@ -157,6 +161,34 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$[0].trend7d.length()").value(7))
                 .andExpect(jsonPath("$[0].trend7d[6].value").doesNotExist())
                 .andExpect(jsonPath("$[0].trend7d[6].state").value("IDLE"));
+    }
+
+    @Test
+    @DisplayName("층이 soft delete되면 그 층의 잔존 측정값이 카드 지표 '최신값'으로 노출되지 않는다"
+            + "(리뷰 P1 — findLatestByFarmIdsAndMetrics soft-delete 필터 누락)")
+    void dashboardExcludesSoftDeletedLevelReadingsFromLatestMetrics() throws Exception {
+        String token = signupAndLogin("층삭제농부");
+        long farmId = createFarm(token, "층삭제 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+        long levelId = levelIdOfByNo(token, farmId, zoneId, rackId, 1);
+        long deviceId = createDevice(token, farmId, null, null, levelId, "센서1");
+
+        // 이 농장의 유일한 측정값은 이 층에만 있다 — 층이 soft delete되면 그 이력도 함께 제외돼야
+        // "최신값"이 null(측정 이력 없음)로 떨어진다(값이 있는데 숨는 게 아니라, 애초에 값이 없는
+        // 상태가 정답이다).
+        saveReading(farmId, deviceId, levelId, SensorMetric.TEMPERATURE, 22.0, LocalDateTime.now());
+
+        rackLevelRepository.deleteById(levelId); // @SQLDelete → soft delete(deleted_at 설정)
+
+        // CARD_METRICS 고정 순서(TEMPERATURE·HUMIDITY·EC)라 index 0 = TEMPERATURE — 필터
+        // jsonPath(indefinite path)는 값이 null이어도 "원소 1개짜리 리스트"로 남아 doesNotExist()가
+        // 통과하지 못하므로, 정의된(definite) index 경로로 직접 확인한다.
+        mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].metrics[0].metric").value("TEMPERATURE"))
+                .andExpect(jsonPath("$[0].metrics[0].value").doesNotExist())
+                .andExpect(jsonPath("$[0].metrics[0].outOfRange").value(false));
     }
 
     // ── 스코프(타 사용자·PENDING) ──────────────────────────────────

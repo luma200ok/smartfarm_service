@@ -233,19 +233,29 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
      * 술어를 둔다(사이클 2 리뷰 P1-1 선례) — CTE만 좁히고 바깥이 그 좁힘을 상속하지 않으면 같은
      * tick의 다른 지표까지 섞여 평균된다(시뮬레이터가 한 device의 전 metric을 동일 분단위
      * measuredAt으로 쓰므로 정상 운영에서 100% 발생).
+     *
+     * <p>⚠️ soft delete된 층의 과거 이력은 {@code findSeriesAggregated}/{@code findDailyTrendByFarmIds}
+     * 와 동일하게 제외한다(사이클 2 리뷰 P2-3 선례, 이슈 #139 리뷰 P1) — 층이 soft delete된 직후
+     * 아직 다른 활성 층이 그보다 새 값을 보고하기 전 구간에는, 필터가 없으면 "농장 전체 최신 tick"이
+     * 삭제된 층의 값으로 잡혀 카드 지표에 그대로 노출된다. {@link #findLatestPerLevel}과 같은 이유로
+     * <b>CTE와 바깥 SELECT 양쪽</b>에 건다(#118 리뷰 — 한쪽만 걸면 샌다).
      */
     @Query(value = """
             WITH latest_tick AS (
-                SELECT farm_id, metric, max(measured_at) AS at
-                FROM sensor_readings
-                WHERE farm_id IN (:farmIds) AND metric IN (:metrics)
-                GROUP BY farm_id, metric
+                SELECT sr.farm_id, sr.metric, max(sr.measured_at) AS at
+                FROM sensor_readings sr
+                LEFT JOIN rack_levels rl ON rl.id = sr.rack_level_id
+                WHERE sr.farm_id IN (:farmIds) AND sr.metric IN (:metrics)
+                  AND (sr.rack_level_id IS NULL OR rl.deleted_at IS NULL)
+                GROUP BY sr.farm_id, sr.metric
             )
             SELECT sr.farm_id AS "farmId", sr.metric AS "metric",
                    avg(sr.value) AS "value", max(sr.measured_at) AS "measuredAt"
             FROM sensor_readings sr
+            LEFT JOIN rack_levels rl ON rl.id = sr.rack_level_id
             JOIN latest_tick lt ON sr.farm_id = lt.farm_id AND sr.metric = lt.metric AND sr.measured_at = lt.at
             WHERE sr.farm_id IN (:farmIds) AND sr.metric IN (:metrics)
+              AND (sr.rack_level_id IS NULL OR rl.deleted_at IS NULL)
             GROUP BY sr.farm_id, sr.metric
             """, nativeQuery = true)
     List<ReadingFarmLatestProjection> findLatestByFarmIdsAndMetrics(@Param("farmIds") List<Long> farmIds,
