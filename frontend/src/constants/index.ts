@@ -14,6 +14,7 @@ import type {
   FarmRole,
   NutrientStage,
   OperationMode,
+  PesticideAlertSeverity,
   ReadingCellState,
   SensorMetric,
   WeatherSky,
@@ -260,4 +261,10 @@ export const ALARM_COMPARATOR_LABELS: Record<AlarmComparator, string> = {
   LT: "하한 미만",
   OUTSIDE_RANGE: "범위 이탈",
   ABSENT: "무응답",
+};
+
+// 농약 경보 등급 라벨 (contract §4.16, 이슈 #128)
+export const PESTICIDE_ALERT_SEVERITY_LABELS: Record<PesticideAlertSeverity, string> = {
+  WARNING: "주의",
+  INFO: "참고",
 };

@@ -851,6 +851,30 @@ export interface SavedAnalysisResponse {
   updatedAt: string;
 }
 
+// ── 농약 참조정보 (contract §4.16, 이슈 #128) ──────────────────────────────
+// ⚠️ 내부 시드 스텁이다 — source는 항상 이 사실을 정직하게 담은 문구가 온다(실제 농진청 연동
+// 아님). 이 값을 임의 문구로 대체하지 말고 API가 준 그대로 화면에 표시할 것(안전 규칙).
+export interface PesticideReferenceResponse {
+  cropType: CropType;
+  pestName: string;
+  registeredProductCount: number;
+  preHarvestIntervalDays: number | null;
+  note: string;
+  source: string;
+  updatedAt: string;
+}
+
+export type PesticideAlertSeverity = "WARNING" | "INFO";
+
+export interface PesticideAlertResponse {
+  cropType: CropType;
+  message: string;
+  severity: PesticideAlertSeverity;
+  validFrom: string;
+  validUntil: string;
+  source: string;
+}
+
 // ── 알람 규칙 (이슈 #118, 상세 패널 "규칙" 한 줄 요약 조회용) ──────────────
 export type AlarmRuleSource = "ENV_SNAPSHOT" | "SENSOR_READING" | "DEVICE_HEARTBEAT";
 export type AlarmComparator = "GT" | "LT" | "OUTSIDE_RANGE" | "ABSENT";

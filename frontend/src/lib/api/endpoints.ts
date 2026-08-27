@@ -102,4 +102,9 @@ export const ENDPOINTS = {
     accept: "/api/invitations/accept",
   },
   nutrientPresets: "/api/nutrient-presets",
+  // 농약 참조정보 (contract §4.16, 이슈 #128) — farm-scoped 아님(인증만).
+  pesticideReferences: {
+    list: "/api/pesticide-references",
+    alerts: "/api/pesticide-references/alerts",
+  },
 } as const;
