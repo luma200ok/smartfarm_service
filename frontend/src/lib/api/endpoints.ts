@@ -63,6 +63,13 @@ export const ENDPOINTS = {
     readingsSeries: (farmId: number | string) => `/api/farms/${farmId}/readings/series`,
     readingsLatest: (farmId: number | string) => `/api/farms/${farmId}/readings/latest`,
     readingsLevelSummary: (farmId: number | string) => `/api/farms/${farmId}/readings/level-summary`,
+    // CSV 내보내기·저장한 분석 (contract §4.15, 이슈 #126)
+    readingsExportCsv: (farmId: number | string) => `/api/farms/${farmId}/readings/export.csv`,
+    savedAnalyses: (farmId: number | string) => `/api/farms/${farmId}/saved-analyses`,
+    savedAnalysisDetail: (farmId: number | string, analysisId: number | string) =>
+      `/api/farms/${farmId}/saved-analyses/${analysisId}`,
+    // 시스템 로그 (contract §4.17, 이슈 #129) — append-only 조회 전용.
+    systemLogs: (farmId: number | string) => `/api/farms/${farmId}/system-logs`,
     // 제어 도메인 (contract §4.12, 이슈 #100/#108)
     control: (farmId: number | string, zoneId: number | string) =>
       `/api/farms/${farmId}/zones/${zoneId}/control`,
@@ -97,4 +104,9 @@ export const ENDPOINTS = {
     accept: "/api/invitations/accept",
   },
   nutrientPresets: "/api/nutrient-presets",
+  // 농약 참조정보 (contract §4.16, 이슈 #128) — farm-scoped 아님(인증만).
+  pesticideReferences: {
+    list: "/api/pesticide-references",
+    alerts: "/api/pesticide-references/alerts",
+  },
 } as const;

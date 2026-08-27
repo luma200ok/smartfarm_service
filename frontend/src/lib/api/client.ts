@@ -82,3 +82,56 @@ export async function api<T>(path: string, options: ApiRequestOptions = {}): Pro
 
   return data as T;
 }
+
+/**
+ * RFC 5987 `filename*=UTF-8''...`을 우선 파싱하고, 없으면 `filename="..."`로 폴백한다
+ * (CSV 내보내기, contract §4.15 — 서버가 ContentDisposition.attachment().filename(...,UTF_8)로
+ * 실어 보낸다).
+ */
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const extended = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1].trim());
+    } catch {
+      // no-op — 아래 폴백으로
+    }
+  }
+  const basic = /filename="?([^";]+)"?/i.exec(header);
+  return basic ? basic[1].trim() : null;
+}
+
+/**
+ * 바이너리(CSV 등) 응답 전용 fetch — `api()`는 JSON 응답만 파싱하므로 별도 함수로 둔다.
+ * 실패 시(4xx/5xx) 표준 {timestamp,code,message} 본문을 파싱해 동일하게 ApiError를 던진다.
+ */
+export async function apiBinary(
+  path: string,
+  options: ApiRequestOptions = {}
+): Promise<{ blob: Blob; filename: string | null }> {
+  const { body, headers, ...rest } = options;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...rest,
+      headers: { ...headers },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError(0, "서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요.");
+  }
+
+  if (!res.ok) {
+    const contentType = res.headers.get("content-type") ?? "";
+    const data: unknown = contentType.includes("application/json") ? await res.json().catch(() => null) : null;
+    const message = isApiErrorResponse(data) ? data.message : res.statusText || DEFAULT_ERROR_MESSAGE;
+    const code = isApiErrorResponse(data) ? data.code : undefined;
+    throw new ApiError(res.status, message, code, data);
+  }
+
+  const blob = await res.blob();
+  const filename = parseContentDispositionFilename(res.headers.get("content-disposition"));
+  return { blob, filename };
+}

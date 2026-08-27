@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ALARM_SEVERITY_LABELS } from "@/constants";
-import type { AlarmStatsResponse, FarmSummaryResponse } from "@/types";
+import type { AlarmStatsResponse, FarmSummaryResponse, SavedAnalysisResponse } from "@/types";
 import { NAV_GROUPS, getLeafHref, isLeafActive } from "./nav-config";
 
 interface SideNavProps {
@@ -15,6 +15,9 @@ interface SideNavProps {
   /** 알람 현황 화면(activeGroupKey==="alarm")일 때만 하단 블록에 쓰인다. */
   alarmStats?: AlarmStatsResponse | null;
   alarmStatsFailed?: boolean;
+  /** 데이터 화면(activeGroupKey==="data")일 때만 하단 블록에 쓰인다(이슈 #144, contract §4.15). */
+  savedAnalyses?: SavedAnalysisResponse[] | null;
+  savedAnalysesFailed?: boolean;
   onSelectFarm: (farmId: string) => void;
   /** « (데스크톱 접기) 또는 서랍 닫기 — variant에 따라 의미가 다르다. */
   onCollapse: () => void;
@@ -34,6 +37,8 @@ export default function SideNav({
   activeGroupKey,
   alarmStats,
   alarmStatsFailed = false,
+  savedAnalyses,
+  savedAnalysesFailed = false,
   onSelectFarm,
   onCollapse,
   onNavigate,
@@ -141,6 +146,13 @@ export default function SideNav({
           알람 현황 화면(이슈 #136)에서는 시안 요구대로 "최근 7일" 통계로 교체된다. */}
       {activeGroupKey === "alarm" ? (
         <AlarmStatsBlock stats={alarmStats ?? null} failed={alarmStatsFailed} />
+      ) : activeGroupKey === "data" && effectiveFarmId ? (
+        <SavedAnalysesBlock
+          farmId={effectiveFarmId}
+          analyses={savedAnalyses ?? null}
+          failed={savedAnalysesFailed}
+          onNavigate={onNavigate}
+        />
       ) : (
         <div className="mx-2.5 mb-3.5 flex-none rounded-lg bg-dp-inset p-3">
           <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.05em] text-dp-muted">내 농장</div>
@@ -177,6 +189,49 @@ export default function SideNav({
         </div>
       )}
     </aside>
+  );
+}
+
+// 좌측 내비 하단 "저장한 분석" 목록(이슈 #144, contract §4.15) — 데이터 화면에서 "내 농장" 블록
+// 자리를 대체한다. 클릭하면 그 분석의 필터(metrics/range/scope)를 쿼리스트링(?apply=id)으로
+// 실어 /data로 이동한다 — SideNav와 FarmDataAnalysis는 형제 컴포넌트(AppShell 하위)라 콜백 없이
+// 상태를 직접 공유할 수 없어 URL을 경유한다(FarmDataAnalysis가 apply를 읽어 적용 후 정리한다).
+function SavedAnalysesBlock({
+  farmId,
+  analyses,
+  failed,
+  onNavigate,
+}: {
+  farmId: string;
+  analyses: SavedAnalysisResponse[] | null;
+  failed: boolean;
+  onNavigate?: () => void;
+}) {
+  return (
+    <div className="mx-2.5 mb-3.5 flex-none rounded-lg bg-dp-inset p-3">
+      <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.05em] text-dp-muted">저장한 분석</div>
+      {analyses === null && !failed && <p className="text-xs text-dp-faint">불러오는 중...</p>}
+      {failed && <p className="text-xs text-dp-faint">목록을 불러오지 못했습니다.</p>}
+      {analyses !== null && analyses.length === 0 && !failed && (
+        <p className="text-xs text-dp-faint">저장한 분석이 없습니다.</p>
+      )}
+      {analyses !== null && analyses.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {analyses.map((a) => (
+            <li key={a.id}>
+              <Link
+                href={`/farms/${farmId}/data?apply=${a.id}`}
+                onClick={onNavigate}
+                className="block truncate text-[12px] font-medium text-dp-body hover:text-dp-ink"
+                title={a.name}
+              >
+                {a.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

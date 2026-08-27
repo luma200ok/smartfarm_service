@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Card, CardTitle } from "@/components/monitoring/ui";
 import { VALIDATION } from "@/constants";
 import { isTooManyRequests, resolveErrorMessage } from "@/lib/api/errorMessage";
 import { listChatMessages, sendChatMessage } from "@/lib/api/chat";
@@ -15,12 +14,17 @@ interface FarmChatProps {
 
 const PAGE_SIZE = 20;
 
-// AI 상담 탭(이슈 #54·#55, contract §4.7) — 이력 목록 + 입력창을 한 컴포넌트에서 오케스트레이션
-// (FarmLogList·FarmMembers와 동일한 "탭 하나 = 컴포넌트 하나" 관례).
+// AI 상담 탭(이슈 #54·#55, contract §4.7 → #144 시안 05 적용) — 이력 목록 + 입력창을 한
+// 컴포넌트에서 오케스트레이션(FarmLogList·FarmMembers와 동일한 "탭 하나 = 컴포넌트 하나" 관례).
+// 날씨·농약 카드는 형제 컴포넌트(ForecastWidget·PesticideCard)로 옆에 배치한다(chat/page.tsx).
 //
 // ⚠️ 보안 필수(contract §4.7): answer·sources는 LLM이 생성한 자유 텍스트이고 이력으로 재노출된다.
 // React 기본 이스케이프(텍스트 노드)로만 렌더한다 — dangerouslySetInnerHTML·raw HTML 마크다운
 // 렌더러 사용 절대 금지(저장형 XSS). 줄바꿈은 CSS white-space: pre-wrap으로만 처리한다.
+//
+// ⚠️ sources는 string[](근거 출처 문자열)이지 차트 데이터가 아니다(메타 실측, 이슈 #144 handoff)
+// — 시안의 AI 버블 안 인라인 차트(SVG)는 그릴 값이 없어 렌더하지 않고, 대신 텍스트 목록으로
+// 표시한다(#128 농약 출처·#129 harvestDueSoon과 동일 원칙 — 없는 데이터를 지어내지 않는다).
 export default function FarmChat({ farmId }: FarmChatProps) {
   // GET .../chat은 최신순 페이지를 반환한다(FarmLogList와 동일한 page0=최신 관례).
   // page0에서 새 메시지가 항상 보이도록, 전송 성공 시 page를 0으로 되돌린다.
@@ -115,101 +119,110 @@ export default function FarmChat({ farmId }: FarmChatProps) {
   const remaining = VALIDATION.chatQuestion.maxLength - question.length;
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-6">
-      <h2>
-        <CardTitle size="lg">AI 상담</CardTitle>
-      </h2>
+    <div className="flex flex-col">
+      <div className="flex flex-none items-center gap-2.5 border-b border-dp-line px-[18px] py-3.5">
+        <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] bg-dp-green text-[11px] font-bold text-dp-on-green">
+          AI
+        </span>
+        <span className="text-sm font-semibold text-dp-ink">스마트팜 어시스턴트</span>
+        {farm && <span className="text-[11.5px] text-dp-muted">{farm.name} 연결됨</span>}
+        <div className="flex-1" />
+        {data && data.totalPages > 1 && (
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              disabled={page <= 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
+            >
+              최신
+            </button>
+            <span className="text-dp-muted">
+              {data.page + 1} / {data.totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page + 1 >= data.totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
+            >
+              이전 대화
+            </button>
+          </div>
+        )}
+      </div>
 
-      {loadError && <p className="text-sm text-dp-red-ink">{loadError}</p>}
+      <div className="max-h-[520px] overflow-y-auto px-[18px] py-[18px]">
+        {loadError && <p className="text-sm text-dp-red-ink">{loadError}</p>}
 
-      {!data && !loadError && <p className="text-sm text-dp-muted">불러오는 중...</p>}
+        {!data && !loadError && <p className="text-sm text-dp-sub">불러오는 중...</p>}
 
-      {data && data.content.length === 0 && (
-        <p className="text-sm text-dp-muted">아직 대화가 없습니다. 병해·재배 환경에 대해 물어보세요.</p>
-      )}
+        {data && data.content.length === 0 && (
+          <p className="text-sm text-dp-sub">아직 대화가 없습니다. 병해·재배 환경에 대해 물어보세요.</p>
+        )}
 
-      {data && orderedMessages.length > 0 && (
-        <ul className="flex flex-col gap-4">
-          {orderedMessages.map((msg) => (
-            <li key={msg.id} className="flex flex-col gap-2">
-              <div className="max-w-[85%] self-end rounded-lg bg-dp-ink px-3 py-2 text-sm text-dp-surface">
-                <p className="whitespace-pre-wrap">{msg.question}</p>
-              </div>
-              <Card className="flex max-w-[85%] flex-col gap-1.5 self-start px-3 py-2 text-sm">
-                {msg.fallback && (
-                  <p className="rounded bg-dp-amber-tint px-2 py-1 text-xs text-dp-amber-deep">
-                    AI가 답변을 생성하지 못했습니다.
-                  </p>
-                )}
-                <p className="whitespace-pre-wrap text-dp-body">{msg.answer}</p>
-                {msg.sources.length > 0 && (
-                  <details className="text-xs text-dp-muted">
-                    <summary className="cursor-pointer select-none">근거 자료 ({msg.sources.length})</summary>
-                    <ul className="mt-1 list-inside list-disc">
-                      {msg.sources.map((source, i) => (
-                        <li key={i}>{source}</li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-                <span className="text-[11px] text-dp-faint">{new Date(msg.createdAt).toLocaleString()}</span>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {data && data.totalPages > 1 && (
-        <div className="flex items-center gap-3 text-sm">
-          <button
-            type="button"
-            disabled={page <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
-          >
-            최신
-          </button>
-          <span className="text-dp-muted">
-            {data.page + 1} / {data.totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={page + 1 >= data.totalPages}
-            onClick={() => setPage((p) => p + 1)}
-            className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
-          >
-            이전 대화
-          </button>
-        </div>
-      )}
+        {data && orderedMessages.length > 0 && (
+          <ul className="flex flex-col gap-3.5">
+            {orderedMessages.map((msg) => (
+              <li key={msg.id} className="flex flex-col gap-2">
+                <div className="max-w-[62%] self-end rounded-[12px_12px_3px_12px] bg-dp-green-tint-2 px-[15px] py-3 text-[13px] leading-[1.6] text-dp-ink">
+                  <p className="whitespace-pre-wrap">{msg.question}</p>
+                </div>
+                <div className="max-w-[76%] self-start rounded-[12px_12px_12px_3px] bg-dp-inset px-4 py-[13px] text-[13px] leading-[1.65] text-dp-ink">
+                  {msg.fallback && (
+                    <p className="mb-2 rounded bg-dp-amber-tint px-2 py-1 text-xs text-dp-amber-deep">
+                      AI가 답변을 생성하지 못했습니다.
+                    </p>
+                  )}
+                  <p className="whitespace-pre-wrap">{msg.answer}</p>
+                  {/* sources는 근거 출처 문자열 목록이지 차트 데이터가 아니다(handoff 실측) — 텍스트로만 표시. */}
+                  {msg.sources.length > 0 && (
+                    <details className="mt-2.5 text-xs text-dp-muted">
+                      <summary className="cursor-pointer select-none font-medium">근거 자료 ({msg.sources.length})</summary>
+                      <ul className="mt-1 list-inside list-disc">
+                        {msg.sources.map((source, i) => (
+                          <li key={i}>{source}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  <span className="mt-1.5 block text-[11px] text-dp-faint">
+                    {new Date(msg.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {canWrite ? (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-dp-line pt-4">
-          <label htmlFor="chat-question" className="sr-only">
-            질문
-          </label>
-          <textarea
-            id="chat-question"
-            rows={3}
-            required
-            maxLength={VALIDATION.chatQuestion.maxLength}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="병해·재배 환경에 대해 물어보세요"
-            className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-dp-faint">
-              {question.length} / {VALIDATION.chatQuestion.maxLength}자 (남은 {Math.max(0, remaining)}자)
-            </span>
+        <form onSubmit={handleSubmit} className="flex flex-none flex-col gap-2 border-t border-dp-line px-[18px] py-3.5">
+          <div className="flex items-center gap-2.5">
+            <label htmlFor="chat-question" className="sr-only">
+              질문
+            </label>
+            <textarea
+              id="chat-question"
+              rows={1}
+              required
+              maxLength={VALIDATION.chatQuestion.maxLength}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="농장 상태나 데이터에 대해 물어보세요"
+              className="flex-1 resize-none rounded-[9px] bg-dp-inset px-3.5 py-3 text-[13px] text-dp-ink placeholder:text-dp-faint"
+            />
             <button
               type="submit"
               disabled={submitting || question.trim().length === 0}
-              className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
+              className="flex-none rounded-[9px] bg-dp-green px-[18px] py-3 text-[13px] font-semibold text-dp-on-green disabled:opacity-40"
             >
               {submitting ? "전송 중..." : "전송"}
             </button>
           </div>
+          <span className="text-xs text-dp-faint">
+            {question.length} / {VALIDATION.chatQuestion.maxLength}자 (남은 {Math.max(0, remaining)}자)
+          </span>
 
           {retryHint && (
             <p className="rounded-md border border-dp-amber-line bg-dp-amber-tint px-3 py-2 text-sm text-dp-amber-deep">
@@ -219,7 +232,7 @@ export default function FarmChat({ farmId }: FarmChatProps) {
           {sendError && <p className="text-sm text-dp-red-ink">{sendError}</p>}
         </form>
       ) : (
-        <p className="border-t border-dp-line pt-4 text-sm text-dp-faint">조회 전용 역할입니다.</p>
+        <p className="flex-none border-t border-dp-line px-[18px] py-3.5 text-sm text-dp-faint">조회 전용 역할입니다.</p>
       )}
     </div>
   );

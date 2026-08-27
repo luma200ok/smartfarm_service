@@ -92,7 +92,11 @@ export type ErrorCode =
   | "ALR001"
   | "ALR002"
   | "ALR003"
-  | "ALR004";
+  | "ALR004"
+  | "SA001"
+  | "SA002"
+  | "SA003"
+  | "SA004";
 
 // GlobalExceptionHandler 공통 응답
 export interface ApiErrorResponse {
@@ -813,6 +817,76 @@ export interface AlarmUnacknowledgedCountResponse {
 
 export interface AlarmAcknowledgeAllResponse {
   acknowledgedCount: number;
+}
+
+// ── 저장한 분석 (contract §4.15, 이슈 #126) ──────────────────────────────
+// GET .../readings/series의 필터(metrics/range/scope)를 이름 붙여 저장·재적용한다.
+// 실행(그 필터로 다시 조회)은 별도 API가 없다 — FE가 GET readings/series를 이 값으로 다시 호출한다.
+export interface SavedAnalysisRequest {
+  name: string;
+  /** 최대 4개(§4.11 MAX_SERIES_METRICS와 동일 상한) */
+  metrics: SensorMetric[];
+  /** "24h" | "7d" | "30d" */
+  range: string;
+  scopeType: AlarmScopeType;
+  /** scopeType=FARM이면 생략/null */
+  scopeId?: number | null;
+}
+
+export interface SavedAnalysisUpdateRequest {
+  /** rename만 허용(metrics·range·scope는 PATCH 대상이 아니다 — 바꾸려면 삭제 후 재생성) */
+  name: string;
+}
+
+export interface SavedAnalysisResponse {
+  id: number;
+  farmId: number;
+  name: string;
+  metrics: SensorMetric[];
+  range: string;
+  scopeType: AlarmScopeType;
+  scopeId: number | null;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── 농약 참조정보 (contract §4.16, 이슈 #128) ──────────────────────────────
+// ⚠️ 내부 시드 스텁이다 — source는 항상 이 사실을 정직하게 담은 문구가 온다(실제 농진청 연동
+// 아님). 이 값을 임의 문구로 대체하지 말고 API가 준 그대로 화면에 표시할 것(안전 규칙).
+export interface PesticideReferenceResponse {
+  cropType: CropType;
+  pestName: string;
+  registeredProductCount: number;
+  preHarvestIntervalDays: number | null;
+  note: string;
+  source: string;
+  updatedAt: string;
+}
+
+export type PesticideAlertSeverity = "WARNING" | "INFO";
+
+export interface PesticideAlertResponse {
+  cropType: CropType;
+  message: string;
+  severity: PesticideAlertSeverity;
+  validFrom: string;
+  validUntil: string;
+  source: string;
+}
+
+// ── 시스템 로그 (contract §4.17, 이슈 #129) ──────────────────────────────
+// append-only, 조회 전용. actorId는 nullable(시스템 자동 이벤트)이고 message가 이미 자연어
+// 완결문이라 actorId로 사용자 이름을 별도로 붙이지 않는다(이슈 #136 alarm timeline과 동일 원칙 —
+// actorId만으로는 닉네임을 알 수 없어 지어내면 안 된다).
+export type SystemLogCategory = "CONTROL" | "MEMBER" | "ALARM" | "DEVICE";
+
+export interface SystemLogResponse {
+  id: number;
+  category: SystemLogCategory;
+  message: string;
+  actorId: number | null;
+  occurredAt: string;
 }
 
 // ── 알람 규칙 (이슈 #118, 상세 패널 "규칙" 한 줄 요약 조회용) ──────────────

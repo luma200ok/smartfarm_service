@@ -1,6 +1,6 @@
 import { STORAGE_KEYS } from "@/constants";
 import type { LoginRequest, RefreshRequest, SignupRequest, TokenResponse, UserResponse } from "@/types";
-import { ApiError, api, authHeaders, type ApiRequestOptions } from "./client";
+import { ApiError, api, apiBinary, authHeaders, type ApiRequestOptions } from "./client";
 import { ENDPOINTS } from "./endpoints";
 
 // ── 토큰 저장 (localStorage['farmAccessToken']/['farmRefreshToken']) ──
@@ -136,6 +136,36 @@ export async function authFetch<T>(
           throw err;
         }
         return authFetch<T>(path, options, true);
+      }
+      clearTokens();
+      redirectToLogin();
+    }
+    throw err;
+  }
+}
+
+/** authFetch와 동일한 401(A003) 재시도 규약을 가진 바이너리(CSV 등) 전용 버전. */
+export async function authFetchBinary(
+  path: string,
+  options: ApiRequestOptions = {},
+  _retried = false
+): Promise<{ blob: Blob; filename: string | null }> {
+  try {
+    return await apiBinary(path, {
+      ...options,
+      headers: { ...authHeaders(getAccessToken()), ...options.headers },
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      if (err.code === "A003" && !_retried) {
+        try {
+          await refreshTokens();
+        } catch {
+          clearTokens();
+          redirectToLogin();
+          throw err;
+        }
+        return authFetchBinary(path, options, true);
       }
       clearTokens();
       redirectToLogin();
