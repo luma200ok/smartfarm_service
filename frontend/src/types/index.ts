@@ -875,6 +875,20 @@ export interface PesticideAlertResponse {
   source: string;
 }
 
+// ── 시스템 로그 (contract §4.17, 이슈 #129) ──────────────────────────────
+// append-only, 조회 전용. actorId는 nullable(시스템 자동 이벤트)이고 message가 이미 자연어
+// 완결문이라 actorId로 사용자 이름을 별도로 붙이지 않는다(이슈 #136 alarm timeline과 동일 원칙 —
+// actorId만으로는 닉네임을 알 수 없어 지어내면 안 된다).
+export type SystemLogCategory = "CONTROL" | "MEMBER" | "ALARM" | "DEVICE";
+
+export interface SystemLogResponse {
+  id: number;
+  category: SystemLogCategory;
+  message: string;
+  actorId: number | null;
+  occurredAt: string;
+}
+
 // ── 알람 규칙 (이슈 #118, 상세 패널 "규칙" 한 줄 요약 조회용) ──────────────
 export type AlarmRuleSource = "ENV_SNAPSHOT" | "SENSOR_READING" | "DEVICE_HEARTBEAT";
 export type AlarmComparator = "GT" | "LT" | "OUTSIDE_RANGE" | "ABSENT";

@@ -17,6 +17,7 @@ import type {
   PesticideAlertSeverity,
   ReadingCellState,
   SensorMetric,
+  SystemLogCategory,
   WeatherSky,
 } from "@/types";
 
@@ -267,4 +268,12 @@ export const ALARM_COMPARATOR_LABELS: Record<AlarmComparator, string> = {
 export const PESTICIDE_ALERT_SEVERITY_LABELS: Record<PesticideAlertSeverity, string> = {
   WARNING: "주의",
   INFO: "참고",
+};
+
+// 시스템 로그 카테고리 라벨 (contract §4.17, 이슈 #129)
+export const SYSTEM_LOG_CATEGORY_LABELS: Record<SystemLogCategory, string> = {
+  CONTROL: "제어",
+  MEMBER: "멤버",
+  ALARM: "알람",
+  DEVICE: "장비",
 };

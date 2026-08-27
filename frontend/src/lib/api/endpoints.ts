@@ -68,6 +68,8 @@ export const ENDPOINTS = {
     savedAnalyses: (farmId: number | string) => `/api/farms/${farmId}/saved-analyses`,
     savedAnalysisDetail: (farmId: number | string, analysisId: number | string) =>
       `/api/farms/${farmId}/saved-analyses/${analysisId}`,
+    // 시스템 로그 (contract §4.17, 이슈 #129) — append-only 조회 전용.
+    systemLogs: (farmId: number | string) => `/api/farms/${farmId}/system-logs`,
     // 제어 도메인 (contract §4.12, 이슈 #100/#108)
     control: (farmId: number | string, zoneId: number | string) =>
       `/api/farms/${farmId}/zones/${zoneId}/control`,

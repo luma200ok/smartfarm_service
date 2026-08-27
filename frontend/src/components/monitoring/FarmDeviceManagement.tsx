@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import FarmMembersPreview from "@/components/farms/FarmMembersPreview";
 import DeviceForm from "@/components/monitoring/DeviceForm";
+import SystemLogPanel from "@/components/monitoring/SystemLogPanel";
 import ZoneRackManager from "@/components/monitoring/ZoneRackManager";
 import Modal from "@/components/ui/Modal";
 import { DEVICE_KIND_LABELS, DEVICE_STATUS_LABELS } from "@/constants";
@@ -31,8 +33,9 @@ type StatusFilter = "ALL" | DeviceStatus;
 const KIND_FILTERS: KindFilter[] = ["ALL", "SENSOR", "CONTROLLER", "GATEWAY"];
 const STATUS_FILTERS: StatusFilter[] = ["ALL", "NORMAL", "WARNING", "FAULT", "OFFLINE", "OFF"];
 
-// 장비·센서 관리 탭(이슈 #99, contract §4.10) — 요약 KPI + 필터 목록 + CRUD.
-// 목업의 사용자·권한(멤버 탭 이미 있음)·시스템 로그(대응 API 없음)는 뺐다(handoff 요건 2).
+// 장비·센서 관리 탭(이슈 #99 → #144 시안 06 적용, contract §4.10) — 요약 KPI + 필터 목록 + CRUD +
+// 우측 사용자·권한/시스템 로그 미리보기(#122·#129). 목업의 "보정 일정"은 대응 기능이 없어(handoff
+// 요건) 만들지 않았다 — "장비 추가"는 기존 기능 그대로 재사용한다.
 export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementProps) {
   const [farm, setFarm] = useState<FarmResponse | null>(null);
   const [tree, setTree] = useState<ZoneTreeResponse | null>(null);
@@ -166,9 +169,10 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
   }
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">장비 · 센서</h2>
+    <div className="flex flex-col gap-3.5 px-[30px] py-[26px]">
+      <div className="flex items-center gap-2.5">
+        <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">장비 · 센서 관리</h1>
+        <div className="flex-1" />
         {isAdmin && tree && (
           <button
             type="button"
@@ -176,23 +180,21 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
               setFormError(null);
               setCreateOpen(true);
             }}
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="rounded-md bg-dp-green px-[13px] py-[7px] text-xs font-semibold text-dp-on-green"
           >
             장비 추가
           </button>
         )}
       </div>
 
+      {/* 요약 카드 4장(handoff — devices/summary): 등록/정상/통신이상/보정임박. warning·off는
+          상태 필터에서 계속 확인할 수 있다(아래 STATUS_FILTERS). */}
       {summary && (
-        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-6">
-          <KpiCard label="전체" value={summary.total} />
-          <KpiCard label="정상" value={summary.normal} tone="ok" />
-          <KpiCard label="주의" value={summary.warning} tone="warning" />
-          <KpiCard label="고장/통신두절" value={summary.faultOrOffline} tone="critical" />
-          {/* off(정지) KPI — 없으면 비상 정지 직후 {total, normal:0, warning:0, faultOrOffline:0}이 되어
-              "이상 없음"으로 오인될 수 있다(contract §4.10, 이슈 #108 요건 ①). */}
-          <KpiCard label="정지(OFF)" value={summary.off} />
-          <KpiCard label="보정 임박(30일)" value={summary.calibrationDueSoon} />
+        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
+          <KpiCard label="등록 장비" value={summary.total} />
+          <KpiCard label="정상 통신" value={summary.normal} tone="ok" />
+          <KpiCard label="통신 이상" value={summary.faultOrOffline} tone="critical" />
+          <KpiCard label="보정 기한 임박" value={summary.calibrationDueSoon} tone="warning" />
         </div>
       )}
 
@@ -200,140 +202,154 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
         <ZoneRackManager farmId={farmId} tree={tree} canManageStructure={isAdmin} onChanged={() => setRefreshKey((k) => k + 1)} />
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {KIND_FILTERS.map((k) => (
-          <button
-            key={k}
-            type="button"
-            aria-pressed={kindFilter === k}
-            onClick={() => setKindFilter(k)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-              kindFilter === k
-                ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                : "border-zinc-300 bg-white text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
-            }`}
-          >
-            {k === "ALL" ? "전체 종류" : DEVICE_KIND_LABELS[k]}
-          </button>
-        ))}
-        <span className="mx-1 h-4 w-px bg-zinc-200 dark:bg-zinc-800" />
-        {STATUS_FILTERS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            aria-pressed={statusFilter === s}
-            onClick={() => setStatusFilter(s)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-              statusFilter === s
-                ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                : "border-zinc-300 bg-white text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
-            }`}
-          >
-            {s === "ALL" ? "전체 상태" : DEVICE_STATUS_LABELS[s]}
-          </button>
-        ))}
-        {tree && (
-          <select
-            value={zoneFilter === "ALL" ? "" : zoneFilter}
-            onChange={(e) => setZoneFilter(e.target.value ? Number(e.target.value) : "ALL")}
-            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-          >
-            <option value="">전체 존</option>
-            {tree.zones.map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.name}
-              </option>
+      <div className="grid grid-cols-1 gap-3.5 min-[1280px]:grid-cols-[1fr_440px]">
+        <div className="flex flex-col gap-3.5 overflow-hidden rounded-[10px] border border-dp-line bg-dp-surface">
+          <div className="flex flex-wrap items-center gap-2 border-b border-dp-line p-3">
+            {KIND_FILTERS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={kindFilter === k}
+                onClick={() => setKindFilter(k)}
+                className={`rounded-md px-[11px] py-1.5 text-[11.5px] font-medium transition-colors ${
+                  kindFilter === k ? "bg-dp-ink font-semibold text-dp-surface" : "border border-dp-line-strong text-dp-body"
+                }`}
+              >
+                {k === "ALL" ? "전체" : DEVICE_KIND_LABELS[k]}
+              </button>
             ))}
-          </select>
-        )}
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="장비명 검색"
-          aria-label="장비명 검색"
-          className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-        />
-      </div>
+            <span className="mx-1 h-4 w-px bg-dp-line-strong" />
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={statusFilter === s}
+                onClick={() => setStatusFilter(s)}
+                className={`rounded-md px-[11px] py-1.5 text-[11.5px] font-medium transition-colors ${
+                  statusFilter === s ? "bg-dp-ink font-semibold text-dp-surface" : "border border-dp-line-strong text-dp-body"
+                }`}
+              >
+                {s === "ALL" ? "전체 상태" : DEVICE_STATUS_LABELS[s]}
+              </button>
+            ))}
+            <div className="flex-1" />
+            {tree && (
+              <select
+                value={zoneFilter === "ALL" ? "" : zoneFilter}
+                onChange={(e) => setZoneFilter(e.target.value ? Number(e.target.value) : "ALL")}
+                className="rounded-md border border-dp-line-strong bg-dp-surface px-2 py-1.5 text-xs text-dp-body"
+              >
+                <option value="">전체 존</option>
+                {tree.zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="장비명 · 시리얼 검색"
+              aria-label="장비명 · 시리얼 검색"
+              className="rounded-md bg-dp-inset px-3 py-1.5 text-xs text-dp-ink placeholder:text-dp-faint"
+            />
+          </div>
 
-      {loadError && <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>}
-      {rowError && <p className="text-sm text-red-600 dark:text-red-400">{rowError}</p>}
+          {loadError && <p className="px-4 text-sm text-dp-red-ink">{loadError}</p>}
+          {rowError && <p className="px-4 text-sm text-dp-red-ink">{rowError}</p>}
 
-      {!devices && !loadError && <p className="text-sm text-zinc-500 dark:text-zinc-400">불러오는 중...</p>}
+          {!devices && !loadError && <p className="px-4 pb-4 text-sm text-dp-sub">불러오는 중...</p>}
 
-      {devices && devices.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">조건에 맞는 장비가 없습니다.</p>
-      )}
+          {devices && devices.length === 0 && <p className="px-4 pb-4 text-sm text-dp-sub">조건에 맞는 장비가 없습니다.</p>}
 
-      {devices && devices.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-                <th className="px-3 py-2 font-medium">장비</th>
-                <th className="px-3 py-2 font-medium">위치</th>
-                <th className="px-3 py-2 font-medium">모델/시리얼</th>
-                <th className="px-3 py-2 font-medium">최종 수신</th>
-                <th className="px-3 py-2 font-medium">보정 예정</th>
-                <th className="px-3 py-2 font-medium">상태</th>
-                {isAdmin && <th className="px-3 py-2 font-medium">관리</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((device) => (
-                <tr key={device.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-900">
-                  <td className="px-3 py-2">
-                    <div className="font-medium text-zinc-900 dark:text-zinc-50">{device.name}</div>
-                    <div className="text-xs text-zinc-400 dark:text-zinc-500">
-                      {DEVICE_KIND_LABELS[device.kind]}
-                      {device.metrics.length > 0 ? ` · ${device.metrics.join(", ")}` : ""}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
-                    {locationMaps ? describeDeviceLocation(device, locationMaps) : "-"}
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
-                    {device.model || "-"} / {device.serial || "-"}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                    {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString("ko-KR") : "-"}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    {device.calibrationDueAt ? new Date(device.calibrationDueAt).toLocaleDateString("ko-KR") : "-"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <StatusChip status={device.status} />
-                  </td>
-                  {isAdmin && (
-                    <td className="px-3 py-2">
-                      <div className="flex gap-2 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormError(null);
-                            setEditTarget(device);
-                          }}
-                          className="text-zinc-500 hover:underline dark:text-zinc-400"
-                        >
-                          수정
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyId === device.id}
-                          onClick={() => handleDelete(device)}
-                          className="text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {devices && devices.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-dp-line bg-dp-inset-alt text-left text-xs text-dp-muted">
+                    <th className="px-4 py-2 font-medium">장비</th>
+                    <th className="px-3 py-2 font-medium">위치</th>
+                    <th className="px-3 py-2 font-medium">모델/시리얼</th>
+                    <th className="px-3 py-2 font-medium">최종 수신</th>
+                    <th className="px-3 py-2 font-medium">보정 예정</th>
+                    <th className="px-3 py-2 font-medium">상태</th>
+                    {isAdmin && <th className="px-3 py-2 font-medium">관리</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {devices.map((device) => (
+                    <tr
+                      key={device.id}
+                      className={`border-b border-dp-line-row last:border-0 ${
+                        device.status === "FAULT" || device.status === "OFFLINE" ? "bg-dp-red-tint" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-2.5">
+                        <div className="font-semibold text-dp-ink">{device.name}</div>
+                        <div className="text-xs text-dp-faint">
+                          {DEVICE_KIND_LABELS[device.kind]}
+                          {device.metrics.length > 0 ? ` · ${device.metrics.join(", ")}` : ""}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-dp-body">
+                        {locationMaps ? describeDeviceLocation(device, locationMaps) : "-"}
+                      </td>
+                      <td className="px-3 py-2.5 text-dp-body">
+                        {device.model || "-"} / {device.serial || "-"}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-xs text-dp-muted">
+                        {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString("ko-KR") : "-"}
+                      </td>
+                      <td
+                        className={`px-3 py-2.5 text-xs ${
+                          device.status === "WARNING" ? "font-semibold text-dp-amber-ink" : "text-dp-muted"
+                        }`}
+                      >
+                        {device.calibrationDueAt ? new Date(device.calibrationDueAt).toLocaleDateString("ko-KR") : "-"}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <StatusChip status={device.status} />
+                      </td>
+                      {isAdmin && (
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormError(null);
+                                setEditTarget(device);
+                              }}
+                              className="text-dp-muted hover:underline"
+                            >
+                              수정
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busyId === device.id}
+                              onClick={() => handleDelete(device)}
+                              className="text-dp-red-ink hover:underline disabled:opacity-60"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="border-t border-dp-line px-4 py-2.5 text-xs text-dp-muted">{devices.length}대</div>
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="flex flex-col gap-3">
+          <FarmMembersPreview farmId={farmId} isAdmin={isAdmin} />
+          <SystemLogPanel farmId={farmId} />
+        </div>
+      </div>
 
       {tree && (
         <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="장비 추가">
@@ -370,16 +386,16 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
 function KpiCard({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warning" | "critical" }) {
   const toneClass =
     tone === "ok"
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-dp-green"
       : tone === "warning"
-        ? "text-amber-600 dark:text-amber-400"
+        ? "text-dp-amber-ink"
         : tone === "critical"
-          ? "text-red-600 dark:text-red-400"
-          : "text-zinc-900 dark:text-zinc-50";
+          ? "text-dp-red-ink"
+          : "text-dp-ink";
   return (
-    <div className="rounded-md border border-zinc-200 px-3 py-3 dark:border-zinc-800">
-      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</div>
-      <div className={`mt-1.5 text-2xl font-bold ${toneClass}`}>{value}</div>
+    <div className="rounded-[10px] border border-dp-line bg-dp-surface px-4 py-3.5">
+      <div className="text-[11.5px] font-medium text-dp-muted">{label}</div>
+      <div className={`mt-[9px] text-2xl font-bold ${toneClass}`}>{value}</div>
     </div>
   );
 }
@@ -387,13 +403,13 @@ function KpiCard({ label, value, tone }: { label: string; value: number; tone?: 
 function StatusChip({ status }: { status: DeviceStatus }) {
   const style =
     status === "NORMAL"
-      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+      ? "text-dp-green"
       : status === "WARNING"
-        ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+        ? "text-dp-amber-ink"
         : status === "OFF"
           ? // OFF는 장애가 아니라 제어 조작 결과다(contract §4.12) — FAULT/OFFLINE과 같은 빨강을 쓰면
             // "고장"으로 오인된다.
-            "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
-          : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400";
-  return <span className={`rounded px-2 py-0.5 text-xs font-semibold ${style}`}>{DEVICE_STATUS_LABELS[status]}</span>;
+            "text-dp-muted"
+          : "text-dp-red-ink";
+  return <span className={`text-[11px] font-semibold ${style}`}>{DEVICE_STATUS_LABELS[status]}</span>;
 }
