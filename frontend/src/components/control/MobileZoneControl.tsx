@@ -8,11 +8,7 @@ import {
   SENSOR_METRIC_LABELS,
 } from "@/constants";
 import type { ControllableMetric, OperationMode } from "@/types";
-import {
-  deviceStatusTone,
-  describeChange,
-  useZoneControl,
-} from "./useZoneControl";
+import { describeChange, useZoneControl } from "./useZoneControl";
 
 interface MobileZoneControlProps {
   farmId: string;

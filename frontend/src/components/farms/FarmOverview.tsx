@@ -54,10 +54,13 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
   );
   const [mobileFarmError, setMobileFarmError] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-
-  useEffect(() => {
+  // AppShell의 drawerClosedFor와 동일한 "렌더 중 조정" 패턴(react-hooks/set-state-in-effect
+  // 회피) — farmId가 바뀌면 이전 농장에서 닫은 배너 상태가 새 농장으로 새지 않게 초기화한다.
+  const [bannerDismissedFor, setBannerDismissedFor] = useState(farmId);
+  if (farmId !== bannerDismissedFor) {
+    setBannerDismissedFor(farmId);
     setBannerDismissed(false);
-  }, [farmId]);
+  }
 
   useEffect(() => {
     if (!isMobile) return;

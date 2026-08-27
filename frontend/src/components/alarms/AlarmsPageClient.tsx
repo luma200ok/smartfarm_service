@@ -19,10 +19,22 @@ import { notifyAlarmsChanged } from "@/lib/alarmsBus";
 import { describeAlarmScope, summarizeAlarmRule } from "@/lib/alarmDisplay";
 import { hasFarmRoleAtLeast } from "@/lib/roles";
 import { buildLocationMaps, type LocationMaps } from "@/lib/zoneTree";
-import type { AlarmEventDetailResponse, AlarmEventResponse, AlarmRuleResponse, FarmResponse } from "@/types";
+import type {
+  AlarmEventDetailResponse,
+  AlarmEventResponse,
+  AlarmRuleResponse,
+  FarmResponse,
+} from "@/types";
 import AlarmDetailPanel from "./AlarmDetailPanel";
 import AlarmList from "./AlarmList";
-import { EMPTY_FILTER_COUNTS, FILTER_CHIPS, filterToQuery, type AlarmFilterKey, type FilterCounts } from "./filters";
+import {
+  EMPTY_FILTER_COUNTS,
+  FILTER_CHIPS,
+  filterToQuery,
+  type AlarmFilterKey,
+  type FilterCounts,
+} from "./filters";
+import MobileAlarmList from "./MobileAlarmList";
 
 const PAGE_SIZE = 20;
 
@@ -45,10 +57,13 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(0);
 
-  const [filterCounts, setFilterCounts] = useState<FilterCounts>(EMPTY_FILTER_COUNTS);
+  const [filterCounts, setFilterCounts] =
+    useState<FilterCounts>(EMPTY_FILTER_COUNTS);
   // "전체 확인 처리" 버튼 게이팅 전용(리뷰 P3-1) — filterCounts.ALL(상태 무관 전체 건수)과
   // 달리 미확인 건수만 담는다.
-  const [unacknowledgedTotal, setUnacknowledgedTotal] = useState<number | null>(null);
+  const [unacknowledgedTotal, setUnacknowledgedTotal] = useState<number | null>(
+    null,
+  );
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AlarmEventDetailResponse | null>(null);
@@ -68,6 +83,11 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
   const [ackAllOpen, setAckAllOpen] = useState(false);
   const [ackAllSubmitting, setAckAllSubmitting] = useState(false);
   const [ackAllError, setAckAllError] = useState<string | null>(null);
+
+  // 모바일 카드 스택(이슈 #147, 시안 m3-alarm) — 상세 패널을 둘 공간이 없어 탭하면 오버레이로
+  // 연다. 데스크톱은 selectedId가 바뀌면 우측 패널이 그 자리에서 갱신되지만, 모바일은 명시적으로
+  // 열고 닫는다(뒤로가기 개념이 필요해서 desktop과 동일한 selectedId 흐름 위에 열림 상태만 얹는다).
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const canWrite = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
@@ -95,21 +115,32 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
   // 호출로 미확인(UNACKNOWLEDGED) 건수를 직접 조회해 "전체 확인 처리" 버튼을 정확히 게이팅한다
   // (리뷰 P3-1 — status=RESOLVED와 별개 축이라 ALL - RESOLVED로는 구할 수 없다).
   const loadFilterCounts = useCallback(async () => {
-    const [critical, warning, resolved, unacknowledged] = await Promise.allSettled([
-      listAlarmEvents(farmId, { severity: "CRITICAL" }, 0, 1),
-      listAlarmEvents(farmId, { severity: "WARNING" }, 0, 1),
-      listAlarmEvents(farmId, { status: "RESOLVED" }, 0, 1),
-      listAlarmEvents(farmId, { status: "UNACKNOWLEDGED" }, 0, 1),
-    ]);
-    const criticalCount = critical.status === "fulfilled" ? critical.value.totalElements : null;
-    const warningCount = warning.status === "fulfilled" ? warning.value.totalElements : null;
+    const [critical, warning, resolved, unacknowledged] =
+      await Promise.allSettled([
+        listAlarmEvents(farmId, { severity: "CRITICAL" }, 0, 1),
+        listAlarmEvents(farmId, { severity: "WARNING" }, 0, 1),
+        listAlarmEvents(farmId, { status: "RESOLVED" }, 0, 1),
+        listAlarmEvents(farmId, { status: "UNACKNOWLEDGED" }, 0, 1),
+      ]);
+    const criticalCount =
+      critical.status === "fulfilled" ? critical.value.totalElements : null;
+    const warningCount =
+      warning.status === "fulfilled" ? warning.value.totalElements : null;
     setFilterCounts({
-      ALL: criticalCount !== null && warningCount !== null ? criticalCount + warningCount : null,
+      ALL:
+        criticalCount !== null && warningCount !== null
+          ? criticalCount + warningCount
+          : null,
       CRITICAL: criticalCount,
       WARNING: warningCount,
-      RESOLVED: resolved.status === "fulfilled" ? resolved.value.totalElements : null,
+      RESOLVED:
+        resolved.status === "fulfilled" ? resolved.value.totalElements : null,
     });
-    setUnacknowledgedTotal(unacknowledged.status === "fulfilled" ? unacknowledged.value.totalElements : null);
+    setUnacknowledgedTotal(
+      unacknowledged.status === "fulfilled"
+        ? unacknowledged.value.totalElements
+        : null,
+    );
   }, [farmId]);
 
   useEffect(() => {
@@ -132,7 +163,12 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
       setListLoading(true);
       setListError(null);
       try {
-        const res = await listAlarmEvents(farmId, filterToQuery(targetFilter), 0, PAGE_SIZE);
+        const res = await listAlarmEvents(
+          farmId,
+          filterToQuery(targetFilter),
+          0,
+          PAGE_SIZE,
+        );
         if (listRequestIdRef.current !== requestId) return; // 그 사이 더 최신 요청이 시작됨 — 폐기
         setItems(res.content);
         setPage(0);
@@ -149,7 +185,7 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
         if (listRequestIdRef.current === requestId) setListLoading(false);
       }
     },
-    [farmId]
+    [farmId],
   );
 
   useEffect(() => {
@@ -163,7 +199,12 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
     setLoadingMore(true);
     try {
       const nextPage = page + 1;
-      const res = await listAlarmEvents(farmId, filterToQuery(filter), nextPage, PAGE_SIZE);
+      const res = await listAlarmEvents(
+        farmId,
+        filterToQuery(filter),
+        nextPage,
+        PAGE_SIZE,
+      );
       setItems((prev) => [...prev, ...res.content]);
       setPage(nextPage);
       setTotalElements(res.totalElements);
@@ -245,14 +286,18 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
     }
   }
 
-  async function handleAcknowledge() {
-    if (!detail) return;
+  // id 기반으로 뺐다(리뷰 대비: 모바일 카드 스택의 "확인" 액션은 상세 패널을 열지 않고도 동작해야
+  // 해서 detail.event.id에 묶인 원래 시그니처로는 재사용이 안 됐다). 데스크톱 상세 패널의
+  // handleAcknowledge는 이 함수를 detail.event.id로 호출하는 얇은 래퍼로 남긴다(동작 무변경).
+  async function handleAcknowledgeId(id: number) {
     setActionBusy(true);
     setActionError(null);
     try {
-      const updated = await acknowledgeAlarmEvent(farmId, detail.event.id);
-      setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
-      await refreshSelectedDetail();
+      const updated = await acknowledgeAlarmEvent(farmId, id);
+      setItems((prev) =>
+        prev.map((it) => (it.id === updated.id ? updated : it)),
+      );
+      if (selectedId === id) await refreshSelectedDetail();
       notifyAlarmsChanged();
       loadFilterCounts();
     } catch (err) {
@@ -262,13 +307,20 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
     }
   }
 
+  function handleAcknowledge() {
+    if (!detail) return;
+    return handleAcknowledgeId(detail.event.id);
+  }
+
   async function handleResolve() {
     if (!detail) return;
     setActionBusy(true);
     setActionError(null);
     try {
       const updated = await resolveAlarmEvent(farmId, detail.event.id);
-      setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+      setItems((prev) =>
+        prev.map((it) => (it.id === updated.id ? updated : it)),
+      );
       await refreshSelectedDetail();
       notifyAlarmsChanged();
       loadFilterCounts();
@@ -311,60 +363,48 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
     }
   }
 
-  const location = detail ? describeAlarmScope(detail.event, locationMaps, farm?.name ?? null) : "";
+  const location = detail
+    ? describeAlarmScope(detail.event, locationMaps, farm?.name ?? null)
+    : "";
   const ruleSummary = rule ? summarizeAlarmRule(rule) : null;
 
   return (
-    <div className="flex flex-col gap-4 px-6 py-6">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">알람 현황</h1>
-        <div className="hidden flex-1 min-[768px]:block" />
-        <div className="flex gap-1.5 overflow-x-auto">
-          {FILTER_CHIPS.map((chip) => {
-            const count = filterCounts[chip.key];
-            return (
-              <Chip
-                key={chip.key}
-                as="button"
-                active={chip.key === filter}
-                tone={chip.tone}
-                onClick={() => setFilter(chip.key)}
-              >
-                {chip.label}
-                {count !== null ? ` ${count}` : ""}
-              </Chip>
-            );
-          })}
-        </div>
-        {canWrite && (
-          <button
-            type="button"
-            onClick={() => setAckAllOpen(true)}
-            disabled={unacknowledgedTotal === 0}
-            className="rounded-[7px] border border-dp-line-strong px-[13px] py-[7px] text-[12px] leading-none font-medium whitespace-nowrap text-dp-body disabled:opacity-40"
-          >
-            전체 확인 처리
-          </button>
-        )}
-      </div>
-
-      <div className="grid gap-3.5 min-[1440px]:grid-cols-[1fr_340px] min-[1920px]:grid-cols-[1fr_440px]">
-        <AlarmList
+    <>
+      {/* 모바일(<768px, 이슈 #147, 시안 m3-alarm) — 카드 스택 + 탭하면 오버레이 상세. 같은
+          items/필터/detail 상태를 desktop과 공유한다(재조회 없음). */}
+      <div className="flex flex-col min-[768px]:hidden">
+        <MobileAlarmList
+          farmId={farmId}
           filter={filter}
           items={items}
-          totalElements={totalElements}
+          filterCounts={filterCounts}
           loading={listLoading}
           loadingMore={loadingMore}
+          totalElements={totalElements}
           error={listError}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
+          canWrite={canWrite}
+          actionBusy={actionBusy}
+          unacknowledgedTotal={unacknowledgedTotal}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setMobileDetailOpen(true);
+          }}
+          onFilterChange={setFilter}
+          onAcknowledge={handleAcknowledgeId}
+          onAcknowledgeAll={() => setAckAllOpen(true)}
           onLoadMore={handleLoadMore}
           onShowAll={() => setFilter("ALL")}
           onRefresh={() => loadList(filter)}
           locationMaps={locationMaps}
           farmName={farm?.name ?? null}
         />
+      </div>
 
+      <Modal
+        open={mobileDetailOpen}
+        onClose={() => setMobileDetailOpen(false)}
+        title="알람 상세"
+      >
         <AlarmDetailPanel
           farmId={farmId}
           detail={detail}
@@ -385,14 +425,99 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
           onMemoClose={() => setMemoOpen(false)}
           onMemoSubmit={handleMemoSubmit}
         />
+      </Modal>
+
+      {/* 데스크톱·태블릿(≥768px) — 기존 구성 그대로(회귀 금지). */}
+      <div className="hidden flex-col gap-4 px-6 py-6 min-[768px]:flex">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">
+            알람 현황
+          </h1>
+          <div className="hidden flex-1 min-[768px]:block" />
+          <div className="flex gap-1.5 overflow-x-auto">
+            {FILTER_CHIPS.map((chip) => {
+              const count = filterCounts[chip.key];
+              return (
+                <Chip
+                  key={chip.key}
+                  as="button"
+                  active={chip.key === filter}
+                  tone={chip.tone}
+                  onClick={() => setFilter(chip.key)}
+                >
+                  {chip.label}
+                  {count !== null ? ` ${count}` : ""}
+                </Chip>
+              );
+            })}
+          </div>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => setAckAllOpen(true)}
+              disabled={unacknowledgedTotal === 0}
+              className="rounded-[7px] border border-dp-line-strong px-[13px] py-[7px] text-[12px] leading-none font-medium whitespace-nowrap text-dp-body disabled:opacity-40"
+            >
+              전체 확인 처리
+            </button>
+          )}
+        </div>
+
+        <div className="grid gap-3.5 min-[1440px]:grid-cols-[1fr_340px] min-[1920px]:grid-cols-[1fr_440px]">
+          <AlarmList
+            filter={filter}
+            items={items}
+            totalElements={totalElements}
+            loading={listLoading}
+            loadingMore={loadingMore}
+            error={listError}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onLoadMore={handleLoadMore}
+            onShowAll={() => setFilter("ALL")}
+            onRefresh={() => loadList(filter)}
+            locationMaps={locationMaps}
+            farmName={farm?.name ?? null}
+          />
+
+          <AlarmDetailPanel
+            farmId={farmId}
+            detail={detail}
+            loading={detailLoading}
+            error={detailError}
+            location={location}
+            ruleSummary={ruleSummary}
+            ruleLoading={ruleLoading}
+            canWrite={canWrite}
+            actionBusy={actionBusy}
+            actionError={actionError}
+            onAcknowledge={handleAcknowledge}
+            onResolve={handleResolve}
+            memoOpen={memoOpen}
+            memoSubmitting={memoSubmitting}
+            memoError={memoError}
+            onMemoOpen={() => setMemoOpen(true)}
+            onMemoClose={() => setMemoOpen(false)}
+            onMemoSubmit={handleMemoSubmit}
+          />
+        </div>
       </div>
 
-      <Modal open={ackAllOpen} onClose={() => setAckAllOpen(false)} title="전체 확인 처리">
+      {/* 데스크톱·모바일 공용 — MobileAlarmList의 "전체 확인" 버튼도 같은 ackAllOpen을 연다. */}
+      <Modal
+        open={ackAllOpen}
+        onClose={() => setAckAllOpen(false)}
+        title="전체 확인 처리"
+      >
         <div className="flex flex-col gap-3">
           <p className="text-sm text-zinc-700 dark:text-zinc-300">
             미확인 알람을 모두 확인 처리합니다. 이 작업은 되돌릴 수 없습니다.
           </p>
-          {ackAllError && <p className="text-sm text-red-600 dark:text-red-400">{ackAllError}</p>}
+          {ackAllError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {ackAllError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -412,6 +537,6 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
           </div>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
