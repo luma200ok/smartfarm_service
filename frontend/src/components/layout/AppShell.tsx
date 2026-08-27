@@ -4,9 +4,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { getAlarmStats, getUnacknowledgedCount } from "@/lib/api/alarms";
 import { listFarms } from "@/lib/api/farms";
+import { listSavedAnalyses } from "@/lib/api/savedAnalyses";
 import { subscribeAlarmsChanged } from "@/lib/alarmsBus";
 import { subscribeFarmsChanged } from "@/lib/farmsBus";
-import type { AlarmStatsResponse, FarmSummaryResponse } from "@/types";
+import { subscribeSavedAnalysesChanged } from "@/lib/savedAnalysesBus";
+import type { AlarmStatsResponse, FarmSummaryResponse, SavedAnalysisResponse } from "@/types";
 import GlobalBar from "./GlobalBar";
 import { computeActiveGroupKey, extractFarmIdFromPath } from "./nav-config";
 import SideNav from "./SideNav";
@@ -136,6 +138,44 @@ export default function AppShell({ children }: { children: ReactNode }) {
     };
   }, [showAlarmStats, effectiveFarmId]);
 
+  // 좌측 내비 하단 "저장한 분석" 목록(이슈 #144) — 데이터 화면에 있을 때만 조회한다
+  // (alarmStats와 동일 패턴 — 핸드오프: 하단 정보 블록을 "내 농장" 대신 이 목록으로 교체).
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysisResponse[] | null>(null);
+  const [savedAnalysesFailed, setSavedAnalysesFailed] = useState(false);
+
+  const showSavedAnalyses = activeGroupKey === "data" && effectiveFarmId !== null;
+  const [wasShowingSavedAnalyses, setWasShowingSavedAnalyses] = useState(showSavedAnalyses);
+  if (showSavedAnalyses !== wasShowingSavedAnalyses) {
+    setWasShowingSavedAnalyses(showSavedAnalyses);
+    if (!showSavedAnalyses) {
+      setSavedAnalyses(null);
+      setSavedAnalysesFailed(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!showSavedAnalyses) return;
+    let cancelled = false;
+    function load() {
+      listSavedAnalyses(effectiveFarmId!)
+        .then((data) => {
+          if (!cancelled) {
+            setSavedAnalyses(data);
+            setSavedAnalysesFailed(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setSavedAnalysesFailed(true);
+        });
+    }
+    load();
+    const unsubscribe = subscribeSavedAnalysesChanged(load);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [showSavedAnalyses, effectiveFarmId]);
+
   // 농장 드롭다운/내 농장 스위처 — 현재 화면을 유지한 채 farmId만 교체(이슈 #133).
   // farm 스코프가 없는 화면(예: /dashboard)에서는 해당 농장 상세로 이동한다.
   function handleSelectFarm(nextFarmId: string) {
@@ -171,6 +211,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
             activeGroupKey={activeGroupKey}
             alarmStats={alarmStats}
             alarmStatsFailed={alarmStatsFailed}
+            savedAnalyses={savedAnalyses}
+            savedAnalysesFailed={savedAnalysesFailed}
             onSelectFarm={handleSelectFarm}
             onCollapse={() => setNavCollapsed(true)}
           />
@@ -205,6 +247,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 activeGroupKey={activeGroupKey}
                 alarmStats={alarmStats}
                 alarmStatsFailed={alarmStatsFailed}
+                savedAnalyses={savedAnalyses}
+                savedAnalysesFailed={savedAnalysesFailed}
                 onSelectFarm={handleSelectFarm}
                 onCollapse={() => setDrawerOpen(false)}
                 onNavigate={() => setDrawerOpen(false)}

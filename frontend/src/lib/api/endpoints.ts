@@ -63,6 +63,11 @@ export const ENDPOINTS = {
     readingsSeries: (farmId: number | string) => `/api/farms/${farmId}/readings/series`,
     readingsLatest: (farmId: number | string) => `/api/farms/${farmId}/readings/latest`,
     readingsLevelSummary: (farmId: number | string) => `/api/farms/${farmId}/readings/level-summary`,
+    // CSV 내보내기·저장한 분석 (contract §4.15, 이슈 #126)
+    readingsExportCsv: (farmId: number | string) => `/api/farms/${farmId}/readings/export.csv`,
+    savedAnalyses: (farmId: number | string) => `/api/farms/${farmId}/saved-analyses`,
+    savedAnalysisDetail: (farmId: number | string, analysisId: number | string) =>
+      `/api/farms/${farmId}/saved-analyses/${analysisId}`,
     // 제어 도메인 (contract §4.12, 이슈 #100/#108)
     control: (farmId: number | string, zoneId: number | string) =>
       `/api/farms/${farmId}/zones/${zoneId}/control`,
