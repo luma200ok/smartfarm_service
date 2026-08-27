@@ -11,6 +11,7 @@ import type { ReadingSeriesResponse } from "@/types";
 
 interface FarmTrendChartProps {
   farmId: number;
+  farmName?: string;
 }
 
 function formatTick(at: string): string {
@@ -18,9 +19,14 @@ function formatTick(at: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
-// 홈 대시보드 농장 24시간 추이(이슈 #99) — GET /readings/series(scope=farm, 온도·습도)만 쓴다.
+// 홈 대시보드 농장 24시간 추이(이슈 #99, #142) — GET /readings/series(scope=farm, 온도·습도)만 쓴다.
 // scope=farm은 층 간 평균 1계열로 축약된다(계약 §4.11 응답 크기 상한).
-export default function FarmTrendChart({ farmId }: FarmTrendChartProps) {
+//
+// ⚠️ 시안(#142)의 "농장 간 온도·습도" 다중 계열 그래프는 만들지 않는다 — readings/series는
+// 농장 단건 스코프라 여러 농장을 겹쳐 그리려면 농장 수만큼 반복 호출해야 하고, 그건 #139가
+// 없애려던 N+1을 이 패널에서 재생산하는 셈이다. 대신 상단에서 선택한 농장 1건의 추이로
+// 대체한다(handoff 요건 — "범위에서 빼거나 선택 농장 단일 추이로 대체").
+export default function FarmTrendChart({ farmId, farmName }: FarmTrendChartProps) {
   const [data, setData] = useState<ReadingSeriesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isDark = useIsDarkMode();
@@ -67,7 +73,7 @@ export default function FarmTrendChart({ farmId }: FarmTrendChartProps) {
   return (
     <Card className="flex flex-col gap-3 px-[18px] py-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <CardTitle size="lg">농장 온도 · 습도 (24시간)</CardTitle>
+        <CardTitle size="lg">{farmName ? `${farmName} · 온도 · 습도` : "농장 온도 · 습도"} (24시간)</CardTitle>
         {data && <SimulatedBadge simulated={data.simulated} />}
       </div>
 

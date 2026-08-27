@@ -143,6 +143,8 @@ export function RackGrid({
   cellClass = "rounded-[4px]",
   gapClass = "gap-[5px]",
   rowHeight,
+  onCellClick,
+  onCellDoubleClick,
 }: {
   cells: CellState[][];
   columns: string[];
@@ -152,7 +154,12 @@ export function RackGrid({
   gapClass?: string;
   /** 지정하면 행 높이를 고정(모바일 축약형) */
   rowHeight?: number;
+  /** 셀 클릭(선택) — 지정 시에만 버튼으로 렌더(이슈 #142, 랙 배치도 셀 선택). */
+  onCellClick?: (cell: { row: number; col: number; state: CellState }) => void;
+  /** 셀 더블클릭(제어 화면 이동 등) — onCellClick과 함께 지정할 것. */
+  onCellDoubleClick?: (cell: { row: number; col: number; state: CellState }) => void;
 }) {
+  const interactive = Boolean(onCellClick || onCellDoubleClick);
   return (
     <div
       className={`grid flex-1 ${gapClass}`}
@@ -166,17 +173,25 @@ export function RackGrid({
       {cells.flatMap((row, r) =>
         row.map((state, c) => {
           const isSelected = selected?.row === r && selected?.col === c;
-          return (
-            <div
-              key={`${r}-${c}`}
-              role="img"
-              title={`${columns[c]} · ${cells.length - r}층 · ${CELL_LABEL[state]}`}
-              aria-label={`${columns[c]} ${cells.length - r}층 ${CELL_LABEL[state]}`}
-              className={`${CELL_BG[state]} ${cellClass} ${
-                isSelected ? "outline-2 outline-offset-1 outline-dp-ink" : ""
-              }`}
-            />
-          );
+          const label = `${columns[c]} ${cells.length - r}층 ${CELL_LABEL[state]}`;
+          const cls = `${CELL_BG[state]} ${cellClass} ${
+            isSelected ? "outline-2 outline-offset-1 outline-dp-ink" : ""
+          }`;
+          if (interactive) {
+            return (
+              <button
+                key={`${r}-${c}`}
+                type="button"
+                title={label}
+                aria-label={label}
+                aria-pressed={isSelected}
+                onClick={() => onCellClick?.({ row: r, col: c, state })}
+                onDoubleClick={() => onCellDoubleClick?.({ row: r, col: c, state })}
+                className={`${cls} cursor-pointer`}
+              />
+            );
+          }
+          return <div key={`${r}-${c}`} role="img" title={label} aria-label={label} className={cls} />;
         }),
       )}
     </div>

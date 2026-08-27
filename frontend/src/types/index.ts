@@ -838,3 +838,48 @@ export interface AlarmRuleResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── 홈 대시보드 (이슈 #139/#142) ──────────────────────────────
+// GET /api/dashboard/farms — 내 활성 농장 전체를 배치 조회로 한 번에 반환한다(N+1 방지).
+// PENDING 멤버십 농장은 응답에서 제외된다(백엔드 DashboardService javadoc) — /api/farms의
+// 좌측 목록과 카드 개수가 다를 수 있는 게 정상이다.
+export type FarmDashboardStatus = "CRITICAL" | "WARNING" | "NORMAL";
+
+// value가 null이면 측정 이력이 없거나 신선도 상한을 넘긴 것 — 이때 outOfRange는 항상 false
+// (판정할 값 자체가 없으므로).
+export interface FarmDashboardMetricValue {
+  metric: SensorMetric;
+  unit: string;
+  value: number | null;
+  outOfRange: boolean;
+}
+
+// 대표 지표(TEMPERATURE 고정) 일별 평균. 그날 측정 이력이 없으면 value=null·state="IDLE".
+export interface FarmDashboardTrendPoint {
+  date: string;
+  value: number | null;
+  state: ReadingCellState;
+}
+
+// ⚠️ 재배 사이클(정식일·수확 예정) 필드가 없다 — 도메인 부재(#130). 0/임의값을 채우면 거짓
+// 정보가 되므로 FE에서도 지어내지 말 것(카드 메타는 작물·랙/층 수만 표기).
+export interface FarmDashboardResponse {
+  id: number;
+  name: string;
+  cropType: CropType;
+  rackCount: number;
+  levelCount: number;
+  status: FarmDashboardStatus;
+  unacknowledgedAlarmCount: number;
+  metrics: FarmDashboardMetricValue[];
+  trend7d: FarmDashboardTrendPoint[];
+  latestAlarmMessage: string | null;
+}
+
+// GET /api/farms/{farmId}/briefing — 농장 단건 기준 "오늘 할일" 집계(이슈 #129-B).
+// ⚠️ harvestDueSoon 필드는 의도적으로 없다(#130). actionRequiredCount는 이 농장의 미확인
+// "건수"이지 시안 브리핑 pill의 "N곳"(농장 수) 단위가 아니다 — 혼동 주의(백엔드 javadoc).
+export interface FarmBriefingResponse {
+  actionRequiredCount: number;
+  calibrationDueSoonCount: number;
+}
