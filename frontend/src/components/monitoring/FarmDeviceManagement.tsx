@@ -187,13 +187,19 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
         )}
       </div>
 
-      {/* 요약 카드 4장(handoff — devices/summary): 등록/정상/통신이상/보정임박. warning·off는
-          상태 필터에서 계속 확인할 수 있다(아래 STATUS_FILTERS). */}
+      {/* 요약 카드 6장(handoff — devices/summary, contract §4.10). 리뷰 반영(이슈 #144 P1) —
+          시안은 4장(등록/정상/통신이상/보정임박)이었으나 warning·off를 카드에서 빼면
+          "비상 정지 직후 total=60, normal=0, faultOrOffline=0"이 되어 화면이 "이상 없음"으로
+          오독된다(계약 §4.10 경고). 필터 탭으로 대체 가능하다고 판단했었지만 사용자가 능동적으로
+          눌러야만 보이는 정보는 "한눈에 보이는 요약"이 아니다 — 원래(사이클 3) 6카드 구성으로
+          되돌려 total = normal + warning + faultOrOffline + off 가 화면에서 항상 검산된다. */}
       {summary && (
-        <div className="grid grid-cols-2 gap-3 min-[900px]:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 min-[720px]:grid-cols-3 min-[1100px]:grid-cols-6">
           <KpiCard label="등록 장비" value={summary.total} />
           <KpiCard label="정상 통신" value={summary.normal} tone="ok" />
+          <KpiCard label="주의" value={summary.warning} tone="warning" />
           <KpiCard label="통신 이상" value={summary.faultOrOffline} tone="critical" />
+          <KpiCard label="정지" value={summary.off} />
           <KpiCard label="보정 기한 임박" value={summary.calibrationDueSoon} tone="warning" />
         </div>
       )}
