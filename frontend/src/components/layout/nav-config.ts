@@ -99,14 +99,21 @@ export function extractFarmIdFromPath(pathname: string): string | null {
 }
 
 /** 리프의 실제 이동 대상. farm-scoped 리프는 farmId가 없으면 null(= 비활성 취급). */
-export function getLeafHref(item: NavLeaf, farmId: string | null): string | null {
+export function getLeafHref(
+  item: NavLeaf,
+  farmId: string | null,
+): string | null {
   if (item.kind === "disabled") return null;
   if (item.kind === "static") return item.path;
   return farmId ? `/farms/${farmId}${item.restPrefix}` : null;
 }
 
 /** 현재 pathname이 이 리프를 가리키는가(좌측 내비 활성 표시용). */
-export function isLeafActive(item: NavLeaf, pathname: string, farmId: string | null): boolean {
+export function isLeafActive(
+  item: NavLeaf,
+  pathname: string,
+  farmId: string | null,
+): boolean {
   const href = getLeafHref(item, farmId);
   if (!href) return false;
   if (item.kind === "farm" && !item.exact) {
@@ -116,7 +123,10 @@ export function isLeafActive(item: NavLeaf, pathname: string, farmId: string | n
 }
 
 /** 현재 pathname이 속한 대분류 key. 어느 그룹에도 속하지 않으면 null(예: /farms, /invitations). */
-export function computeActiveGroupKey(pathname: string, farmId: string | null): string | null {
+export function computeActiveGroupKey(
+  pathname: string,
+  farmId: string | null,
+): string | null {
   for (const group of NAV_GROUPS) {
     if (group.items.some((item) => isLeafActive(item, pathname, farmId))) {
       return group.key;
@@ -126,10 +136,42 @@ export function computeActiveGroupKey(pathname: string, farmId: string | null): 
 }
 
 /** 상단 탭 클릭 시 이동할 그룹의 대표 화면(첫 활성 리프). 전부 비활성이면 null(예: 알람). */
-export function resolveGroupHref(group: NavGroup, farmId: string | null): string | null {
+export function resolveGroupHref(
+  group: NavGroup,
+  farmId: string | null,
+): string | null {
   for (const item of group.items) {
     const href = getLeafHref(item, farmId);
     if (href) return href;
+  }
+  return null;
+}
+
+// 모바일 셸 상단 바(이슈 #147) — "뒤로가기 + 화면명" 화면명을 NAV_GROUPS 라벨에서 그대로 뽑는다.
+// 라벨을 여기서 새로 하드코딩하면 nav-config 라벨이 바뀔 때 모바일만 stale해지므로
+// (재사용 원칙) 리프 href 매칭으로 찾는다. 매칭되는 리프가 없는 경로(농장 목록·초대코드 등)는
+// 소수라 특별 케이스로 보강한다.
+const SPECIAL_TITLES: { test: (pathname: string) => boolean; label: string }[] =
+  [
+    { test: (p) => p === "/dashboard", label: "대시보드" },
+    { test: (p) => p === "/farms", label: "농장 목록" },
+    { test: (p) => p === "/invitations", label: "초대코드 입력" },
+  ];
+
+export function resolveMobileTitle(
+  pathname: string,
+  farmId: string | null,
+): string | null {
+  for (const special of SPECIAL_TITLES) {
+    if (special.test(pathname)) return special.label;
+  }
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      const href = getLeafHref(item, farmId);
+      if (href && (pathname === href || pathname.startsWith(`${href}/`))) {
+        return item.label;
+      }
+    }
   }
   return null;
 }
