@@ -119,18 +119,27 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
 
         {tree && tree.zones.length > 0 && (
           <>
+            {/* 터치 타깃 44px(핸드오프 §1, 리뷰 P2 — #111 재발 방지) — 데스크톱용 Chip
+                size="sm"(~24px)를 그대로 쓰지 않고 MobileAlarmList의 필터 버튼과 같은
+                min-h-11 패턴으로 맞춘다. */}
             <div className="flex flex-wrap gap-1.5">
-              {tree.zones.map((zone) => (
-                <Chip
-                  key={zone.id}
-                  as="button"
-                  size="sm"
-                  active={zoneId === zone.id}
-                  onClick={() => setZoneId(zone.id)}
-                >
-                  {zone.name}
-                </Chip>
-              ))}
+              {tree.zones.map((zone) => {
+                const active = zoneId === zone.id;
+                return (
+                  <button
+                    key={zone.id}
+                    type="button"
+                    onClick={() => setZoneId(zone.id)}
+                    className={`min-h-11 flex-none rounded-[7px] px-[13px] text-[12px] font-medium whitespace-nowrap ${
+                      active
+                        ? "bg-dp-ink text-dp-surface"
+                        : "border border-dp-line-strong text-dp-body"
+                    }`}
+                  >
+                    {zone.name}
+                  </button>
+                );
+              })}
             </div>
 
             {zoneId !== null && (
