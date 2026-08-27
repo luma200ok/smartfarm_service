@@ -245,6 +245,11 @@ export default function MobileZoneControl({
                   </div>
                 </div>
                 {controllable ? (
+                  // 터치 타깃 44px(리뷰 재발 방지 — ThemeToggle.tsx의 padded 패턴과 동일 원칙).
+                  // 시안 스펙(토글 44×26, 노브 20px)은 안쪽 트랙의 "보이는 크기"일 뿐이라 그대로
+                  // 두고, 실제 클릭 히트박스인 바깥 button만 44×44로 키운다. 이 컴포넌트는
+                  // 모바일 전용(데스크톱 ZoneControlPanel과 별도 파일)이라 공용 컴포넌트 확장 없이
+                  // 여기서 직접 감싸도 다른 화면에 영향이 없다.
                   <button
                     type="button"
                     role="switch"
@@ -252,17 +257,22 @@ export default function MobileZoneControl({
                     aria-label={`${device.name} ${on ? "끄기" : "켜기"}`}
                     disabled={busy || modeBlocks || !canControl}
                     onClick={() => handleToggleDevice(device)}
-                    className={`relative h-[26px] w-11 flex-none rounded-full transition-colors disabled:opacity-40 ${
-                      offline
-                        ? "bg-dp-red-tint"
-                        : on
-                          ? "bg-dp-green"
-                          : "bg-dp-disabled"
-                    }`}
+                    className="relative flex h-11 w-11 flex-none items-center justify-center disabled:opacity-40"
                   >
                     <span
-                      className={`absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all ${on ? "left-[23px]" : "left-[3px]"}`}
-                    />
+                      aria-hidden="true"
+                      className={`relative h-[26px] w-11 rounded-full transition-colors ${
+                        offline
+                          ? "bg-dp-red-tint"
+                          : on
+                            ? "bg-dp-green"
+                            : "bg-dp-disabled"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all ${on ? "left-[23px]" : "left-[3px]"}`}
+                      />
+                    </span>
                   </button>
                 ) : (
                   <span className="flex-none text-[11.5px] text-dp-faint">

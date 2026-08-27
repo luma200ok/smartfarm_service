@@ -33,10 +33,56 @@ function setDark(next: boolean) {
   listeners.forEach((listener) => listener());
 }
 
+interface ThemeToggleProps {
+  /** 터치 타깃을 44px로 키운다(이슈 #147 리뷰 — 모바일 더보기 화면 전용). 기본 false라
+   * 이 prop을 넘기지 않는 기존 호출부(ProfileMenu 등 데스크톱)는 마크업·크기가 완전히 그대로다 —
+   * 공용 컴포넌트를 직접 키우면 데스크톱에도 영향이 가므로, 시각 자체(24px 필 스위치)는 그대로
+   * 두고 padded일 때만 44×44 히트박스로 감싼다(#111 재발 방지 — 존 선택 칩 픽스와 같은 원칙). */
+  padded?: boolean;
+}
+
 // 라이트/다크 모드 토글(이슈 #36) — 필(pill) 스위치 UI(이슈 #38).
 // 트랙: 라이트=zinc-200, 다크=zinc-800. 노브는 현재 모드 아이콘을 담고 좌우로 슬라이딩한다.
-export default function ThemeToggle() {
-  const isDark = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+export default function ThemeToggle({ padded = false }: ThemeToggleProps = {}) {
+  const isDark = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
+
+  const knob = (
+    <span
+      aria-hidden="true"
+      className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] leading-none shadow transition-transform duration-200 ease-in-out dark:bg-zinc-950 ${
+        isDark ? "translate-x-[22px]" : "translate-x-0.5"
+      }`}
+    >
+      {isDark ? "🌙" : "☀️"}
+    </span>
+  );
+
+  const trackClassName = `relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out ${
+    isDark ? "border-zinc-700 bg-zinc-800" : "border-zinc-300 bg-zinc-200"
+  }`;
+
+  if (padded) {
+    // 바깥 버튼(44×44)이 실제 히트박스·role="switch"를 갖고, 안쪽 span은 순수 시각 트랙이라
+    // aria-hidden(중복 접근성 노드 방지) — 클릭은 버튼 전체 영역 어디서나 먹는다.
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isDark}
+        aria-label="다크 모드"
+        onClick={() => setDark(!isDark)}
+        className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
+      >
+        <span aria-hidden="true" className={trackClassName}>
+          {knob}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <button
@@ -45,18 +91,9 @@ export default function ThemeToggle() {
       aria-checked={isDark}
       aria-label="다크 모드"
       onClick={() => setDark(!isDark)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ease-in-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 ${
-        isDark ? "border-zinc-700 bg-zinc-800" : "border-zinc-300 bg-zinc-200"
-      }`}
+      className={`${trackClassName} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400`}
     >
-      <span
-        aria-hidden="true"
-        className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] leading-none shadow transition-transform duration-200 ease-in-out dark:bg-zinc-950 ${
-          isDark ? "translate-x-[22px]" : "translate-x-0.5"
-        }`}
-      >
-        {isDark ? "🌙" : "☀️"}
-      </span>
+      {knob}
     </button>
   );
 }

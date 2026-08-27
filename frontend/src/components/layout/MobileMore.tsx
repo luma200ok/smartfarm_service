@@ -60,7 +60,11 @@ export default function MobileMore() {
           <span className="text-[13.5px] font-medium text-dp-ink">
             다크 모드
           </span>
-          <ThemeToggle />
+          {/* 리뷰 P2 재발 — 행은 min-h-11(44px)인데 트랙 자체는 24px라 실제 탭 영역이 기준
+              미달이었다. 공용 컴포넌트(ProfileMenu에서도 쓰임)를 직접 키우지 않고
+              padded prop으로 44×44 히트박스만 얹는다(ThemeToggle.tsx 주석 참조). 너비는
+              원래도 w-11(44px)이라 좌우 padding엔 영향 없다. */}
+          <ThemeToggle padded />
         </div>
       </div>
 

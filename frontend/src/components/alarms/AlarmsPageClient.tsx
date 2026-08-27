@@ -424,6 +424,7 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
           onMemoOpen={() => setMemoOpen(true)}
           onMemoClose={() => setMemoOpen(false)}
           onMemoSubmit={handleMemoSubmit}
+          touchPadded
         />
       </Modal>
 
