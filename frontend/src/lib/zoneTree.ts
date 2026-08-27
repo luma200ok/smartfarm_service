@@ -40,7 +40,10 @@ export function buildLocationMaps(tree: ZoneTreeResponse): LocationMaps {
     for (const rack of zone.racks) {
       rackById.set(rack.id, { code: rack.code, zoneId: zone.id });
       for (const level of rack.levels) {
-        levelById.set(level.id, { label: level.label, rackId: rack.id });
+        // RackLevel.label이 백엔드에서 채워지지 않아 항상 null인 결함(이슈 #145, 백엔드 수정
+        // 대기) — 여기서 한 번 폴백해두면 이 맵을 쓰는 모든 화면(장비 위치 표시·데이터 화면
+        // scope 드롭다운)이 동시에 고쳐진다.
+        levelById.set(level.id, { label: level.label || `${level.levelNo}층`, rackId: rack.id });
       }
     }
   }
