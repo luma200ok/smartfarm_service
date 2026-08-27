@@ -165,13 +165,20 @@ export function resolveMobileTitle(
   for (const special of SPECIAL_TITLES) {
     if (special.test(pathname)) return special.label;
   }
+  // isLeafActive를 재사용한다(직접 prefix 비교하면 exact:true를 무시해 "/farms/{id}"(농장별
+  // 현황, exact)가 "/farms/{id}/control" 같은 하위 경로에도 잘못 매치되는 버그가 있었다).
+  // 여러 리프가 매치될 수 있어(예: exact 리프 vs 하위 경로 리프) href가 가장 긴, 즉 가장
+  // 구체적인 것을 고른다.
+  let best: { label: string; href: string } | null = null;
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
+      if (!isLeafActive(item, pathname, farmId)) continue;
       const href = getLeafHref(item, farmId);
-      if (href && (pathname === href || pathname.startsWith(`${href}/`))) {
-        return item.label;
+      if (!href) continue;
+      if (!best || href.length > best.href.length) {
+        best = { label: item.label, href };
       }
     }
   }
-  return null;
+  return best?.label ?? null;
 }
