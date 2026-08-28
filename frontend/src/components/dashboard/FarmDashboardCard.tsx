@@ -1,8 +1,17 @@
 "use client";
 
 import { Card, StatusBadge } from "@/components/monitoring/ui";
-import { CROP_LABELS, FARM_DASHBOARD_STATUS_LABELS, SENSOR_METRIC_LABELS } from "@/constants";
-import type { FarmDashboardResponse, FarmDashboardStatus, FarmDashboardTrendPoint } from "@/types";
+import {
+  CROP_LABELS,
+  FARM_DASHBOARD_STATUS_LABELS,
+  SENSOR_METRIC_LABELS,
+} from "@/constants";
+import { formatDashboardMetricValue } from "@/lib/metricFormat";
+import type {
+  FarmDashboardResponse,
+  FarmDashboardStatus,
+  FarmDashboardTrendPoint,
+} from "@/types";
 import type { PreviewSeverity as Severity } from "@/types";
 
 interface FarmDashboardCardProps {
@@ -27,28 +36,32 @@ function statusTone(status: FarmDashboardStatus): Severity {
   return "done";
 }
 
-function statusLabel(status: FarmDashboardStatus, unacknowledgedAlarmCount: number): string {
+function statusLabel(
+  status: FarmDashboardStatus,
+  unacknowledgedAlarmCount: number,
+): string {
   if (status === "NORMAL") return FARM_DASHBOARD_STATUS_LABELS.NORMAL;
   return `${FARM_DASHBOARD_STATUS_LABELS[status]} ${unacknowledgedAlarmCount}`;
-}
-
-function formatMetricValue(metric: string, value: number | null): string {
-  if (value === null) return "-";
-  if (metric === "TEMPERATURE") return `${value.toFixed(1)}°`;
-  if (metric === "HUMIDITY") return `${value.toFixed(0)}%`;
-  return value.toFixed(1);
 }
 
 // 7일 미니 막대 — 대표 지표(TEMPERATURE) 일별 평균을 농장 자체 주간 범위로 정규화한다.
 // 목표값 기준선이 응답에 없어(백엔드 TrendPoint에 목표치 필드 없음) 절대 임계 비교 대신
 // 상대(주간 최저~최고) 높이로 그린다 — 이상값(WARNING/CRITICAL)만 색으로 강조.
-function trendBarHeightPercent(point: FarmDashboardTrendPoint, min: number, max: number): number {
+function trendBarHeightPercent(
+  point: FarmDashboardTrendPoint,
+  min: number,
+  max: number,
+): number {
   if (point.value === null) return 18;
   if (max - min < 0.01) return 60;
   return 24 + (72 * (point.value - min)) / (max - min);
 }
 
-function trendBarClass(point: FarmDashboardTrendPoint, index: number, total: number): string {
+function trendBarClass(
+  point: FarmDashboardTrendPoint,
+  index: number,
+  total: number,
+): string {
   if (point.value === null || point.state === "IDLE") return "bg-dp-idle";
   if (point.state === "CRITICAL") return "bg-dp-red";
   if (point.state === "WARNING") return "bg-dp-amber";
@@ -59,13 +72,24 @@ function trendBarClass(point: FarmDashboardTrendPoint, index: number, total: num
   return "bg-dp-green-mid";
 }
 
-export default function FarmDashboardCard({ farm, selected, onSelect }: FarmDashboardCardProps) {
-  const trendValues = farm.trend7d.map((p) => p.value).filter((v): v is number => v !== null);
+export default function FarmDashboardCard({
+  farm,
+  selected,
+  onSelect,
+}: FarmDashboardCardProps) {
+  const trendValues = farm.trend7d
+    .map((p) => p.value)
+    .filter((v): v is number => v !== null);
   const min = trendValues.length > 0 ? Math.min(...trendValues) : 0;
   const max = trendValues.length > 0 ? Math.max(...trendValues) : 0;
 
   return (
-    <button type="button" onClick={onSelect} aria-pressed={selected} className="text-left">
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className="text-left"
+    >
       <Card
         className={`flex h-full flex-col gap-3 px-4 py-4 transition-colors ${
           selected ? "border-[1.5px] border-dp-green" : ""
@@ -73,9 +97,12 @@ export default function FarmDashboardCard({ farm, selected, onSelect }: FarmDash
       >
         <div className="flex items-start gap-2.5">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] leading-[1.3] font-bold text-dp-ink">{farm.name}</div>
+            <div className="truncate text-[15px] leading-[1.3] font-bold text-dp-ink">
+              {farm.name}
+            </div>
             <div className="mt-1 truncate text-[11.5px] leading-none text-dp-muted">
-              {farm.rackCount}랙 {farm.levelCount}층 · {CROP_LABELS[farm.cropType] ?? farm.cropType}
+              {farm.rackCount}랙 {farm.levelCount}층 ·{" "}
+              {CROP_LABELS[farm.cropType] ?? farm.cropType}
             </div>
           </div>
           <StatusBadge
@@ -95,7 +122,7 @@ export default function FarmDashboardCard({ farm, selected, onSelect }: FarmDash
                   m.outOfRange ? "text-dp-red-ink" : "text-dp-ink"
                 }`}
               >
-                {formatMetricValue(m.metric, m.value)}
+                {formatDashboardMetricValue(m.metric, m.value)}
               </div>
             </div>
           ))}

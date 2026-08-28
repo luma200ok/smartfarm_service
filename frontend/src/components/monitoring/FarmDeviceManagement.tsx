@@ -9,7 +9,13 @@ import Modal from "@/components/ui/Modal";
 import { DEVICE_KIND_LABELS, DEVICE_STATUS_LABELS } from "@/constants";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
-import { createDevice, deleteDevice, getDeviceSummary, listDevices, updateDevice } from "@/lib/api/devices";
+import {
+  createDevice,
+  deleteDevice,
+  getDeviceSummary,
+  listDevices,
+  updateDevice,
+} from "@/lib/api/devices";
 import { getZoneTree } from "@/lib/api/zones";
 import { hasFarmRoleAtLeast } from "@/lib/roles";
 import { buildLocationMaps, describeDeviceLocation } from "@/lib/zoneTree";
@@ -31,12 +37,21 @@ type KindFilter = "ALL" | DeviceKind;
 type StatusFilter = "ALL" | DeviceStatus;
 
 const KIND_FILTERS: KindFilter[] = ["ALL", "SENSOR", "CONTROLLER", "GATEWAY"];
-const STATUS_FILTERS: StatusFilter[] = ["ALL", "NORMAL", "WARNING", "FAULT", "OFFLINE", "OFF"];
+const STATUS_FILTERS: StatusFilter[] = [
+  "ALL",
+  "NORMAL",
+  "WARNING",
+  "FAULT",
+  "OFFLINE",
+  "OFF",
+];
 
 // 장비·센서 관리 탭(이슈 #99 → #144 시안 06 적용, contract §4.10) — 요약 KPI + 필터 목록 + CRUD +
 // 우측 사용자·권한/시스템 로그 미리보기(#122·#129). 목업의 "보정 일정"은 대응 기능이 없어(handoff
 // 요건) 만들지 않았다 — "장비 추가"는 기존 기능 그대로 재사용한다.
-export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementProps) {
+export default function FarmDeviceManagement({
+  farmId,
+}: FarmDeviceManagementProps) {
   const [farm, setFarm] = useState<FarmResponse | null>(null);
   const [tree, setTree] = useState<ZoneTreeResponse | null>(null);
   const [summary, setSummary] = useState<DeviceSummaryResponse | null>(null);
@@ -171,7 +186,9 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
   return (
     <div className="flex flex-col gap-3.5 px-[30px] py-[26px]">
       <div className="flex items-center gap-2.5">
-        <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">장비 · 센서 관리</h1>
+        <h1 className="text-[17px] leading-[1.2] font-bold text-dp-ink">
+          장비 · 센서 관리
+        </h1>
         <div className="flex-1" />
         {isAdmin && tree && (
           <button
@@ -198,14 +215,27 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
           <KpiCard label="등록 장비" value={summary.total} />
           <KpiCard label="정상 통신" value={summary.normal} tone="ok" />
           <KpiCard label="주의" value={summary.warning} tone="warning" />
-          <KpiCard label="통신 이상" value={summary.faultOrOffline} tone="critical" />
+          <KpiCard
+            label="통신 이상"
+            value={summary.faultOrOffline}
+            tone="critical"
+          />
           <KpiCard label="정지" value={summary.off} />
-          <KpiCard label="보정 기한 임박" value={summary.calibrationDueSoon} tone="warning" />
+          <KpiCard
+            label="보정 기한 임박"
+            value={summary.calibrationDueSoon}
+            tone="warning"
+          />
         </div>
       )}
 
       {tree && (
-        <ZoneRackManager farmId={farmId} tree={tree} canManageStructure={isAdmin} onChanged={() => setRefreshKey((k) => k + 1)} />
+        <ZoneRackManager
+          farmId={farmId}
+          tree={tree}
+          canManageStructure={isAdmin}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+        />
       )}
 
       <div className="grid grid-cols-1 gap-3.5 min-[1280px]:grid-cols-[1fr_440px]">
@@ -218,7 +248,9 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
                 aria-pressed={kindFilter === k}
                 onClick={() => setKindFilter(k)}
                 className={`rounded-md px-[11px] py-1.5 text-[11.5px] font-medium transition-colors ${
-                  kindFilter === k ? "bg-dp-ink font-semibold text-dp-surface" : "border border-dp-line-strong text-dp-body"
+                  kindFilter === k
+                    ? "bg-dp-ink font-semibold text-dp-surface"
+                    : "border border-dp-line-strong text-dp-body"
                 }`}
               >
                 {k === "ALL" ? "전체" : DEVICE_KIND_LABELS[k]}
@@ -232,7 +264,9 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
                 aria-pressed={statusFilter === s}
                 onClick={() => setStatusFilter(s)}
                 className={`rounded-md px-[11px] py-1.5 text-[11.5px] font-medium transition-colors ${
-                  statusFilter === s ? "bg-dp-ink font-semibold text-dp-surface" : "border border-dp-line-strong text-dp-body"
+                  statusFilter === s
+                    ? "bg-dp-ink font-semibold text-dp-surface"
+                    : "border border-dp-line-strong text-dp-body"
                 }`}
               >
                 {s === "ALL" ? "전체 상태" : DEVICE_STATUS_LABELS[s]}
@@ -242,7 +276,9 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
             {tree && (
               <select
                 value={zoneFilter === "ALL" ? "" : zoneFilter}
-                onChange={(e) => setZoneFilter(e.target.value ? Number(e.target.value) : "ALL")}
+                onChange={(e) =>
+                  setZoneFilter(e.target.value ? Number(e.target.value) : "ALL")
+                }
                 className="rounded-md border border-dp-line-strong bg-dp-surface px-2 py-1.5 text-xs text-dp-body"
               >
                 <option value="">전체 존</option>
@@ -263,23 +299,42 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
             />
           </div>
 
-          {loadError && <p className="px-4 text-sm text-dp-red-ink">{loadError}</p>}
-          {rowError && <p className="px-4 text-sm text-dp-red-ink">{rowError}</p>}
+          {loadError && (
+            <p className="px-4 text-sm text-dp-red-ink">{loadError}</p>
+          )}
+          {rowError && (
+            <p className="px-4 text-sm text-dp-red-ink">{rowError}</p>
+          )}
 
-          {!devices && !loadError && <p className="px-4 pb-4 text-sm text-dp-sub">불러오는 중...</p>}
+          {!devices && !loadError && (
+            <p className="px-4 pb-4 text-sm text-dp-sub">불러오는 중...</p>
+          )}
 
-          {devices && devices.length === 0 && <p className="px-4 pb-4 text-sm text-dp-sub">조건에 맞는 장비가 없습니다.</p>}
+          {devices && devices.length === 0 && (
+            <p className="px-4 pb-4 text-sm text-dp-sub">
+              조건에 맞는 장비가 없습니다.
+            </p>
+          )}
 
           {devices && devices.length > 0 && (
+            // 반응형 마무리(이슈 #147 §3, 시안 README "테이블은 열을 줄인다") — 좁은 폭에서
+            // 글자를 줄이는 대신 우선순위 낮은 열부터 숨긴다: 보정예정 → 최종수신 → 위치
+            // (AlarmList.tsx의 "발생시각 → 위치" 숨김 순서와 같은 원칙·같은 min-[768px] 경계).
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-sm">
+              <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-dp-line bg-dp-inset-alt text-left text-xs text-dp-muted">
                     <th className="px-4 py-2 font-medium">장비</th>
-                    <th className="px-3 py-2 font-medium">위치</th>
+                    <th className="hidden px-3 py-2 font-medium min-[768px]:table-cell">
+                      위치
+                    </th>
                     <th className="px-3 py-2 font-medium">모델/시리얼</th>
-                    <th className="px-3 py-2 font-medium">최종 수신</th>
-                    <th className="px-3 py-2 font-medium">보정 예정</th>
+                    <th className="hidden px-3 py-2 font-medium min-[1024px]:table-cell">
+                      최종 수신
+                    </th>
+                    <th className="hidden px-3 py-2 font-medium min-[1440px]:table-cell">
+                      보정 예정
+                    </th>
                     <th className="px-3 py-2 font-medium">상태</th>
                     {isAdmin && <th className="px-3 py-2 font-medium">관리</th>}
                   </tr>
@@ -289,31 +344,47 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
                     <tr
                       key={device.id}
                       className={`border-b border-dp-line-row last:border-0 ${
-                        device.status === "FAULT" || device.status === "OFFLINE" ? "bg-dp-red-tint" : ""
+                        device.status === "FAULT" || device.status === "OFFLINE"
+                          ? "bg-dp-red-tint"
+                          : ""
                       }`}
                     >
                       <td className="px-4 py-2.5">
-                        <div className="font-semibold text-dp-ink">{device.name}</div>
+                        <div className="font-semibold text-dp-ink">
+                          {device.name}
+                        </div>
                         <div className="text-xs text-dp-faint">
                           {DEVICE_KIND_LABELS[device.kind]}
-                          {device.metrics.length > 0 ? ` · ${device.metrics.join(", ")}` : ""}
+                          {device.metrics.length > 0
+                            ? ` · ${device.metrics.join(", ")}`
+                            : ""}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-dp-body">
-                        {locationMaps ? describeDeviceLocation(device, locationMaps) : "-"}
+                      <td className="hidden px-3 py-2.5 text-dp-body min-[768px]:table-cell">
+                        {locationMaps
+                          ? describeDeviceLocation(device, locationMaps)
+                          : "-"}
                       </td>
                       <td className="px-3 py-2.5 text-dp-body">
                         {device.model || "-"} / {device.serial || "-"}
                       </td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-dp-muted">
-                        {device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString("ko-KR") : "-"}
+                      <td className="hidden px-3 py-2.5 font-mono text-xs text-dp-muted min-[1024px]:table-cell">
+                        {device.lastSeenAt
+                          ? new Date(device.lastSeenAt).toLocaleString("ko-KR")
+                          : "-"}
                       </td>
                       <td
-                        className={`px-3 py-2.5 text-xs ${
-                          device.status === "WARNING" ? "font-semibold text-dp-amber-ink" : "text-dp-muted"
+                        className={`hidden px-3 py-2.5 text-xs min-[1440px]:table-cell ${
+                          device.status === "WARNING"
+                            ? "font-semibold text-dp-amber-ink"
+                            : "text-dp-muted"
                         }`}
                       >
-                        {device.calibrationDueAt ? new Date(device.calibrationDueAt).toLocaleDateString("ko-KR") : "-"}
+                        {device.calibrationDueAt
+                          ? new Date(
+                              device.calibrationDueAt,
+                            ).toLocaleDateString("ko-KR")
+                          : "-"}
                       </td>
                       <td className="px-3 py-2.5">
                         <StatusChip status={device.status} />
@@ -346,7 +417,9 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
                   ))}
                 </tbody>
               </table>
-              <div className="border-t border-dp-line px-4 py-2.5 text-xs text-dp-muted">{devices.length}대</div>
+              <div className="border-t border-dp-line px-4 py-2.5 text-xs text-dp-muted">
+                {devices.length}대
+              </div>
             </div>
           )}
         </div>
@@ -358,7 +431,11 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
       </div>
 
       {tree && (
-        <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="장비 추가">
+        <Modal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          title="장비 추가"
+        >
           <DeviceForm
             tree={tree}
             submitting={submitting}
@@ -371,7 +448,11 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
       )}
 
       {tree && (
-        <Modal open={editTarget !== null} onClose={() => setEditTarget(null)} title="장비 수정">
+        <Modal
+          open={editTarget !== null}
+          onClose={() => setEditTarget(null)}
+          title="장비 수정"
+        >
           {editTarget && (
             <DeviceForm
               tree={tree}
@@ -389,7 +470,15 @@ export default function FarmDeviceManagement({ farmId }: FarmDeviceManagementPro
   );
 }
 
-function KpiCard({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warning" | "critical" }) {
+function KpiCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "ok" | "warning" | "critical";
+}) {
   const toneClass =
     tone === "ok"
       ? "text-dp-green"
@@ -417,5 +506,9 @@ function StatusChip({ status }: { status: DeviceStatus }) {
             // "고장"으로 오인된다.
             "text-dp-muted"
           : "text-dp-red-ink";
-  return <span className={`text-[11px] font-semibold ${style}`}>{DEVICE_STATUS_LABELS[status]}</span>;
+  return (
+    <span className={`text-[11px] font-semibold ${style}`}>
+      {DEVICE_STATUS_LABELS[status]}
+    </span>
+  );
 }
