@@ -576,6 +576,21 @@
 - ⚠️ **실행 경로가 없다 — 의도된 것이다.** `@Scheduled` 트리거·액션 수행은 범위 밖이며 **저장만** 한다. 프리뷰에 화면 자체가 없는 "디자인 미확정" 상태라(`mock.ts:21`) 실행까지 만들면 버려진다. 실행을 붙일 때 이 계약을 갱신할 것
 - **ErrorCode**: `SCH001`(404 스케줄 없음) · `SCH002`(409 개수 상한) · `SCH003`(400 cron 표현식 오류)
 
+## 4.18 홈 대시보드 집계 (2026-08-27 확정, 이슈 #139 — 시안 01 선행)
+
+| 메서드 | 경로 | 권한 | 응답 |
+|---|---|---|---|
+| GET | `/api/dashboard/farms` | 인증(내 농장) | 200 `List<FarmDashboardResponse>` |
+
+- **`FarmDashboardResponse`** `{id, name, cropType, rackCount, levelCount, status(CRITICAL|WARNING|NORMAL), unacknowledgedAlarmCount, metrics[{metric,unit,value,outOfRange}], trend7d[{date,value,state}], latestAlarmMessage}`
+- `metrics[].value`가 **null이면 측정 이력 없음** · `trend7d[].state`는 `OK|WARNING|CRITICAL|IDLE`(`ReadingMatrixResponse.LevelCell`과 같은 어휘), 대표 지표 **TEMPERATURE 고정**·일별 평균
+- `latestAlarmMessage`는 알람이 없으면 **null**(서버가 "이상 없음" 같은 문구를 지어내지 않는다)
+- ⚠️ **`plantedDaysAgo`(정식 경과일) 필드가 없다 — 의도된 것이다.** 재배 사이클 도메인(#130) 부재로 계산 불가이고, 0이나 임의값을 내보내면 사용자가 생육 판단을 그르친다. #130 완료 후 추가
+- ⚠️ **PENDING 멤버십 농장은 제외**한다 — 이 카드가 싣는 랙/층·지표·알람은 `requireMember`가 지키는 farm-scoped 내부 데이터와 같은 성격이고, PENDING은 그 표면에 F008로 접근 불가다. (`/api/farms`는 PENDING을 포함하므로 **좌측 `내 농장` 목록과 카드 개수가 다를 수 있다** — 정상)
+- **N+1 금지가 이 API의 존재 이유다** — 쿼리 **6개 고정**(내 농장 1 + `farm_id IN` 배치 5)이며 농장 수와 무관. 기존 단일 농장용 서비스(`findZoneTree`·`latest`·`series`·`unacknowledgedCount`)를 농장마다 부르면 N+1을 재생산하므로 **재사용하지 않는다**
+- **결과 상한** `dashboard.max-farms`(기본 50) 초과 시 절단 — ⚠️ 현재 응답에 절단 사실이 드러나지 않는다(#140)
+- 마이그레이션 없음(기존 테이블 집계)
+
 ## 5. ErrorCode 체계
 
 응답 형식: `{timestamp, code, message}` — GlobalExceptionHandler 일괄.
