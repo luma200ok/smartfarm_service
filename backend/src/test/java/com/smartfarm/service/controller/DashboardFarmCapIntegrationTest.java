@@ -20,7 +20,8 @@ import org.springframework.test.context.TestPropertySource;
 class DashboardFarmCapIntegrationTest extends FarmTestSupport {
 
     @Test
-    @DisplayName("농장이 상한을 초과하면 500 없이 상한 개수로 잘려 반환된다")
+    @DisplayName("농장이 상한을 초과하면 500 없이 상한 개수로 잘리고, totalCount(절단 전 개수)·"
+            + "truncated=true로 절단 사실이 응답에 명시된다(이슈 #140)")
     void dashboardTruncatesToConfiguredCapWithoutError() throws Exception {
         String token = signupAndLogin("상한테스트농부");
         createFarm(token, "농장A");
@@ -29,6 +30,8 @@ class DashboardFarmCapIntegrationTest extends FarmTestSupport {
 
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.farms.length()").value(2))
+                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.truncated").value(true));
     }
 }

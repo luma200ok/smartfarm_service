@@ -119,25 +119,27 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
 
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(farmId))
-                .andExpect(jsonPath("$[0].name").value("군산 제1식물공장"))
-                .andExpect(jsonPath("$[0].rackCount").value(1))
-                .andExpect(jsonPath("$[0].levelCount").value(3))
-                .andExpect(jsonPath("$[0].status").value("CRITICAL"))
-                .andExpect(jsonPath("$[0].unacknowledgedAlarmCount").value(1))
-                .andExpect(jsonPath("$[0].latestAlarmMessage").value("B3랙 4층 급액 EC 초과"))
-                .andExpect(jsonPath("$[0].metrics.length()").value(3))
-                .andExpect(jsonPath("$[0].metrics[?(@.metric=='TEMPERATURE')].value").value(22.0))
-                .andExpect(jsonPath("$[0].metrics[?(@.metric=='TEMPERATURE')].unit").value("°C"))
-                .andExpect(jsonPath("$[0].metrics[?(@.metric=='TEMPERATURE')].outOfRange").value(false))
-                .andExpect(jsonPath("$[0].metrics[?(@.metric=='EC')].value").value(10.0))
-                .andExpect(jsonPath("$[0].metrics[?(@.metric=='EC')].outOfRange").value(true))
-                .andExpect(jsonPath("$[0].trend7d.length()").value(7))
-                .andExpect(jsonPath("$[0].trend7d[6].value").value(22.0))
-                .andExpect(jsonPath("$[0].trend7d[6].state").value("OK"))
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.truncated").value(false))
+                .andExpect(jsonPath("$.farms.length()").value(1))
+                .andExpect(jsonPath("$.farms[0].id").value(farmId))
+                .andExpect(jsonPath("$.farms[0].name").value("군산 제1식물공장"))
+                .andExpect(jsonPath("$.farms[0].rackCount").value(1))
+                .andExpect(jsonPath("$.farms[0].levelCount").value(3))
+                .andExpect(jsonPath("$.farms[0].status").value("CRITICAL"))
+                .andExpect(jsonPath("$.farms[0].unacknowledgedAlarmCount").value(1))
+                .andExpect(jsonPath("$.farms[0].latestAlarmMessage").value("B3랙 4층 급액 EC 초과"))
+                .andExpect(jsonPath("$.farms[0].metrics.length()").value(3))
+                .andExpect(jsonPath("$.farms[0].metrics[?(@.metric=='TEMPERATURE')].value").value(22.0))
+                .andExpect(jsonPath("$.farms[0].metrics[?(@.metric=='TEMPERATURE')].unit").value("°C"))
+                .andExpect(jsonPath("$.farms[0].metrics[?(@.metric=='TEMPERATURE')].outOfRange").value(false))
+                .andExpect(jsonPath("$.farms[0].metrics[?(@.metric=='EC')].value").value(10.0))
+                .andExpect(jsonPath("$.farms[0].metrics[?(@.metric=='EC')].outOfRange").value(true))
+                .andExpect(jsonPath("$.farms[0].trend7d.length()").value(7))
+                .andExpect(jsonPath("$.farms[0].trend7d[6].value").value(22.0))
+                .andExpect(jsonPath("$.farms[0].trend7d[6].state").value("OK"))
                 // 없는 값을 만들지 않는다(#130 부재) — plantedDaysAgo 필드 자체가 응답에 없어야 한다.
-                .andExpect(jsonPath("$[0].plantedDaysAgo").doesNotExist());
+                .andExpect(jsonPath("$.farms[0].plantedDaysAgo").doesNotExist());
     }
 
     @Test
@@ -148,19 +150,21 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
 
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(farmId))
-                .andExpect(jsonPath("$[0].rackCount").value(0))
-                .andExpect(jsonPath("$[0].levelCount").value(0))
-                .andExpect(jsonPath("$[0].status").value("NORMAL"))
-                .andExpect(jsonPath("$[0].unacknowledgedAlarmCount").value(0))
-                .andExpect(jsonPath("$[0].latestAlarmMessage").doesNotExist())
-                .andExpect(jsonPath("$[0].metrics.length()").value(3))
-                .andExpect(jsonPath("$[0].metrics[0].value").doesNotExist())
-                .andExpect(jsonPath("$[0].metrics[0].outOfRange").value(false))
-                .andExpect(jsonPath("$[0].trend7d.length()").value(7))
-                .andExpect(jsonPath("$[0].trend7d[6].value").doesNotExist())
-                .andExpect(jsonPath("$[0].trend7d[6].state").value("IDLE"));
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.truncated").value(false))
+                .andExpect(jsonPath("$.farms.length()").value(1))
+                .andExpect(jsonPath("$.farms[0].id").value(farmId))
+                .andExpect(jsonPath("$.farms[0].rackCount").value(0))
+                .andExpect(jsonPath("$.farms[0].levelCount").value(0))
+                .andExpect(jsonPath("$.farms[0].status").value("NORMAL"))
+                .andExpect(jsonPath("$.farms[0].unacknowledgedAlarmCount").value(0))
+                .andExpect(jsonPath("$.farms[0].latestAlarmMessage").doesNotExist())
+                .andExpect(jsonPath("$.farms[0].metrics.length()").value(3))
+                .andExpect(jsonPath("$.farms[0].metrics[0].value").doesNotExist())
+                .andExpect(jsonPath("$.farms[0].metrics[0].outOfRange").value(false))
+                .andExpect(jsonPath("$.farms[0].trend7d.length()").value(7))
+                .andExpect(jsonPath("$.farms[0].trend7d[6].value").doesNotExist())
+                .andExpect(jsonPath("$.farms[0].trend7d[6].state").value("IDLE"));
     }
 
     @Test
@@ -186,9 +190,9 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
         // 통과하지 못하므로, 정의된(definite) index 경로로 직접 확인한다.
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].metrics[0].metric").value("TEMPERATURE"))
-                .andExpect(jsonPath("$[0].metrics[0].value").doesNotExist())
-                .andExpect(jsonPath("$[0].metrics[0].outOfRange").value(false));
+                .andExpect(jsonPath("$.farms[0].metrics[0].metric").value("TEMPERATURE"))
+                .andExpect(jsonPath("$.farms[0].metrics[0].value").doesNotExist())
+                .andExpect(jsonPath("$.farms[0].metrics[0].outOfRange").value(false));
     }
 
     // ── 스코프(타 사용자·PENDING) ──────────────────────────────────
@@ -203,8 +207,8 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
 
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + tokenA))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(farmA));
+                .andExpect(jsonPath("$.farms.length()").value(1))
+                .andExpect(jsonPath("$.farms[0].id").value(farmA));
     }
 
     @Test
@@ -223,7 +227,9 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
 
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + joinerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.farms.length()").value(0))
+                .andExpect(jsonPath("$.totalCount").value(0))
+                .andExpect(jsonPath("$.truncated").value(false));
     }
 
     @Test
@@ -244,7 +250,7 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
         statistics().clear();
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(jsonPath("$.farms.length()").value(1));
         long queryCountFor1Farm = statistics().getPrepareStatementCount();
 
         seedFullyPopulatedFarm(token, "농장2");
@@ -253,7 +259,7 @@ class DashboardApiIntegrationTest extends FarmTestSupport {
         statistics().clear();
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3));
+                .andExpect(jsonPath("$.farms.length()").value(3));
         long queryCountFor3Farms = statistics().getPrepareStatementCount();
 
         assertThat(queryCountFor3Farms)

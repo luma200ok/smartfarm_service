@@ -1,5 +1,6 @@
 package com.smartfarm.service.service;
 
+import com.smartfarm.service.dto.DashboardFarmsResponse;
 import com.smartfarm.service.dto.FarmDashboardResponse;
 import com.smartfarm.service.dto.FarmDashboardStatus;
 import com.smartfarm.service.dto.FarmSummaryResponse;
@@ -97,16 +98,20 @@ public class DashboardService {
 
     private static final int FRESHNESS_TICK_MULTIPLIER = 5;
 
-    public List<FarmDashboardResponse> findMyFarmsDashboard(Long userId) {
+    public DashboardFarmsResponse findMyFarmsDashboard(Long userId) {
         List<FarmSummaryResponse> myFarms = farmMemberRepository.findMyFarms(userId).stream()
                 .filter(farm -> farm.myRole().isActive())
                 .toList();
         if (myFarms.isEmpty()) {
-            return List.of();
+            return new DashboardFarmsResponse(List.of(), 0, false);
         }
-        if (myFarms.size() > maxDashboardFarms) {
+        // 절단 전 개수를 먼저 고정한다 — totalCount는 항상 이 값이어야 한다(이슈 #140, 응답이
+        // 평문 배열이던 시절엔 FE가 절단 여부를 알 방법이 없어 카드가 그냥 사라진 것처럼 보였다).
+        int totalCount = myFarms.size();
+        boolean truncated = totalCount > maxDashboardFarms;
+        if (truncated) {
             log.warn("홈 대시보드 집계 대상 농장이 상한을 초과해 잘랐습니다: userId={}, count={}, cap={}",
-                    userId, myFarms.size(), maxDashboardFarms);
+                    userId, totalCount, maxDashboardFarms);
             myFarms = myFarms.subList(0, maxDashboardFarms);
         }
 
@@ -138,7 +143,7 @@ public class DashboardService {
 
         LocalDateTime staleThreshold = LocalDateTime.now().minus(tickInterval.multipliedBy(FRESHNESS_TICK_MULTIPLIER));
 
-        return myFarms.stream()
+        List<FarmDashboardResponse> farms = myFarms.stream()
                 .map(farm -> toDashboardResponse(farm,
                         rackAggByFarmId.get(farm.id()),
                         severityCountsByFarmId.getOrDefault(farm.id(), List.of()),
@@ -147,6 +152,7 @@ public class DashboardService {
                         trendByFarmId.getOrDefault(farm.id(), Map.of()),
                         staleThreshold, today))
                 .toList();
+        return new DashboardFarmsResponse(farms, totalCount, truncated);
     }
 
     private FarmDashboardResponse toDashboardResponse(FarmSummaryResponse farm,
