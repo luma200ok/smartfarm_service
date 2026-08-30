@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import {
   DEVICE_STATUS_LABELS,
   ERROR_MESSAGES,
@@ -30,7 +30,16 @@ import type {
 // (MobileZoneControl, 이슈 #147) 두 화면이 공유하는 훅으로 뺐다. 화면마다 새로 fetch/조작
 // 로직을 만들면 한쪽만 고쳐지는 위험이 있어(핸드오프 원칙), 상태·핸들러는 여기 하나뿐이고
 // 두 화면은 렌더링만 다르다. 동작(큐·CT005 재확인 플로우·비상정지 등)은 원본 그대로다.
-export function useZoneControl(farmId: string, zoneId: number) {
+//
+// 이슈 #148 — 예전엔 FarmControlPanel이 데스크톱/모바일 각각에서 이 훅을 따로 불러 GET
+// /control-state 가 뷰포트 무관하게 항상 2번 나갔다(훅 인스턴스 2개 → drafts·배너도 각자
+// 따로 존재). 지금은 FarmControlPanel이 이 훅을 "한 번만" 부르고 결과를 두 렌더(데스크톱
+// ZoneControlPanel·모바일 MobileZoneControl)에 props로 내려준다 — 호출은 1건, 인스턴스도 1개.
+//
+// zoneId는 null일 수 있다(존 트리를 아직 못 불러왔거나 존이 0개인 동안) — 훅은 항상 같은
+// 순서로 호출돼야 하므로(Rules of Hooks) FarmControlPanel은 zoneId===null 이어도 이 훅을
+// 부르고, 여기서 null이면 fetch를 건너뛴다.
+export function useZoneControl(farmId: string, zoneId: number | null) {
   const [state, setState] = useState<ControlStateResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -42,12 +51,34 @@ export function useZoneControl(farmId: string, zoneId: number) {
 
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // 리셋 책임(이슈 #148, ⛔ 회귀 금지 1) — 예전엔 FarmControlPanel이 `<ZoneControlPanel
+  // key={zoneId}>` 로 존마다 이 훅을 통째로 리마운트해서 리셋을 공짜로 얻었다. 훅 호출이
+  // FarmControlPanel로 올라가며 그 리마운트가 사라졌으므로, 존(zoneId)이 바뀔 때마다
+  // "이전 존의 초안 입력값(drafts)·배너(conflictNotice·infoMessage·actionError)·조회 결과
+  // (state)가 새 존으로 새지 않도록" 여기서 명시적으로 리셋한다. useLayoutEffect라 브라우저가
+  // 페인트하기 전에 커밋돼 이전 존 데이터가 한 프레임도 비치지 않는다. refreshKey 변경(같은
+  // 존 안에서의 재조회)은 이 effect의 deps에 없으므로 리셋되지 않는다 — 적용 후 재조회는
+  // 화면이 깜빡이지 않아야 하는 별개 케이스다.
+  useLayoutEffect(() => {
+    setState(null);
+    setLoadError(null);
+    setActionError(null);
+    setInfoMessage(null);
+    setConflictNotice(false);
+    setBusy(false);
+    setDrafts({});
+  }, [farmId, zoneId]);
+
   useEffect(() => {
+    if (zoneId === null) return;
+    // TS는 nested async 함수 안으로 zoneId===null 가드의 좁혀진 타입을 전파하지 않는다
+    // (파라미터라 재할당 가능성을 배제 못함) — 지역 const로 한 번 더 고정한다.
+    const currentZoneId = zoneId;
     let cancelled = false;
     async function load() {
       setLoadError(null);
       try {
-        const res = await getControlState(farmId, zoneId);
+        const res = await getControlState(farmId, currentZoneId);
         if (!cancelled) {
           setState(res);
           setDrafts({});
@@ -63,7 +94,7 @@ export function useZoneControl(farmId: string, zoneId: number) {
   }, [farmId, zoneId, refreshKey]);
 
   async function handleModeChange(next: OperationMode) {
-    if (!state || busy || state.mode === next) return;
+    if (!state || busy || state.mode === next || zoneId === null) return;
     if (
       state.pendingChanges.length > 0 &&
       !window.confirm(
@@ -87,7 +118,7 @@ export function useZoneControl(farmId: string, zoneId: number) {
   }
 
   async function handleEnqueueSetpoint(metric: ControllableMetric) {
-    if (!state || busy) return;
+    if (!state || busy || zoneId === null) return;
     const raw = drafts[metric];
     if (raw === undefined || raw.trim() === "") return;
     const value = Number(raw);
@@ -114,7 +145,7 @@ export function useZoneControl(farmId: string, zoneId: number) {
   }
 
   async function handleToggleDevice(device: ControlDeviceResponse) {
-    if (!state || busy) return;
+    if (!state || busy || zoneId === null) return;
     // 통신 두절 장비는 큐 적재 시점에 CT002로 거부된다(contract §4.12) — 클릭 즉시 안내하고
     // 서버 왕복 없이 끝낸다(적용 시점이 아니라 클릭 시점 피드백이 요건).
     if (device.status === "OFFLINE") {
@@ -141,7 +172,7 @@ export function useZoneControl(farmId: string, zoneId: number) {
   }
 
   async function handleCancelChange(changeId: number) {
-    if (busy) return;
+    if (busy || zoneId === null) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -155,7 +186,8 @@ export function useZoneControl(farmId: string, zoneId: number) {
   }
 
   async function handleCancelAll() {
-    if (!state || state.pendingChanges.length === 0 || busy) return;
+    if (!state || state.pendingChanges.length === 0 || busy || zoneId === null)
+      return;
     if (
       !window.confirm(
         `대기 중인 변경 ${state.pendingChanges.length}건을 모두 되돌리시겠습니까?`,
@@ -180,7 +212,8 @@ export function useZoneControl(farmId: string, zoneId: number) {
   // 보이는 큐"에서 계산하므로, 사용자가 갱신된 목록을 보고 다시 "적용"을 누르면 그 최신 집합으로
   // 재시도된다 — 별도 재조회 없이 재확인이 자연스럽게 이어진다.
   async function handleApply() {
-    if (!state || state.pendingChanges.length === 0 || busy) return;
+    if (!state || state.pendingChanges.length === 0 || busy || zoneId === null)
+      return;
     setBusy(true);
     setActionError(null);
     setInfoMessage(null);
@@ -255,6 +288,11 @@ export function useZoneControl(farmId: string, zoneId: number) {
     handleEmergencyStop,
   };
 }
+
+// useZoneControl의 반환 타입 — FarmControlPanel이 훅을 한 번만 부르고 그 결과를 데스크톱
+// (ZoneControlPanel)·모바일(MobileZoneControl) 양쪽에 props로 내려준다(이슈 #148). 두
+// 프레젠테이션 컴포넌트는 이 타입 하나로 props를 받는다.
+export type UseZoneControlResult = ReturnType<typeof useZoneControl>;
 
 // 장비 상태 → StatusBadge 톤. OFF는 장애가 아니라 제어 조작 결과라 critical이 아니라
 // neutral로 표기한다(contract §4.12, 이슈 #108 요건 ①과 같은 이유).
