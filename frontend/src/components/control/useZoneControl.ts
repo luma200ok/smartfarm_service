@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   DEVICE_STATUS_LABELS,
   ERROR_MESSAGES,
@@ -51,6 +51,19 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
 
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
+  // 진행 중 액션 무효화(code-reviewer P1, 이슈 #148 후속) — 예전엔 존을 바꾸면 `key={zoneId}`
+  // 리마운트로 옛 훅 인스턴스가 통째로 사라져서, 늦게 도착한 액션 응답의 setState가 이미
+  // 언마운트된 컴포넌트에 떨어져 무해했다. 지금은 인스턴스가 하나뿐이라 그 보호가 없다 —
+  // handleApply를 누른 뒤 응답 전에 다른 존으로 넘어가면, 늦게 도착한 응답이 새 존 화면의
+  // state를 덮어쓴다(재현: reviewer 코멘트 참고). 매 핸들러가 시작 시점에 토큰을 하나씩
+  // 발급받고(`++operationTokenRef.current`), await 이후 모든 setState/reload() 직전에
+  // "그 사이 토큰이 그대로인지"(존 전환도, 같은 존에서 더 최근에 시작된 다른 액션도 없었는지)
+  // 확인한다 — 아니면 그 결과 전체를 버린다(busy 포함, finally도 예외 없이). 존 전환
+  // 리셋(아래 effect)도 같은 토큰을 bump해 "전환 이전에 시작된 액션은 전부 무효"로 만든다.
+  // 존 스코프가 없는 handleEmergencyStop도 같은 토큰을 쓴다 — 그래야 늦게 도착한 비상정지
+  // 응답의 finally가 "그 사이 새로 시작된 다른 액션"의 busy 락을 걷어차지 않는다.
+  const operationTokenRef = useRef(0);
+
   // 리셋 책임(이슈 #148, ⛔ 회귀 금지 1) — 예전엔 FarmControlPanel이 `<ZoneControlPanel
   // key={zoneId}>` 로 존마다 이 훅을 통째로 리마운트해서 리셋을 공짜로 얻었다. 훅 호출이
   // FarmControlPanel로 올라가며 그 리마운트가 사라졌으므로, 존(zoneId)이 바뀔 때마다
@@ -60,6 +73,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
   // 존 안에서의 재조회)은 이 effect의 deps에 없으므로 리셋되지 않는다 — 적용 후 재조회는
   // 화면이 깜빡이지 않아야 하는 별개 케이스다.
   useLayoutEffect(() => {
+    operationTokenRef.current += 1;
     setState(null);
     setLoadError(null);
     setActionError(null);
@@ -103,17 +117,20 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
     ) {
       return;
     }
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     try {
       const res = await changeControlMode(farmId, zoneId, { mode: next });
+      if (operationTokenRef.current !== token) return; // 그 사이 존 전환·다른 액션 시작 — 폐기
       setState(res);
       setConflictNotice(false);
       setInfoMessage(null);
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       setActionError(resolveErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
@@ -126,6 +143,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
       setActionError("숫자를 입력해주세요.");
       return;
     }
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     try {
@@ -134,13 +152,15 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
         metric,
         targetValue: value,
       });
+      if (operationTokenRef.current !== token) return;
       setDrafts((prev) => ({ ...prev, [metric]: "" }));
       setInfoMessage(null);
       reload();
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       setActionError(resolveErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
@@ -154,6 +174,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
     }
     const targetStatus: Extract<DeviceStatus, "NORMAL" | "OFF"> =
       device.status === "OFF" ? "NORMAL" : "OFF";
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     try {
@@ -162,26 +183,31 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
         deviceId: device.id,
         targetStatus,
       });
+      if (operationTokenRef.current !== token) return;
       setInfoMessage(null);
       reload();
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       setActionError(resolveErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
   async function handleCancelChange(changeId: number) {
     if (busy || zoneId === null) return;
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     try {
       await cancelControlChange(farmId, zoneId, changeId);
+      if (operationTokenRef.current !== token) return;
       reload();
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       setActionError(resolveErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
@@ -194,16 +220,19 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
       )
     )
       return;
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     try {
       await cancelAllControlChanges(farmId, zoneId);
+      if (operationTokenRef.current !== token) return;
       setConflictNotice(false);
       reload();
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       setActionError(resolveErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
@@ -214,6 +243,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
   async function handleApply() {
     if (!state || state.pendingChanges.length === 0 || busy || zoneId === null)
       return;
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     setInfoMessage(null);
@@ -221,6 +251,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
       const res = await applyControlChanges(farmId, zoneId, {
         expectedChangeIds: state.pendingChanges.map((c) => c.id),
       });
+      if (operationTokenRef.current !== token) return;
       setState(res.state);
       setConflictNotice(false);
       // skippedCount는 적용 시점에 대상(존·장비)이 사라져 캐스케이드로 건너뛴 항목 수다
@@ -232,6 +263,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
           : `${res.appliedCount}건 적용되었습니다.`,
       );
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       if (isQueueConflict(err)) {
         setState((prev) =>
           prev ? { ...prev, pendingChanges: err.data.pendingChanges } : prev,
@@ -241,7 +273,7 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
         setActionError(resolveErrorMessage(err));
       }
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
@@ -254,19 +286,27 @@ export function useZoneControl(farmId: string, zoneId: number | null) {
     ) {
       return;
     }
+    // 비상 정지는 존 스코프가 없는 농장 전체 액션이라 zoneId와 무관하게 항상 유효한 응답이다
+    // (§4.12 — 전체 제어기가 꺼지므로 사용자가 지금 어느 존을 보고 있든 알려야 맞다).
+    // 다만 busy 락은 zoneId와 무관하게 "이 훅 인스턴스의 마지막 액션"에 걸린 락이라, 늦게
+    // 도착한 응답의 finally가 그 사이 새로 시작된 다른 액션(존 전환 포함)의 busy를 걷어차지
+    // 않도록 같은 operationTokenRef로 지킨다.
+    const token = ++operationTokenRef.current;
     setBusy(true);
     setActionError(null);
     try {
       const res = await emergencyStop(farmId);
+      if (operationTokenRef.current !== token) return;
       setConflictNotice(false);
       setInfoMessage(
         `비상 정지 완료 — 존 ${res.zoneCount}개, 제어기 ${res.stoppedDeviceCount}대 정지, 대기 항목 ${res.discardedChangeCount}건 폐기`,
       );
       reload();
     } catch (err) {
+      if (operationTokenRef.current !== token) return;
       setActionError(resolveErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (operationTokenRef.current === token) setBusy(false);
     }
   }
 
