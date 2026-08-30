@@ -182,6 +182,37 @@ class AlarmEventEnrichmentIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.event.scopeLabel").doesNotExist());
     }
 
+    @Test
+    @DisplayName("cross-tenant 방어: 다른 농장 소속 rack/level id가 scopeId에 심겨도(정상 경로로는 "
+            + "나올 수 없는 상태를 강제 재현) scopeLabel이 그 농장의 이름을 노출하지 않는다"
+            + "(code-reviewer P3 — enrich()의 cross-tenant 안전성은 평상시 AlarmRule 생성 시의 "
+            + "AlarmScopeResolver 검증·zone/rack/level farmId 불변에 기대는데, 그 전제가 깨졌을 때"
+            + "(예: 향후 랙/존 농장 이관 기능) 조용히 남의 농장 이름이 새지 않도록 enrich() 안에 둔 "
+            + "방어적 farmId 필터를 이 테스트로 고정한다)")
+    void scopeLabelDoesNotLeakOtherFarmNameWhenScopeIdIsForeign() throws Exception {
+        String otherOwnerToken = signupAndLogin("타농장주-크로스테넌트");
+        long otherFarmId = createFarm(otherOwnerToken, "타농장");
+        long otherZoneId = createZone(otherOwnerToken, otherFarmId, "타존");
+        long otherRackId = createRack(otherOwnerToken, otherFarmId, otherZoneId, "타랙", 1);
+        long otherLevelId = levelIdOfByNo(otherOwnerToken, otherFarmId, otherZoneId, otherRackId, 1);
+
+        String token = signupAndLogin("내농장주-크로스테넌트");
+        long farmId = createFarm(token, "내농장");
+        // AlarmRule 생성 경로였다면 AlarmScopeResolver#requireExists가 이 조합(farmId가 다른
+        // scopeId)을 404로 막는다 — 여기서는 그 불변식이 깨졌다고 가정하고 이벤트를 직접 fixture로
+        // 만들어 강제 재현한다(다른 통합 테스트들과 동일하게 recordBreach 평가 경로를 거치지 않음).
+        long rackScopeEventId = saveEvent(farmId, AlarmScopeType.RACK, otherRackId, null).getId();
+        long levelScopeEventId = saveEvent(farmId, AlarmScopeType.LEVEL, otherLevelId, null).getId();
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/alarm-events/" + rackScopeEventId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.event.scopeLabel").doesNotExist());
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/alarm-events/" + levelScopeEventId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.event.scopeLabel").doesNotExist());
+    }
+
     // ── ruleSummary ───────────────────────────────────────────────
 
     @Test

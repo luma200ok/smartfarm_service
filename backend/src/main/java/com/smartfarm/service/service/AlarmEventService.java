@@ -258,6 +258,18 @@ public class AlarmEventService {
      * 행 자체가 사라짐) — 그래서 "스코프 소멸"·"규칙 없음"·"유저 탈퇴"가 별도 분기 없이 맵에서
      * 자연히 빠지고, 아래 조립 로직은 그 빈 자리를 null로 되돌릴 뿐 "알 수 없음" 같은 문구를
      * 만들어내지 않는다(handoff 원칙).
+     *
+     * <p>⚠️ <b>cross-tenant 안전성</b>(code-reviewer 지적) — {@code scopeId}가 가리키는
+     * zone/rack/level이 실제로 이 {@code farmId} 소속인지는 평상시엔 이 메서드 호출 전에 이미
+     * 보장돼 있다: ① {@code scopeId}는 {@code AlarmRule} 생성 시
+     * {@code AlarmScopeResolver#requireExists}({@code findByIdAndFarmId})로 그 규칙의 농장 소속이
+     * 검증되고, ② {@code Zone}/{@code Rack}/{@code RackLevel}의 {@code farmId}·{@code zoneId}는
+     * 세터가 없어 생성 후 다른 농장으로 이관될 수 없다(불변) — 그래서 {@code findAllById}만 써도
+     * 지금은 다른 농장 데이터가 섞이지 않는다. 그럼에도 <b>그 불변식이 깨졌을 때(예: 랙/존을 다른
+     * 농장으로 옮기는 이관 기능이 생기는 경우) 조용히 남의 농장 이름이 새는 것을 막기 위해</b>,
+     * 아래에서 배치 조회한 zone/rack/level을 {@code farmId}로 다시 한번 걸러낸다(방어적 이중 검증
+     * — repository 메서드를 {@code findByIdAndFarmId} 배치 버전으로 바꾸는 변경면 큰 리팩터 대신,
+     * 조회 후 in-memory 필터로 최소 변경).
      */
     private List<AlarmEventResponse> enrich(Long farmId, List<AlarmEvent> events) {
         if (events.isEmpty()) {
@@ -279,20 +291,25 @@ public class AlarmEventService {
                 .map(AlarmEvent::getScopeId)
                 .toList();
 
+        // cross-tenant 방어(위 javadoc 참고) — findAllById는 farmId를 모르므로, 조회 직후
+        // farmId가 일치하는 행만 남긴다. 평상시엔 전부 일치해 아무것도 걸러지지 않는다(no-op).
         Map<Long, RackLevel> levelById = levelScopeIds.isEmpty() ? Map.of()
                 : rackLevelRepository.findAllById(levelScopeIds).stream()
+                        .filter(level -> farmId.equals(level.getFarmId()))
                         .collect(Collectors.toMap(RackLevel::getId, level -> level));
 
         List<Long> rackIdsToFetch = new ArrayList<>(rackScopeIds);
         levelById.values().forEach(level -> rackIdsToFetch.add(level.getRackId()));
         Map<Long, Rack> rackById = rackIdsToFetch.isEmpty() ? Map.of()
                 : rackRepository.findAllById(rackIdsToFetch).stream()
+                        .filter(rack -> farmId.equals(rack.getFarmId()))
                         .collect(Collectors.toMap(Rack::getId, rack -> rack));
 
         List<Long> zoneIdsToFetch = new ArrayList<>(zoneScopeIds);
         rackById.values().forEach(rack -> zoneIdsToFetch.add(rack.getZoneId()));
         Map<Long, Zone> zoneById = zoneIdsToFetch.isEmpty() ? Map.of()
                 : zoneRepository.findAllById(zoneIdsToFetch).stream()
+                        .filter(zone -> farmId.equals(zone.getFarmId()))
                         .collect(Collectors.toMap(Zone::getId, zone -> zone));
 
         Set<Long> ruleIds = events.stream()

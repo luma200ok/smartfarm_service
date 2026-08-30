@@ -43,11 +43,6 @@ public record AlarmEventResponse(
         String resolvedByName
 ) {
 
-    /** 스코프·규칙·유저 이름 정보 없이 이벤트 원본 필드만 담는다(표시용 부가 필드는 전부 null). */
-    public static AlarmEventResponse from(AlarmEvent event) {
-        return from(event, null, null, null, null);
-    }
-
     public static AlarmEventResponse from(AlarmEvent event, String scopeLabel, String ruleSummary,
                                            String acknowledgedByName, String resolvedByName) {
         return new AlarmEventResponse(
