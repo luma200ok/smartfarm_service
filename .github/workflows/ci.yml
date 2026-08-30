@@ -73,6 +73,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # vitest 유닛 테스트(이슈 #148에서 도입) — CI가 돌리지 않으면 테스트가 장식이 된다.
+      # 네트워크를 타지 않고(fetch 전부 모킹) 1초 내 끝나므로 PR 게이트에 부담이 없다.
+      - name: Test
+        run: npm test
+
       - name: Build
         # 프로덕션 값과 동일하게 빌드 검증(docs/api-contract.md §6) — next.config.ts가 미설정 시 빌드를 실패시킨다.
         run: npm run build

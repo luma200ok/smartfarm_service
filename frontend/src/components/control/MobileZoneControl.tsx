@@ -8,12 +8,13 @@ import {
   SENSOR_METRIC_LABELS,
 } from "@/constants";
 import type { ControllableMetric, OperationMode } from "@/types";
-import { describeChange, useZoneControl } from "./useZoneControl";
+import { describeChange, type UseZoneControlResult } from "./useZoneControl";
 
 interface MobileZoneControlProps {
-  farmId: string;
-  zoneId: number;
   canControl: boolean;
+  // useZoneControl 훅 결과(이슈 #148) — ZoneControlPanel과 동일 이유로 FarmControlPanel이
+  // 한 번만 부른 결과를 그대로 받는다(직접 훅을 부르지 않는다).
+  controls: UseZoneControlResult;
 }
 
 // 온도만 손잡이 −/+로 바로 조정할 수 있게 조금 크게 잡은 스텝(시안 m2-control) — 실제 목표값은
@@ -25,15 +26,17 @@ const METRIC_STEP: Record<ControllableMetric, number> = {
   PPFD: 5,
 };
 
-// 모바일 제어 화면(이슈 #147, 시안 m2-control) — 데스크톱 ZoneControlPanel과 같은 useZoneControl
-// 훅을 쓴다(재사용 원칙, 이번 이슈 핵심 지시). 온도만 큰 카드, 나머지 3종은 2열 요약, 장비는
+// 모바일 제어 화면(이슈 #147, 시안 m2-control) — 데스크톱 ZoneControlPanel과 같은
+// useZoneControl 훅의 결과를 props로 받는다(재사용 원칙, 이번 이슈 핵심 지시. 이슈 #148부터는
+// 훅 호출 자체가 FarmControlPanel로 올라가 이 컴포넌트·ZoneControlPanel 둘 다 같은 훅
+// 인스턴스 하나를 공유한다 — 존 선택 1회당 GET /control-state 1건). 온도만 큰 카드, 나머지
+// 3종은 2열 요약, 장비는
 // 44×26 토글, 적용/되돌리기는 화면 하단 고정 대신 콘텐츠 마지막 카드로 둔다(모바일 셸의 하단
 // 탭바와 겹치는 두 개의 sticky bottom을 안전하게 쌓을 방법이 없어 — MobileTopBar.tsx 주석과
 // 같은 이유로 셸 쪽에 prop-drilling하지 않는 쪽을 택했다).
 export default function MobileZoneControl({
-  farmId,
-  zoneId,
   canControl,
+  controls,
 }: MobileZoneControlProps) {
   const {
     state,
@@ -51,7 +54,7 @@ export default function MobileZoneControl({
     handleCancelAll,
     handleApply,
     handleEmergencyStop,
-  } = useZoneControl(farmId, zoneId);
+  } = controls;
 
   if (loadError) {
     return <p className="px-4 py-4 text-sm text-dp-red-ink">{loadError}</p>;
