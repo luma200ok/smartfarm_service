@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Chip } from "@/components/monitoring/ui";
 import MobileZoneControl from "@/components/control/MobileZoneControl";
 import ZoneControlPanel from "@/components/control/ZoneControlPanel";
+import { useZoneControl } from "@/components/control/useZoneControl";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
 import { getFarm } from "@/lib/api/farms";
 import { getZoneTree } from "@/lib/api/zones";
@@ -55,6 +56,13 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
   // 비상 정지·제어 조작은 OPERATOR 이상(contract §2, 이슈 #123).
   const canControl = hasFarmRoleAtLeast(farm?.myRole, "OPERATOR");
 
+  // 이슈 #148 — 훅을 여기서 "한 번만" 부르고 결과를 데스크톱/모바일 렌더 양쪽에 내려준다.
+  // (전에는 ZoneControlPanel·MobileZoneControl이 각자 useZoneControl을 불러 GET
+  // /control-state 가 뷰포트 무관하게 2번 나갔고, drafts·배너도 인스턴스별로 따로 존재했다.)
+  // zoneId가 아직 null이어도(존 트리 로딩 중·존 0개) Rules of Hooks상 항상 호출해야 하므로
+  // 그대로 넘긴다 — 훅 내부에서 null이면 fetch를 건너뛴다.
+  const controls = useZoneControl(farmId, zoneId);
+
   return (
     <>
       {/* 데스크톱·태블릿(≥768px) — 기존 구성 그대로(회귀 금지). */}
@@ -89,21 +97,19 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
               ))}
             </div>
 
-            {/* zoneId가 바뀌면 완전히 새로 마운트 — 이전 존의 초안 입력값·배너 상태가 새 존으로 새지 않게 */}
+            {/* 존이 바뀌면 useZoneControl 내부의 리셋 effect가 이전 존의 초안 입력값·배너
+                상태를 지운다(이슈 #148 — 예전엔 여기 key={zoneId} 리마운트가 그 역할을 했지만,
+                훅 호출이 FarmControlPanel로 올라가며 리셋 책임도 훅 내부로 옮겼다). */}
             {zoneId !== null && (
-              <ZoneControlPanel
-                key={zoneId}
-                farmId={farmId}
-                zoneId={zoneId}
-                canControl={canControl}
-              />
+              <ZoneControlPanel canControl={canControl} controls={controls} />
             )}
           </>
         )}
       </div>
 
-      {/* 모바일(<768px, 이슈 #147, 시안 m2-control) — 같은 zoneId/canControl 상태를 재사용,
-          렌더만 다르다(MobileZoneControl이 useZoneControl 훅을 desktop과 공유). */}
+      {/* 모바일(<768px, 이슈 #147, 시안 m2-control) — 같은 zoneId/canControl/controls를 그대로
+          재사용, 렌더만 다르다(위 controls는 이 컴포넌트가 한 번만 부른 useZoneControl 결과 —
+          이슈 #148, 데스크톱·모바일 둘 다 같은 인스턴스를 본다). */}
       <div className="flex flex-col gap-3 px-4 py-3 min-[768px]:hidden">
         {treeError && <p className="text-sm text-dp-red-ink">{treeError}</p>}
 
@@ -143,12 +149,7 @@ export default function FarmControlPanel({ farmId }: FarmControlPanelProps) {
             </div>
 
             {zoneId !== null && (
-              <MobileZoneControl
-                key={zoneId}
-                farmId={farmId}
-                zoneId={zoneId}
-                canControl={canControl}
-              />
+              <MobileZoneControl canControl={canControl} controls={controls} />
             )}
           </>
         )}
