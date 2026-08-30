@@ -9,7 +9,11 @@ import { Card, Chip } from "@/components/monitoring/ui";
 import { getFarmBriefing } from "@/lib/api/briefing";
 import { getDashboardFarms } from "@/lib/api/dashboard";
 import { resolveErrorMessage } from "@/lib/api/errorMessage";
-import type { FarmBriefingResponse, FarmDashboardResponse, FarmDashboardStatus } from "@/types";
+import type {
+  DashboardFarmsResponse,
+  FarmBriefingResponse,
+  FarmDashboardStatus,
+} from "@/types";
 
 type SortMode = "status" | "name";
 
@@ -39,17 +43,23 @@ interface TodoItem {
 // 카드 데이터는 GET /api/dashboard/farms(#139) 하나로 전부 온다 — 예전처럼 농장마다 zones·
 // devices를 개별 호출하지 않는다(N+1 방지가 그 API를 만든 이유, #142 handoff).
 export default function DashboardHome() {
-  const [farms, setFarms] = useState<FarmDashboardResponse[] | null>(null);
+  // 이슈 #140 — 응답이 평문 배열에서 { farms, totalCount, truncated } 래퍼로 바뀌었다.
+  // 카드 그리드·정렬·"오늘 할일"은 전부 farms 배열만 참조하므로 아래에서 파생시켜 그대로
+  // 재사용하고(dashboardData가 null이면 farms도 null — 로딩 상태 판정이 그대로 유지된다),
+  // totalCount·truncated는 절단 안내에서만 쓴다.
+  const [dashboardData, setDashboardData] = useState<DashboardFarmsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFarmId, setSelectedFarmId] = useState<number | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("status");
   const [briefing, setBriefing] = useState<FarmBriefingResponse | null>(null);
 
+  const farms = dashboardData?.farms ?? null;
+
   useEffect(() => {
     getDashboardFarms()
       .then((data) => {
-        setFarms(data);
-        setSelectedFarmId((prev) => prev ?? (data.length > 0 ? data[0].id : null));
+        setDashboardData(data);
+        setSelectedFarmId((prev) => prev ?? (data.farms.length > 0 ? data.farms[0].id : null));
       })
       .catch((err) => setError(resolveErrorMessage(err)));
   }, []);
@@ -186,6 +196,19 @@ export default function DashboardHome() {
                 </Chip>
               </div>
             </div>
+
+            {/* 절단 안내(이슈 #140) — 백엔드 집계 상한(dashboard.max-farms) 초과로 카드가
+                잘렸을 때만 뜬다. 상한 숫자는 FE가 모르므로 지어내지 않고 서버가 준 실측치
+                (totalCount·farms.length)만 쓴다. 경고가 아니라 정보라 red/amber 대신
+                기존 blue 톤(FarmDataAnalysis의 정보성 배지와 동일 패턴)을 쓴다. */}
+            {dashboardData?.truncated && (
+              <p
+                role="status"
+                className="flex-none rounded-md border border-dp-blue bg-dp-blue-tint px-3 py-2 text-xs leading-relaxed text-dp-blue-ink"
+              >
+                농장 {dashboardData.totalCount}개 중 {farms.length}개만 표시하고 있습니다.
+              </p>
+            )}
 
             {/* 2층 — 농장 카드 그리드. auto-fill이라 농장 1·2·3·4+개 어느 쪽이든 카드 크기를
                 유지한 채 자연스럽게 줄바꿈된다(고정 4열 대신 — 시안은 4개 전제라 repeat(4,1fr)
