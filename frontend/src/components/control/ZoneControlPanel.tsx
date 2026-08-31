@@ -13,15 +13,17 @@ import type { OperationMode } from "@/types";
 import {
   deviceStatusTone,
   describeChange,
-  useZoneControl,
+  type UseZoneControlResult,
 } from "./useZoneControl";
 
 interface ZoneControlPanelProps {
-  farmId: string;
-  zoneId: number;
   // OPERATOR 이상(이슈 #123 — 구 OWNER 전용에서 완화. contract §2: 비상 정지·제어 조작은
   // OPERATOR 이상). 이름은 호출부(FarmControlPanel)의 hasFarmRoleAtLeast 판정 결과를 그대로 받는다.
   canControl: boolean;
+  // useZoneControl 훅 결과(이슈 #148) — FarmControlPanel이 한 번만 부른 결과를 그대로 받는다.
+  // 이 컴포넌트는 더 이상 훅을 직접 부르지 않는다(존 선택 1회당 요청 1건을 보장하려면 인스턴스가
+  // 1개여야 하므로).
+  controls: UseZoneControlResult;
 }
 
 // 존 제어 화면 본체(이슈 #108, contract §4.12) — 운전 모드 + 목표값 4종 + 장비 수동 조작 +
@@ -33,9 +35,8 @@ interface ZoneControlPanelProps {
 // 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle·Chip·StatusBadge, components/monitoring/ui.tsx)를
 // 재사용한다(이슈 #108 리뷰 P2 — #109 라우트 디자인 통일 전에 이 화면만 팔레트가 이탈하지 않게).
 export default function ZoneControlPanel({
-  farmId,
-  zoneId,
   canControl,
+  controls,
 }: ZoneControlPanelProps) {
   const {
     state,
@@ -53,7 +54,7 @@ export default function ZoneControlPanel({
     handleCancelAll,
     handleApply,
     handleEmergencyStop,
-  } = useZoneControl(farmId, zoneId);
+  } = controls;
 
   if (loadError) {
     return <p className="text-sm text-dp-red-ink">{loadError}</p>;
