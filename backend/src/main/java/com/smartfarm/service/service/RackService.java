@@ -138,12 +138,19 @@ public class RackService {
         rack.changeLevelCount(newLevelCount);
     }
 
+    /**
+     * 층 생성 시 기본 라벨을 채운다("{levelNo}층", 이슈 #145) — contract §4.10·§4.11이 label
+     * 필드를 명시하는데 이 메서드가 여태 채우지 않아 항상 null이었다. 수정 API는 이번 범위 밖이라
+     * (#145 handoff) 사용자가 나중에 편집할 자리로 남겨두는 기본값일 뿐이다. V26이 이 규칙으로
+     * 기존 null 행을 백필한다.
+     */
     private void createLevels(Rack rack, int fromLevelNoInclusive, int toLevelNoInclusive) {
         for (int levelNo = fromLevelNoInclusive; levelNo <= toLevelNoInclusive; levelNo++) {
             rackLevelRepository.save(RackLevel.builder()
                     .rackId(rack.getId())
                     .farmId(rack.getFarmId())
                     .levelNo(levelNo)
+                    .label(levelNo + "층")
                     .build());
         }
     }

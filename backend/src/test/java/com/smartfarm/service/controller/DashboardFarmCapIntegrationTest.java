@@ -20,7 +20,11 @@ import org.springframework.test.context.TestPropertySource;
 class DashboardFarmCapIntegrationTest extends FarmTestSupport {
 
     @Test
-    @DisplayName("농장이 상한을 초과하면 500 없이 상한 개수로 잘려 반환된다")
+    @DisplayName("농장이 상한을 초과하면 500 없이 상한 개수로 잘리고, totalCount(절단 전 개수)·"
+            + "truncated=true로 절단 사실이 응답에 명시된다(이슈 #140) — "
+            + "잘리고 남는 농장이 어느 것인지(생성 순서=id 오름차순, "
+            + "FarmMemberRepository#findMyFarms의 ORDER BY f.id ASC)까지 확인한다(리뷰 P2 — "
+            + "개수만 보면 정렬이 깨져 엉뚱한 농장이 잘려도 통과한다)")
     void dashboardTruncatesToConfiguredCapWithoutError() throws Exception {
         String token = signupAndLogin("상한테스트농부");
         createFarm(token, "농장A");
@@ -29,6 +33,12 @@ class DashboardFarmCapIntegrationTest extends FarmTestSupport {
 
         mockMvc.perform(get("/api/dashboard/farms").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.farms.length()").value(2))
+                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.truncated").value(true))
+                // 절단 순서는 findMyFarms의 f.id ASC로 결정적이다 — 먼저 생성한 농장A·농장B가
+                // 남고, 상한을 초과해 나중에 생성된 농장C가 잘려나가야 한다.
+                .andExpect(jsonPath("$.farms[0].name").value("농장A"))
+                .andExpect(jsonPath("$.farms[1].name").value("농장B"));
     }
 }

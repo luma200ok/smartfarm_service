@@ -5,18 +5,28 @@ package com.smartfarm.service.entity;
  * 응답에 실어주는 표시 단위(EnvMetric 선례와 동일하게 enum에 붙인다).
  */
 public enum SensorMetric {
-    TEMPERATURE("°C"),
-    HUMIDITY("%"),
-    CO2("ppm"),
-    EC("dS/m"),
-    PH("pH"),
-    PPFD("µmol/m²/s"),
-    POWER("kW");
+    TEMPERATURE("온도", "°C"),
+    HUMIDITY("습도", "%"),
+    CO2("CO2", "ppm"),
+    EC("EC", "dS/m"),
+    PH("pH", "pH"),
+    PPFD("PPFD", "µmol/m²/s"),
+    POWER("전력", "kW");
 
+    private final String label;
     private final String unit;
 
-    SensorMetric(String unit) {
+    SensorMetric(String label, String unit) {
+        this.label = label;
         this.unit = unit;
+    }
+
+    /**
+     * 표시용 한국어 라벨(이슈 #135 — {@code AlarmRule} 한 줄 요약 조립용, {@code EnvMetric#label()}
+     * 선례와 동일 패턴). FE {@code SENSOR_METRIC_LABELS}와 값이 동일해야 한다.
+     */
+    public String label() {
+        return label;
     }
 
     public String unit() {

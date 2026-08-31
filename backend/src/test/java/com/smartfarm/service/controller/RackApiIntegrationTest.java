@@ -76,6 +76,44 @@ class RackApiIntegrationTest extends FarmTestSupport {
                 .andExpect(jsonPath("$.code").value("R002"));
     }
 
+    // ── 층 라벨 기본값(이슈 #145 — createLevels가 label을 채우지 않던 결함 보정) ──
+
+    @Test
+    @DisplayName("랙 생성 시 층마다 \"{levelNo}층\" 형태의 기본 라벨이 채워진다")
+    void createRackFillsDefaultLevelLabels() throws Exception {
+        String token = signupAndLogin("농장주-층라벨기본값");
+        long farmId = createFarm(token, "층라벨기본값 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        createRack(token, farmId, zoneId, "R1", 3);
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/zones")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.zones[0].racks[0].levels[0].label").value("1층"))
+                .andExpect(jsonPath("$.zones[0].racks[0].levels[1].label").value("2층"))
+                .andExpect(jsonPath("$.zones[0].racks[0].levels[2].label").value("3층"));
+    }
+
+    @Test
+    @DisplayName("levelCount 확대로 새로 생기는 층도 기본 라벨이 채워진다")
+    void increaseLevelCountFillsDefaultLabelForNewLevels() throws Exception {
+        String token = signupAndLogin("농장주-층확대라벨");
+        long farmId = createFarm(token, "층확대라벨 농장");
+        long zoneId = createZone(token, farmId, "A동");
+        long rackId = createRack(token, farmId, zoneId, "R1", 1);
+
+        mockMvc.perform(patch("/api/farms/" + farmId + "/racks/" + rackId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RackUpdateRequest(null, 2, null))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/farms/" + farmId + "/zones")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.zones[0].racks[0].levels[1].label").value("2층"));
+    }
+
     // ── levelCount 변경 ────────────────────────────────────
 
     @Test

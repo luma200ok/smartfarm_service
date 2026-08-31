@@ -68,7 +68,10 @@ export default function FarmOverview({ farmId }: FarmOverviewProps) {
     getDashboardFarms()
       .then((list) => {
         if (cancelled) return;
-        const match = list.find((f) => String(f.id) === farmId) ?? null;
+        // 이슈 #140 — GET /api/dashboard/farms가 평문 배열에서 { farms, totalCount, truncated }
+        // 래퍼로 바뀌었다. 이 화면은 절단 안내가 필요 없는 단건 조회(개별 농장 매칭)라
+        // list.farms만 쓰면 된다.
+        const match = list.farms.find((f) => String(f.id) === farmId) ?? null;
         setMobileFarm(match);
         setMobileFarmError(
           match ? null : "농장 요약 정보를 불러올 수 없습니다.",

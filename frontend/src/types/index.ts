@@ -950,6 +950,16 @@ export interface FarmDashboardResponse {
   latestAlarmMessage: string | null;
 }
 
+// GET /api/dashboard/farms 응답 래퍼(이슈 #140) — 내 활성 농장이 백엔드 집계 상한을 넘으면
+// DashboardService가 초과분을 조용히 자른다. totalCount는 "절단 전" 내 활성 농장 수이고,
+// truncated가 그 절단 여부를 명시적으로 알려준다(상한 숫자 자체는 FE에 내려오지 않는다 —
+// 하드코딩하지 말 것, #140 handoff).
+export interface DashboardFarmsResponse {
+  farms: FarmDashboardResponse[];
+  totalCount: number;
+  truncated: boolean;
+}
+
 // GET /api/farms/{farmId}/briefing — 농장 단건 기준 "오늘 할일" 집계(이슈 #129-B).
 // ⚠️ harvestDueSoon 필드는 의도적으로 없다(#130). actionRequiredCount는 이 농장의 미확인
 // "건수"이지 시안 브리핑 pill의 "N곳"(농장 수) 단위가 아니다 — 혼동 주의(백엔드 javadoc).

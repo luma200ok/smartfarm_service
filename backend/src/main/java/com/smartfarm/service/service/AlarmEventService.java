@@ -6,25 +6,43 @@ import com.smartfarm.service.dto.AlarmEventResponse;
 import com.smartfarm.service.dto.AlarmStatsResponse;
 import com.smartfarm.service.dto.AlarmUnacknowledgedCountResponse;
 import com.smartfarm.service.dto.PageResponse;
+import com.smartfarm.service.entity.AlarmComparator;
 import com.smartfarm.service.entity.AlarmEvent;
 import com.smartfarm.service.entity.AlarmEventLog;
 import com.smartfarm.service.entity.AlarmEventLogAction;
 import com.smartfarm.service.entity.AlarmEventStatus;
 import com.smartfarm.service.entity.AlarmRule;
+import com.smartfarm.service.entity.AlarmScopeType;
 import com.smartfarm.service.entity.AlarmSeverity;
 import com.smartfarm.service.entity.AlarmSourceType;
+import com.smartfarm.service.entity.Farm;
+import com.smartfarm.service.entity.Rack;
+import com.smartfarm.service.entity.RackLevel;
+import com.smartfarm.service.entity.SensorMetric;
 import com.smartfarm.service.entity.SystemLogCategory;
 import com.smartfarm.service.entity.User;
+import com.smartfarm.service.entity.Zone;
 import com.smartfarm.service.exception.CustomException;
 import com.smartfarm.service.exception.ErrorCode;
 import com.smartfarm.service.repository.AlarmEventLogRepository;
 import com.smartfarm.service.repository.AlarmEventRepository;
+import com.smartfarm.service.repository.AlarmRuleRepository;
 import com.smartfarm.service.repository.AlarmSeverityCountProjection;
+import com.smartfarm.service.repository.FarmRepository;
+import com.smartfarm.service.repository.RackLevelRepository;
+import com.smartfarm.service.repository.RackRepository;
 import com.smartfarm.service.repository.UserRepository;
+import com.smartfarm.service.repository.ZoneRepository;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -53,22 +71,29 @@ public class AlarmEventService {
     private final AlarmEventRepository alarmEventRepository;
     private final AlarmEventLogRepository alarmEventLogRepository;
     private final UserRepository userRepository;
+    private final FarmRepository farmRepository;
+    private final ZoneRepository zoneRepository;
+    private final RackRepository rackRepository;
+    private final RackLevelRepository rackLevelRepository;
+    private final AlarmRuleRepository alarmRuleRepository;
     private final FarmAccessGuard farmAccessGuard;
     private final SystemLogService systemLogService;
 
     public PageResponse<AlarmEventResponse> list(Long farmId, Long userId, AlarmEventStatus status,
                                                   AlarmSeverity severity, Pageable pageable) {
         farmAccessGuard.requireMember(farmId, userId);
-        Page<AlarmEventResponse> page = alarmEventRepository.search(farmId, status, severity, pageable)
-                .map(AlarmEventResponse::from);
-        return PageResponse.of(page);
+        Page<AlarmEvent> page = alarmEventRepository.search(farmId, status, severity, pageable);
+        List<AlarmEventResponse> content = enrich(farmId, page.getContent());
+        return new PageResponse<>(content, page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages());
     }
 
     public AlarmEventDetailResponse get(Long farmId, Long userId, Long alarmEventId) {
         farmAccessGuard.requireMember(farmId, userId);
         AlarmEvent event = findEventOrThrow(farmId, alarmEventId);
         List<AlarmEventLog> logs = alarmEventLogRepository.findByAlarmEventIdOrderByCreatedAtAscIdAsc(event.getId());
-        return AlarmEventDetailResponse.of(event, logs);
+        AlarmEventResponse response = enrichOne(farmId, event);
+        return AlarmEventDetailResponse.of(response, logs);
     }
 
     @Transactional
@@ -80,7 +105,7 @@ public class AlarmEventService {
         event.acknowledge(user);
         alarmEventLogRepository.save(AlarmEventLog.of(event, AlarmEventLogAction.ACKNOWLEDGED, userId, null));
 
-        return AlarmEventResponse.from(event);
+        return enrichOne(farmId, event);
     }
 
     @Transactional
@@ -92,7 +117,7 @@ public class AlarmEventService {
         event.resolve(user);
         alarmEventLogRepository.save(AlarmEventLog.of(event, AlarmEventLogAction.RESOLVED, userId, null));
 
-        return AlarmEventResponse.from(event);
+        return enrichOne(farmId, event);
     }
 
     @Transactional
@@ -119,7 +144,8 @@ public class AlarmEventService {
         alarmEventLogRepository.save(AlarmEventLog.of(event, AlarmEventLogAction.MEMO_ADDED, userId, note));
 
         List<AlarmEventLog> logs = alarmEventLogRepository.findByAlarmEventIdOrderByCreatedAtAscIdAsc(event.getId());
-        return AlarmEventDetailResponse.of(event, logs);
+        AlarmEventResponse response = enrichOne(farmId, event);
+        return AlarmEventDetailResponse.of(response, logs);
     }
 
     /**
@@ -212,5 +238,186 @@ public class AlarmEventService {
     private User findUserOrThrow(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.A004));
+    }
+
+    // ── 표시용 부가 필드 배치 조립(이슈 #135) ──────────────────────────────────
+
+    private AlarmEventResponse enrichOne(Long farmId, AlarmEvent event) {
+        return enrich(farmId, List.of(event)).get(0);
+    }
+
+    /**
+     * {@code scopeLabel}/{@code ruleSummary}/{@code acknowledgedByName}/{@code resolvedByName}을
+     * 목록 크기와 무관하게 <b>배치(batch) 조회</b>로 조립한다(N+1 방지 — #139에서 확립한 "id 목록을
+     * 모아 IN 절로 한 번에 조회 후 Map으로 조립" 패턴을 그대로 따른다). 이 메서드가 실행하는 쿼리
+     * 개수는 이벤트 건수와 무관하게 상수다: zone/rack/level 배치 조회 3개(스코프가 아예 없으면
+     * 스킵) + 규칙 배치 조회 1개 + farm 단건 조회 1개 + 유저 배치 조회 1개, 최대 6개.
+     *
+     * <p>zone/rack/level·규칙·유저 전부 {@code findAllById}(soft delete가 있는 엔티티는
+     * {@code @SQLRestriction}이 자동 적용, {@code AlarmRule}은 soft delete가 없어 삭제되면
+     * 행 자체가 사라짐) — 그래서 "스코프 소멸"·"규칙 없음"·"유저 탈퇴"가 별도 분기 없이 맵에서
+     * 자연히 빠지고, 아래 조립 로직은 그 빈 자리를 null로 되돌릴 뿐 "알 수 없음" 같은 문구를
+     * 만들어내지 않는다(handoff 원칙).
+     *
+     * <p>⚠️ <b>cross-tenant 안전성</b>(code-reviewer 지적) — {@code scopeId}가 가리키는
+     * zone/rack/level이 실제로 이 {@code farmId} 소속인지는 평상시엔 이 메서드 호출 전에 이미
+     * 보장돼 있다: ① {@code scopeId}는 {@code AlarmRule} 생성 시
+     * {@code AlarmScopeResolver#requireExists}({@code findByIdAndFarmId})로 그 규칙의 농장 소속이
+     * 검증되고, ② {@code Zone}/{@code Rack}/{@code RackLevel}의 {@code farmId}·{@code zoneId}는
+     * 세터가 없어 생성 후 다른 농장으로 이관될 수 없다(불변) — 그래서 {@code findAllById}만 써도
+     * 지금은 다른 농장 데이터가 섞이지 않는다. 그럼에도 <b>그 불변식이 깨졌을 때(예: 랙/존을 다른
+     * 농장으로 옮기는 이관 기능이 생기는 경우) 조용히 남의 농장 이름이 새는 것을 막기 위해</b>,
+     * 아래에서 배치 조회한 zone/rack/level을 {@code farmId}로 다시 한번 걸러낸다(방어적 이중 검증
+     * — repository 메서드를 {@code findByIdAndFarmId} 배치 버전으로 바꾸는 변경면 큰 리팩터 대신,
+     * 조회 후 in-memory 필터로 최소 변경).
+     */
+    private List<AlarmEventResponse> enrich(Long farmId, List<AlarmEvent> events) {
+        if (events.isEmpty()) {
+            return List.of();
+        }
+
+        String farmName = farmRepository.findById(farmId).map(Farm::getName).orElse(null);
+
+        List<Long> zoneScopeIds = events.stream()
+                .filter(e -> e.getScopeType() == AlarmScopeType.ZONE)
+                .map(AlarmEvent::getScopeId)
+                .toList();
+        List<Long> rackScopeIds = events.stream()
+                .filter(e -> e.getScopeType() == AlarmScopeType.RACK)
+                .map(AlarmEvent::getScopeId)
+                .toList();
+        List<Long> levelScopeIds = events.stream()
+                .filter(e -> e.getScopeType() == AlarmScopeType.LEVEL)
+                .map(AlarmEvent::getScopeId)
+                .toList();
+
+        // cross-tenant 방어(위 javadoc 참고) — findAllById는 farmId를 모르므로, 조회 직후
+        // farmId가 일치하는 행만 남긴다. 평상시엔 전부 일치해 아무것도 걸러지지 않는다(no-op).
+        Map<Long, RackLevel> levelById = levelScopeIds.isEmpty() ? Map.of()
+                : rackLevelRepository.findAllById(levelScopeIds).stream()
+                        .filter(level -> farmId.equals(level.getFarmId()))
+                        .collect(Collectors.toMap(RackLevel::getId, level -> level));
+
+        List<Long> rackIdsToFetch = new ArrayList<>(rackScopeIds);
+        levelById.values().forEach(level -> rackIdsToFetch.add(level.getRackId()));
+        Map<Long, Rack> rackById = rackIdsToFetch.isEmpty() ? Map.of()
+                : rackRepository.findAllById(rackIdsToFetch).stream()
+                        .filter(rack -> farmId.equals(rack.getFarmId()))
+                        .collect(Collectors.toMap(Rack::getId, rack -> rack));
+
+        List<Long> zoneIdsToFetch = new ArrayList<>(zoneScopeIds);
+        rackById.values().forEach(rack -> zoneIdsToFetch.add(rack.getZoneId()));
+        Map<Long, Zone> zoneById = zoneIdsToFetch.isEmpty() ? Map.of()
+                : zoneRepository.findAllById(zoneIdsToFetch).stream()
+                        .filter(zone -> farmId.equals(zone.getFarmId()))
+                        .collect(Collectors.toMap(Zone::getId, zone -> zone));
+
+        Set<Long> ruleIds = events.stream()
+                .map(AlarmEvent::getRuleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, AlarmRule> ruleById = ruleIds.isEmpty() ? Map.of()
+                : alarmRuleRepository.findAllById(ruleIds).stream()
+                        .collect(Collectors.toMap(AlarmRule::getId, rule -> rule));
+
+        Set<Long> userIds = new HashSet<>();
+        events.forEach(e -> {
+            if (e.getAcknowledgedBy() != null) {
+                userIds.add(e.getAcknowledgedBy());
+            }
+            if (e.getResolvedBy() != null) {
+                userIds.add(e.getResolvedBy());
+            }
+        });
+        Map<Long, String> nicknameByUserId = userIds.isEmpty() ? Map.of()
+                : userRepository.findAllById(userIds).stream()
+                        .collect(Collectors.toMap(User::getId, User::getNickname));
+
+        return events.stream()
+                .map(event -> AlarmEventResponse.from(event,
+                        scopeLabel(event, farmName, zoneById, rackById, levelById),
+                        ruleSummary(event, ruleById),
+                        event.getAcknowledgedBy() != null ? nicknameByUserId.get(event.getAcknowledgedBy()) : null,
+                        event.getResolvedBy() != null ? nicknameByUserId.get(event.getResolvedBy()) : null))
+                .toList();
+    }
+
+    /**
+     * 위치 표기("군산1 · B3랙 4층") 조립 — {@code scopeType}이 null이거나 FARM이면 농장명, 그 외는
+     * zone/rack/level 이름을 " · "로 잇는다. ⚠️ <b>스코프 소멸 vs 빈 스코프 구분</b>(#118 선례) —
+     * 스코프 대상(zone/rack/level) 자체가 삭제(또는 존재하지 않음)돼 맵에서 못 찾으면 {@code null}을
+     * 반환한다. FARM 스코프로 승격하거나 농장명으로 대체하지 않는다.
+     */
+    private String scopeLabel(AlarmEvent event, String farmName, Map<Long, Zone> zoneById,
+                               Map<Long, Rack> rackById, Map<Long, RackLevel> levelById) {
+        AlarmScopeType scopeType = event.getScopeType();
+        if (scopeType == null || scopeType == AlarmScopeType.FARM) {
+            return farmName;
+        }
+        Long scopeId = event.getScopeId();
+        if (scopeType == AlarmScopeType.ZONE) {
+            Zone zone = zoneById.get(scopeId);
+            return zone != null ? zone.getName() : null;
+        }
+        if (scopeType == AlarmScopeType.RACK) {
+            Rack rack = rackById.get(scopeId);
+            if (rack == null) {
+                return null;
+            }
+            Zone zone = zoneById.get(rack.getZoneId());
+            return joinLabelParts(zone != null ? zone.getName() : null, rack.getCode(), null);
+        }
+        // LEVEL
+        RackLevel level = levelById.get(scopeId);
+        if (level == null) {
+            return null;
+        }
+        Rack rack = rackById.get(level.getRackId());
+        Zone zone = rack != null ? zoneById.get(rack.getZoneId()) : null;
+        return joinLabelParts(zone != null ? zone.getName() : null, rack != null ? rack.getCode() : null,
+                level.getLabel());
+    }
+
+    private String joinLabelParts(String... parts) {
+        String joined = Arrays.stream(parts)
+                .filter(Objects::nonNull)
+                .filter(part -> !part.isBlank())
+                .collect(Collectors.joining(" · "));
+        return joined.isEmpty() ? null : joined;
+    }
+
+    /**
+     * 규칙 한 줄 요약(지표 · 비교연산자 · 임계값 · 지속시간) — {@code ruleId}가 없거나(수동/시스템
+     * 발생 알람) 규칙이 삭제됐으면(맵에 없음) {@code null}이다. 지어낸 문구가 아니라 규칙 자체가
+     * 가진 필드만 조합한다({@link AlarmRule#boundaryDescription()}·{@link AlarmComparator#label()}
+     * 재사용).
+     */
+    private String ruleSummary(AlarmEvent event, Map<Long, AlarmRule> ruleById) {
+        if (event.getRuleId() == null) {
+            return null;
+        }
+        AlarmRule rule = ruleById.get(event.getRuleId());
+        if (rule == null) {
+            return null;
+        }
+        String metricLabel = metricLabel(rule);
+        String comparatorLabel = rule.getComparator().label();
+        String durationPart = (rule.getDurationSeconds() / 60) + "분 지속";
+        if (rule.getComparator() == AlarmComparator.ABSENT) {
+            return metricLabel + " " + comparatorLabel + " · " + durationPart;
+        }
+        return metricLabel + " " + comparatorLabel + " " + rule.boundaryDescription() + " · " + durationPart;
+    }
+
+    /** {@code source}에 따라 {@code metric} 문자열이 가리키는 enum이 다르다(AlarmRule 클래스 주석). */
+    private String metricLabel(AlarmRule rule) {
+        if (rule.getMetric() == null) {
+            return "장비 응답";
+        }
+        return switch (rule.getSource()) {
+            case ENV_SNAPSHOT -> EnvMetric.valueOf(rule.getMetric()).label();
+            case SENSOR_READING -> SensorMetric.valueOf(rule.getMetric()).label();
+            case DEVICE_HEARTBEAT -> "장비 응답";
+        };
     }
 }
