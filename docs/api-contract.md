@@ -227,7 +227,7 @@
 
 - **Zone** `{id, farmId, name, displayOrder}` — soft delete(`@SQLDelete`+`@SQLRestriction`, Farm 컨벤션 동일)
 - **Rack** `{id, zoneId, farmId(비정규화 — 테넌트 스코프 쿼리용), code, levelCount, displayOrder}` — soft delete. `unique(zone_id, code)` (활성 행 대상 partial unique)
-- **RackLevel** `{id, rackId, farmId(비정규화), levelNo, label}` — 랙 생성 시 `levelCount`만큼 자동 생성. `unique(rack_id, level_no)`. 측정값·장비가 FK로 매달리므로 별도 테이블로 둔다(정수 컬럼만 두면 `levelNo > levelCount`를 DB가 못 막음)
+- **RackLevel** `{id, rackId, farmId(비정규화), levelNo, label}` — 랙 생성 시 `levelCount`만큼 자동 생성. `unique(rack_id, level_no)`. **`label`은 생성 시 `"{levelNo}층"`으로 채운다**(2026-08-31, 이슈 #145 — 그 전까지 이 필드를 채우는 코드가 없어 항상 null이었다. `V26`이 기존 null 행을 같은 규칙으로 백필). 라벨 **수정 API는 아직 없다** — 사용자 편집 라벨이 필요해지면 별도 이슈. 측정값·장비가 FK로 매달리므로 별도 테이블로 둔다(정수 컬럼만 두면 `levelNo > levelCount`를 DB가 못 막음)
 - **Farm 확장**: `farms ADD planted_on DATE NULL` — 프리뷰 농장 카드의 "정식 18일" 표기용. ⚠️ 작물명은 확장하지 않는다 — `CropType`은 ai-server 진단 모델 제약으로 TOMATO 전용이며, 프리뷰의 엽채류(로메인 등)는 표시 갭으로 남긴다
 
 ### 장비·센서 레지스트리
@@ -441,7 +441,11 @@
 | GET | `/api/farms/{farmId}/alarm-events/stats` | 멤버 | `?days=7` (1~90, 위반 C001) | 200 AlarmStatsResponse |
 | GET | `/api/farms/{farmId}/alarm-events/unacknowledged-count` | 멤버 | — | 200 AlarmUnacknowledgedCountResponse |
 
-- **AlarmEventResponse** `{id, severity, sourceType, metricKey, ruleId?, scopeType?, scopeId?, message, status, occurredAt, acknowledgedAt?, acknowledgedBy?, resolvedAt?, resolvedBy?}` — `acknowledgedBy`/`resolvedBy`는 raw userId(이름 치환은 후속). `resolvedBy=null`+status=RESOLVED = 시스템 자동 해소.
+- **AlarmEventResponse** `{id, severity, sourceType, metricKey, ruleId?, scopeType?, scopeId?, message, status, occurredAt, acknowledgedAt?, acknowledgedBy?, resolvedAt?, resolvedBy?, scopeLabel?, ruleSummary?, acknowledgedByName?, resolvedByName?}` — `acknowledgedBy`/`resolvedBy`는 raw userId. `resolvedBy=null`+status=RESOLVED = 시스템 자동 해소.
+- **표시용 부가 필드 4종**(2026-08-31, 이슈 #135 — 시안 04 상세 패널): `scopeLabel`(사람이 읽는 위치명, `scopeType`+`scopeId`로 zone/rack/level 조합 · `FARM`이면 농장명) · `ruleSummary`(규칙 한 줄 요약 — 지표·비교연산자·임계값·지속시간) · `acknowledgedByName`/`resolvedByName`(처리자 이름).
+- ⚠️ **넷 다 "없으면 null"이다** — 스코프 소멸 · 규칙 없음(수동/시스템 발생) · 사용자 탈퇴. 서버가 `"알 수 없음"`·`"-"`·빈 문자열 같은 **표시 문구를 지어내지 않는다**(문구는 FE 몫). 삭제된 스코프를 `FARM`으로 승격하거나 농장명으로 대체하지도 않는다 — "스코프 소멸"과 "빈 스코프"는 다르다(#118).
+- **N+1 금지** — 목록이 페이지네이션(기본 20)이라 이벤트마다 zone/rack/level·rule·user를 개별 조회하면 안 된다. 배치 조회로 조립하며 **이벤트 건수와 무관하게 쿼리 수가 고정**이다(#139 패턴). cross-tenant 방어로 조회 결과를 이벤트의 `farmId`와 재대조한다.
+- ⚠️ **`현재값`(발생 시점 측정값) 필드는 없다 — 의도된 것이다.** `alarm_events`에 측정값 컬럼이 없고 값의 출처인 평가 경로에도 수치가 남지 않는다(`DEVICE_HEARTBEAT`는 수치 자체가 없다). #150 완료 후 추가.
 - **AlarmEventDetailResponse** = 위 + `timeline: [{action, actorId?, note?, createdAt}]` (action=CREATED/ACKNOWLEDGED/RESOLVED/MEMO_ADDED)
 - **AlarmMemoRequest** `{note}` — `@NotBlank`, 최대 1000자, 저장 시 trim. 상태 전이 없이 타임라인에만 추가.
 - **AlarmStatsResponse** `{days, countBySeverity: {CRITICAL, WARNING}, avgAcknowledgeMinutes?}` — DB 집계(`GROUP BY severity` + `EXTRACT(EPOCH)/60`). 평균은 초 정밀도(구 구현의 분 단위 버림과 다름).
@@ -580,7 +584,7 @@
 
 | 메서드 | 경로 | 권한 | 응답 |
 |---|---|---|---|
-| GET | `/api/dashboard/farms` | 인증(내 농장) | 200 `List<FarmDashboardResponse>` |
+| GET | `/api/dashboard/farms` | 인증(내 농장) | 200 `DashboardFarmsResponse` |
 
 - **`FarmDashboardResponse`** `{id, name, cropType, rackCount, levelCount, status(CRITICAL|WARNING|NORMAL), unacknowledgedAlarmCount, metrics[{metric,unit,value,outOfRange}], trend7d[{date,value,state}], latestAlarmMessage}`
 - `metrics[].value`가 **null이면 측정 이력 없음** · `trend7d[].state`는 `OK|WARNING|CRITICAL|IDLE`(`ReadingMatrixResponse.LevelCell`과 같은 어휘), 대표 지표 **TEMPERATURE 고정**·일별 평균
@@ -588,7 +592,9 @@
 - ⚠️ **`plantedDaysAgo`(정식 경과일) 필드가 없다 — 의도된 것이다.** 재배 사이클 도메인(#130) 부재로 계산 불가이고, 0이나 임의값을 내보내면 사용자가 생육 판단을 그르친다. #130 완료 후 추가
 - ⚠️ **PENDING 멤버십 농장은 제외**한다 — 이 카드가 싣는 랙/층·지표·알람은 `requireMember`가 지키는 farm-scoped 내부 데이터와 같은 성격이고, PENDING은 그 표면에 F008로 접근 불가다. (`/api/farms`는 PENDING을 포함하므로 **좌측 `내 농장` 목록과 카드 개수가 다를 수 있다** — 정상)
 - **N+1 금지가 이 API의 존재 이유다** — 쿼리 **6개 고정**(내 농장 1 + `farm_id IN` 배치 5)이며 농장 수와 무관. 기존 단일 농장용 서비스(`findZoneTree`·`latest`·`series`·`unacknowledgedCount`)를 농장마다 부르면 N+1을 재생산하므로 **재사용하지 않는다**
-- **결과 상한** `dashboard.max-farms`(기본 50) 초과 시 절단 — ⚠️ 현재 응답에 절단 사실이 드러나지 않는다(#140)
+- **`DashboardFarmsResponse`** `{farms: FarmDashboardResponse[], totalCount, truncated}`(2026-08-31, 이슈 #140 — 그 전까지 평문 배열이었다)
+- **결과 상한** `dashboard.max-farms`(기본 50) 초과 시 절단. `totalCount`는 **절단 전** 내 활성 농장 수, `truncated`는 잘렸는지 여부다. 절단이 없으면 `truncated=false`이고 `totalCount == farms.length`
+- ⚠️ 예전에는 응답이 평문 배열이라 **FE가 잘렸는지 알 방법이 없었고** 사용자에겐 농장 카드가 그냥 사라진 걸로 보였다. FE는 `truncated`일 때 **서버가 준 실제 숫자**(`totalCount`·`farms.length`)로 안내한다 — 상한 숫자를 하드코딩하거나 없는 정보를 지어내지 않는다
 - 마이그레이션 없음(기존 테이블 집계)
 
 ## 5. ErrorCode 체계
