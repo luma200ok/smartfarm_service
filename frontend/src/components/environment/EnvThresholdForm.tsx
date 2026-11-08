@@ -192,7 +192,7 @@ export default function EnvThresholdForm({ farmId }: EnvThresholdFormProps) {
         <button
           type="submit"
           disabled={saving}
-          className="self-start rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-40"
+          className="self-start rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
         >
           {saving ? "저장 중..." : "저장"}
         </button>

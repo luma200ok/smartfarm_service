@@ -153,7 +153,7 @@ export default function ZoneControlPanel({
                     type="button"
                     disabled={disabled || busy || !drafts[metric]?.trim()}
                     onClick={() => handleEnqueueSetpoint(metric)}
-                    className="flex-none rounded-md bg-dp-ink px-2.5 py-1 text-xs font-medium whitespace-nowrap text-dp-surface disabled:opacity-40"
+                    className="flex-none rounded-md bg-dp-ink px-2.5 py-1 text-xs font-medium whitespace-nowrap text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
                   >
                     변경 예약
                   </button>
@@ -309,7 +309,7 @@ export default function ZoneControlPanel({
             type="button"
             disabled={busy || state.pendingChanges.length === 0}
             onClick={handleApply}
-            className="mt-3 w-full rounded-md bg-dp-ink py-2 text-sm font-semibold text-dp-surface disabled:opacity-40"
+            className="mt-3 w-full rounded-md bg-dp-ink py-2 text-sm font-semibold text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
           >
             {state.pendingChanges.length}건 적용
           </button>

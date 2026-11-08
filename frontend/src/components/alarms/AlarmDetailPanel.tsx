@@ -282,7 +282,7 @@ function MemoModal({
           maxLength={1000}
           rows={4}
           placeholder="처리 내용이나 참고 사항을 남겨주세요."
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         />
         {error && (
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
@@ -298,7 +298,7 @@ function MemoModal({
           <button
             type="submit"
             disabled={submitting || !note.trim()}
-            className={`rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface disabled:opacity-60${touchClass}`}
+            className={`rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-60${touchClass}`}
           >
             {submitting ? "저장 중..." : "저장"}
           </button>

@@ -162,7 +162,7 @@ export default function MobileZoneControl({
             type="button"
             disabled={busy}
             onClick={() => handleEnqueueSetpoint("TEMPERATURE")}
-            className="mt-2 min-h-11 w-full rounded-lg bg-dp-ink text-[12.5px] font-semibold text-dp-surface disabled:opacity-40"
+            className="mt-2 min-h-11 w-full rounded-lg bg-dp-ink text-[12.5px] font-semibold text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
           >
             {drafts.TEMPERATURE}
             {temperature?.unit}로 변경 예약
@@ -204,7 +204,7 @@ export default function MobileZoneControl({
                   type="button"
                   disabled={disabled || busy || !drafts[metric]?.trim()}
                   onClick={() => handleEnqueueSetpoint(metric)}
-                  className="min-h-11 flex-none rounded-md bg-dp-ink px-2.5 text-xs font-medium whitespace-nowrap text-dp-surface disabled:opacity-40"
+                  className="min-h-11 flex-none rounded-md bg-dp-ink px-2.5 text-xs font-medium whitespace-nowrap text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
                 >
                   예약
                 </button>

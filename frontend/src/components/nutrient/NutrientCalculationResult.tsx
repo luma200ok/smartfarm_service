@@ -23,7 +23,7 @@ export default function NutrientCalculationResult({ calculation, onSaveClick }: 
           <button
             type="button"
             onClick={onSaveClick}
-            className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
+            className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover"
           >
             이 배합으로 저장
           </button>

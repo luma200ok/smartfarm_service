@@ -26,7 +26,7 @@ export default function FarmsPageClient() {
         <button
           type="button"
           onClick={() => setOpenModal("create")}
-          className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90"
+          className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover transition-colors"
         >
           + 새 농장
         </button>
