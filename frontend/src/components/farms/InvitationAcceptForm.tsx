@@ -77,7 +77,7 @@ export default function InvitationAcceptForm({ variant = "card" }: InvitationAcc
       <button
         type="submit"
         disabled={submitting}
-        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink transition-colors disabled:cursor-not-allowed disabled:opacity-40"
       >
         {submitting ? "확인 중..." : "합류하기"}
       </button>

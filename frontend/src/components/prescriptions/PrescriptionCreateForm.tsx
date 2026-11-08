@@ -107,7 +107,7 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
               id="diagnosis-select"
               value={diagnosisId}
               onChange={(e) => setDiagnosisId(e.target.value)}
-              className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink outline-none focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
+              className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
             >
               <option value="">선택 안 함</option>
               {diagnoses.map((d) => (
@@ -130,7 +130,7 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
             rows={4}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink outline-none focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
+            className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
           />
         </div>
 
@@ -142,7 +142,7 @@ export default function PrescriptionCreateForm({ farmId }: PrescriptionCreateFor
         <button
           type="submit"
           disabled={submitting}
-          className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink transition-colors disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? "요청 중..." : "처방 요청"}
         </button>

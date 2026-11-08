@@ -26,7 +26,7 @@ export default function MorePage() {
         </p>
         <Link
           href="/dashboard"
-          className="rounded-md bg-dp-ink px-4 py-2 text-[13px] font-semibold text-dp-surface"
+          className="rounded-md bg-dp-ink px-4 py-2 text-[13px] font-semibold text-dp-surface transition-colors hover:bg-dp-ink-hover"
         >
           대시보드로 이동
         </Link>

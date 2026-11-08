@@ -78,7 +78,7 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
           id="farm-crop"
           value={cropType}
           onChange={(e) => setCropType(e.target.value as CropType)}
-          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink outline-none focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
         >
           {CROP_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -101,7 +101,7 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
       <button
         type="submit"
         disabled={submitting}
-        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink transition-colors disabled:cursor-not-allowed disabled:opacity-40"
       >
         {submitting ? "생성 중..." : "농장 생성"}
       </button>

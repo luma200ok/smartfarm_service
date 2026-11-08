@@ -92,7 +92,7 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={submitting || demoSubmitting}
-        className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface disabled:opacity-40"
+        className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
       >
         {submitting ? "로그인 중..." : "로그인"}
       </button>

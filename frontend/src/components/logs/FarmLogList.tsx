@@ -144,7 +144,7 @@ export default function FarmLogList({ farmId }: FarmLogListProps) {
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface"
+            className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface transition-colors hover:bg-dp-ink-hover"
           >
             작성
           </button>

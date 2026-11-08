@@ -75,7 +75,7 @@ export default function ThemeToggle({ padded = false }: ThemeToggleProps = {}) {
         aria-checked={isDark}
         aria-label="다크 모드"
         onClick={() => setDark(!isDark)}
-        className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
+        className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dp-focus"
       >
         <span aria-hidden="true" className={trackClassName}>
           {knob}
@@ -91,7 +91,7 @@ export default function ThemeToggle({ padded = false }: ThemeToggleProps = {}) {
       aria-checked={isDark}
       aria-label="다크 모드"
       onClick={() => setDark(!isDark)}
-      className={`${trackClassName} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400`}
+      className={`${trackClassName} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dp-focus`}
     >
       {knob}
     </button>

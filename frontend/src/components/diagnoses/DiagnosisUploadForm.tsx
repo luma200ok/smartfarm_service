@@ -77,7 +77,7 @@ export default function DiagnosisUploadForm({ farmId, onUploaded }: DiagnosisUpl
             <button
               type="submit"
               disabled={submitting || !file}
-              className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink transition-colors disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitting ? "진단 중..." : "진단하기"}
             </button>
