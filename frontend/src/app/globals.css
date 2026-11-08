@@ -44,6 +44,7 @@ body {
 
   /* 텍스트 */
   --dp-ink: #14171a;
+  --dp-ink-hover: #3a4248;
   --dp-body: #3d4247;
   --dp-sub: #6b7076;
   --dp-muted: #8a9098;
@@ -54,6 +55,9 @@ body {
   --dp-line-2: rgba(0, 0, 0, 0.09);
   --dp-line-row: rgba(0, 0, 0, 0.06);
   --dp-line-strong: rgba(0, 0, 0, 0.14);
+
+  /* 포커스 링 — 흰 표면 대비 5:1 이상(WCAG 1.4.11 3:1 충족) */
+  --dp-focus: #2563eb;
 
   /* 비활성 계열 */
   --dp-idle: #e3e5e2;
@@ -109,6 +113,7 @@ body {
   --dp-badge-neutral: #262b2d;
 
   --dp-ink: #e9ecea;
+  --dp-ink-hover: #cdd3d0;
   --dp-body: #c2c8c5;
   --dp-sub: #a8b0ad;
   --dp-muted: #8f989b;
@@ -118,6 +123,8 @@ body {
   --dp-line-2: rgba(255, 255, 255, 0.12);
   --dp-line-row: rgba(255, 255, 255, 0.07);
   --dp-line-strong: rgba(255, 255, 255, 0.2);
+
+  --dp-focus: #8fb8e0;
 
   --dp-idle: #2e3436;
   --dp-off: #343b3d;
@@ -168,6 +175,8 @@ body {
   --color-dp-badge-neutral: var(--dp-badge-neutral);
 
   --color-dp-ink: var(--dp-ink);
+  --color-dp-ink-hover: var(--dp-ink-hover);
+  --color-dp-focus: var(--dp-focus);
   --color-dp-body: var(--dp-body);
   --color-dp-sub: var(--dp-sub);
   --color-dp-muted: var(--dp-muted);
@@ -219,4 +228,13 @@ body {
 
   --font-dp-sans: Pretendard, "Pretendard Variable", -apple-system, BlinkMacSystemFont,
     system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+/* 키보드 포커스 링(이슈 #111) — 마우스 클릭에는 안 보이고 Tab 이동 때만 보인다.
+   base layer 라 유틸리티(outline-* 등)가 필요하면 덮어쓸 수 있다. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--dp-focus);
+    outline-offset: 2px;
+  }
 }
