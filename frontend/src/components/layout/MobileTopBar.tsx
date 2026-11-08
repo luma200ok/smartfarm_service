@@ -118,7 +118,7 @@ function HomeHeader({
     <div ref={containerRef} className="px-[18px] pt-3.5 pb-3.5">
       <div className="flex items-center gap-2.5">
         <div className="text-[14px] leading-none font-bold">
-          스마트팜 <span className="text-[#5fd08c]">DFX</span>
+          SmartFarm <span className="text-[#5fd08c]">Service</span>
         </div>
         <div className="flex-1" />
         {effectiveFarmId && unackCount !== null && (
@@ -215,7 +215,7 @@ function MoreHeader({ farmCount }: { farmCount: number | null }) {
     <div className="px-[18px] pt-4 pb-[18px]">
       <div className="flex items-center gap-2.5">
         <div className="text-[14.5px] leading-none font-bold">
-          스마트팜 <span className="text-[#5fd08c]">DFX</span>
+          SmartFarm <span className="text-[#5fd08c]">Service</span>
         </div>
         <div className="flex-1" />
         <span
