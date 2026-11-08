@@ -1,14 +1,12 @@
-// 운영 화면 공용 UI 프리미티브(이슈 #99 리뷰 반영) — 원래 design-preview/ui.tsx에 있던 것을
+// 운영 화면 공용 UI 프리미티브(이슈 #99 리뷰 반영) — 원래 디자인 프리뷰 모듈에 있던 것을
 // 운영용으로 승격했다. 색은 전부 globals.css의 --dp-* 토큰을 통하므로 라이트/다크가 자동으로
-// 갈린다(토큰 자체는 건드리지 않음). design-preview/ui.tsx는 이 파일을 거꾸로 재노출해
-// 프리뷰 10화면의 기존 import 경로를 그대로 유지한다(의존 방향: 프리뷰 → 운영 공용).
+// 갈린다(토큰 자체는 건드리지 않음). (프리뷰 라우트는 이슈 #155로 제거됨.)
 import type { ReactNode } from "react";
 import type { PreviewCellState as CellState, PreviewSeverity } from "@/types";
 
 // StatusBadge 전용 확장 톤 — "neutral"은 위험/경고가 아닌 중립 상태 표기용(제어 화면 #108의
 // OFF — 장애가 아니라 조작 결과라 critical 톤을 쓰면 고장으로 오인된다). PreviewSeverity
-// 자체를 넓히면 design-preview의 Record<PreviewSeverity, …> 완전성 매핑이 전부 깨지므로
-// (그 화면들은 손대지 않는다), StatusBadge의 tone에서만 로컬로 확장한다.
+// 자체를 넓히면 Record<PreviewSeverity, …> 완전성 매핑이 전부 깨지므로 StatusBadge의 tone에서만 로컬로 확장한다.
 type Severity = PreviewSeverity | "neutral";
 
 /* ── 카드 ─────────────────────────────────────────────────────────────── */
@@ -31,7 +29,7 @@ export function Card({
 }
 
 /**
- * `as`는 기본 "span"(design-preview 10화면·기존 운영 화면이 이 기본 동작에 의존하므로 바꾸지
+ * `as`는 기본 "span"(기존 운영 화면이 이 기본 동작에 의존하므로 바꾸지
  * 않는다) — 실제 문서 헤딩 자리에 쓸 때만 "h2"/"h3"를 지정해 스크린리더 헤딩 탐색(WCAG 1.3.1)이
  * 카드 제목을 건너뛰지 않게 한다(이슈 #109 리뷰 P2, ui.tsx는 이번에 처음 손댐 — 다른 그룹과 충돌 없음).
  */

@@ -69,7 +69,7 @@ export default function GlobalBar({
       </button>
 
       <Link href="/dashboard" className="flex-none text-[15px] leading-none font-bold tracking-[-0.02em]">
-        스마트팜 <span className="text-[#5fd08c]">DFX</span>
+        SmartFarm <span className="text-[#5fd08c]">Service</span>
       </Link>
 
       <div className="hidden h-4 w-px flex-none bg-white/[0.18] min-[640px]:block" />

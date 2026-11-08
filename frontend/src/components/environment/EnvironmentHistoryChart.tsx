@@ -52,7 +52,7 @@ function computeTickInterval(
   return Math.max(0, Math.ceil(pointCount / target) - 1);
 }
 
-// 환경 시계열 차트(이슈 #53, 다함 벤치마킹 1) — 대시보드 환경 섹션(EnvironmentWidget) 하단 확장.
+// 환경 시계열 차트(이슈 #53) — 대시보드 환경 섹션(EnvironmentWidget) 하단 확장.
 // 기간 탭(24h/7d/30d) 전환마다 재조회. 다운샘플은 서버가 수행(contract §4.6) —
 // FE는 받은 point만 그대로 그리고 null 구간은 선을 끊는다(connectNulls=false).
 // 표현은 --dp-* 토큰 기반 공용 프리미티브(Card·CardTitle·Chip)로 통일한다(이슈 #109).
