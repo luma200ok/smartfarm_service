@@ -531,7 +531,7 @@ export default function AlarmsPageClient({ farmId }: AlarmsPageClientProps) {
               type="button"
               onClick={handleAcknowledgeAll}
               disabled={ackAllSubmitting}
-              className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-60"
+              className="rounded-md bg-dp-ink px-3 py-1.5 text-sm font-medium text-dp-surface transition-colors hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-60"
             >
               {ackAllSubmitting ? "처리 중..." : "전체 확인 처리"}
             </button>

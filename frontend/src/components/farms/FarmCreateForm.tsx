@@ -78,7 +78,7 @@ export default function FarmCreateForm({ variant = "card" }: FarmCreateFormProps
           id="farm-crop"
           value={cropType}
           onChange={(e) => setCropType(e.target.value as CropType)}
-          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink focus:border-dp-line-strong focus:ring-1 focus:ring-dp-line-strong"
+          className="rounded-md border border-dp-line-strong bg-dp-surface px-3 py-2 text-sm text-dp-ink"
         >
           {CROP_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

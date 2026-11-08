@@ -75,6 +75,7 @@ body {
   --dp-green-tint: #f2faf5;
   --dp-green-tint-2: #eaf5ee;
   --dp-green-line: #cfe8d9;
+  --dp-green-hover: #1a7a42;
   --dp-on-green: #ffffff;
 
   /* 경보 */
@@ -140,6 +141,7 @@ body {
   --dp-green-tint: rgba(52, 168, 98, 0.12);
   --dp-green-tint-2: rgba(52, 168, 98, 0.16);
   --dp-green-line: rgba(52, 168, 98, 0.38);
+  --dp-green-hover: #46bb74;
   --dp-on-green: #06130b;
 
   --dp-red: #e2685c;
@@ -194,6 +196,7 @@ body {
   --color-dp-bar-past: var(--dp-bar-past);
 
   --color-dp-green: var(--dp-green);
+  --color-dp-green-hover: var(--dp-green-hover);
   --color-dp-green-soft: var(--dp-green-soft);
   --color-dp-green-mid: var(--dp-green-mid);
   --color-dp-green-target: var(--dp-green-target);

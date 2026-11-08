@@ -133,7 +133,7 @@ export default function FarmChat({ farmId }: FarmChatProps) {
               type="button"
               disabled={page <= 0}
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
+              className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body transition-colors hover:bg-dp-inset disabled:opacity-40 disabled:hover:bg-transparent"
             >
               최신
             </button>
@@ -144,7 +144,7 @@ export default function FarmChat({ farmId }: FarmChatProps) {
               type="button"
               disabled={page + 1 >= data.totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body disabled:opacity-40"
+              className="rounded-md border border-dp-line-strong px-2 py-1 text-dp-body transition-colors hover:bg-dp-inset disabled:opacity-40 disabled:hover:bg-transparent"
             >
               이전 대화
             </button>
@@ -215,7 +215,7 @@ export default function FarmChat({ farmId }: FarmChatProps) {
             <button
               type="submit"
               disabled={submitting || question.trim().length === 0}
-              className="flex-none rounded-[9px] bg-dp-green px-[18px] py-3 text-[13px] font-semibold text-dp-on-green disabled:opacity-40"
+              className="flex-none rounded-[9px] bg-dp-green px-[18px] py-3 text-[13px] font-semibold text-dp-on-green transition-colors hover:bg-dp-green-hover disabled:opacity-40 disabled:hover:bg-dp-green"
             >
               {submitting ? "전송 중..." : "전송"}
             </button>

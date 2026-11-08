@@ -186,7 +186,7 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
         type="button"
         onClick={handleCalculate}
         disabled={calculating}
-        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
+        className="self-start rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
       >
         {calculating ? "계산 중..." : "계산"}
       </button>
@@ -214,7 +214,7 @@ export default function NutrientCalculator({ farmId, onSaved }: NutrientCalculat
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
+              className="rounded-md bg-dp-ink px-4 py-2 text-sm font-medium text-dp-surface transition-colors hover:bg-dp-ink-hover disabled:hover:bg-dp-ink disabled:opacity-40"
             >
               {saving ? "저장 중..." : "저장"}
             </button>
